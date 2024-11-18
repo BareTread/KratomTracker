@@ -10,6 +10,7 @@ class UserSettings {
   final List<String> trackedEffects;
   final bool darkMode;
   final String measurementUnit;
+  final bool performanceMode;
 
   UserSettings({
     this.enableNotifications = true,
@@ -21,6 +22,7 @@ class UserSettings {
     this.trackedEffects = const ['mood', 'energy', 'painRelief'],
     this.darkMode = true,
     this.measurementUnit = 'g',
+    this.performanceMode = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -35,6 +37,7 @@ class UserSettings {
         'trackedEffects': trackedEffects,
         'darkMode': darkMode,
         'measurementUnit': measurementUnit,
+        'performanceMode': performanceMode,
       };
 
   factory UserSettings.fromJson(Map<String, dynamic> json) => UserSettings(
@@ -58,5 +61,6 @@ class UserSettings {
             ['mood', 'energy', 'painRelief']),
         darkMode: json['darkMode'] ?? true,
         measurementUnit: json['measurementUnit'] ?? 'g',
+        performanceMode: json['performanceMode'] ?? false,
       );
 } 

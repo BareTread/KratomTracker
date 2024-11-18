@@ -95,50 +95,22 @@ class KratomProvider with ChangeNotifier {
   }
 
   Future<void> _loadData() async {
+    // Batch load data
     try {
-      final strainsJson = _prefs.getString('strains');
-      final dosagesJson = _prefs.getString('dosages');
-      final effectsJson = _prefs.getString('effects');
-      final settingsJson = _prefs.getString('settings');
+      final strainData = _prefs.getString('strains');
+      final dosageData = _prefs.getString('dosages');
+      final effectData = _prefs.getString('effects');
+      final settingsData = _prefs.getString('settings');
 
-      if (strainsJson != null) {
-        final List<dynamic> strainsData = json.decode(strainsJson);
-        _strains = strainsData.map((data) => Strain.fromJson(data)).toList();
-      }
-
-      if (dosagesJson != null) {
-        final List<dynamic> dosagesData = json.decode(dosagesJson);
-        _dosages = dosagesData.map((data) => Dosage.fromJson(data)).toList();
-      }
-
-      if (effectsJson != null) {
-        final List<dynamic> effectsData = json.decode(effectsJson);
-        _effects = effectsData.map((data) => Effect.fromJson(data)).toList();
-      }
-
-      if (settingsJson != null) {
-        final settingsData = json.decode(settingsJson);
-        _settings = UserSettings.fromJson(settingsData);
-      }
-
+      if (strainData != null) _strains = (jsonDecode(strainData) as List).map((e) => Strain.fromJson(e)).toList();
+      if (dosageData != null) _dosages = (jsonDecode(dosageData) as List).map((e) => Dosage.fromJson(e)).toList();
+      if (effectData != null) _effects = (jsonDecode(effectData) as List).map((e) => Effect.fromJson(e)).toList();
+      if (settingsData != null) _settings = UserSettings.fromJson(jsonDecode(settingsData));
+      
+      // Single notification for all updates
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading data: $e');
-      // Initialize with empty data if loading fails
-      _strains = [];
-      _dosages = [];
-      _effects = [];
-      _settings = UserSettings(
-        enableNotifications: false,
-        morningReminder: null,
-        eveningReminder: null,
-        dailyLimit: 0.0,
-        enableToleranceTracking: false,
-        toleranceBreakInterval: 7,
-        trackedEffects: const [],
-        darkMode: true,
-        measurementUnit: 'g',
-      );
     }
   }
 
@@ -417,10 +389,18 @@ class KratomProvider with ChangeNotifier {
     };
   }
 
+  // Cache frequently accessed data
+  late final Map<String, Strain> _strainCache = {};
+
   Strain getStrain(String strainId) {
-    return _strains.firstWhere(
+    if (_strainCache.containsKey(strainId)) {
+      return _strainCache[strainId]!;
+    }
+    final strain = _strains.firstWhere(
       (s) => s.id == strainId,
       orElse: () => throw Exception('Strain not found'),
     );
+    _strainCache[strainId] = strain;
+    return strain;
   }
 } 

@@ -7,9 +7,11 @@ import '../widgets/add_strain_form.dart';
 import '../widgets/edit_dosage_form.dart';
 import '../widgets/timeline_painter.dart';
 import '../models/dosage.dart';
+import '../constants/icons.dart';
 import 'package:intl/intl.dart';
-import 'package:lottie/lottie.dart';
 import 'dart:math';
+import 'dart:ui';
+import 'package:lottie/lottie.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,7 +20,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
   bool _showOptions = false;
   late AnimationController _animationController;
   late AnimationController _plantAnimationController;
@@ -30,20 +32,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final Color _addDoseColor = const Color(0xFF5E35B1); // Rich violet
   final Color _addStrainColor = const Color(0xFF43A047); // Natural green
 
+  // Remove unused animation controllers and animations
+  late AnimationController _scaleController;
+  late AnimationController _floatController;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     
-    // Initialize animation controllers
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 150),
     );
 
     _plantAnimationController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 12),
     );
+
+    // Initialize animation controllers for FAB menu
+    _scaleController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    )..repeat(reverse: true);
+
+    _floatController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 4),
+    )..repeat(reverse: true);
 
     // Initialize with today's date
     final now = DateTime.now();
@@ -64,9 +81,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _animationController.dispose();
     _plantAnimationController.dispose();
     _pageController.dispose();
+    _scaleController.dispose();
+    _floatController.dispose();
     super.dispose();
   }
 
@@ -180,303 +200,213 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     return Consumer<KratomProvider>(
       builder: (context, provider, child) {
-        return Scaffold(
-          backgroundColor: Colors.black,
-          appBar: AppBar(
-            backgroundColor: Colors.grey[900],
-            elevation: 0,
-            title: Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: Colors.grey[800],
-                  child: const Icon(Icons.person_outline, color: Colors.grey),
-                ),
-                const SizedBox(width: 12),
-                const Text(
-                  'Alin',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white,
-                  ),
-                ),
-                const Icon(
-                  Icons.arrow_drop_down,
-                  color: Colors.grey,
-                ),
-              ],
-            ),
-            actions: [
-              IconButton(
-                icon: Stack(
+        return Stack(
+          children: [
+            Scaffold(
+              backgroundColor: Colors.black,
+              extendBody: true,
+              appBar: AppBar(
+                backgroundColor: Colors.grey[900],
+                elevation: 0,
+                title: Row(
                   children: [
-                    const Icon(Icons.notifications_outlined, color: Colors.grey),
-                    Positioned(
-                      right: 0,
-                      top: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: BoxDecoration(
-                          color: Colors.red,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        constraints: const BoxConstraints(
-                          minWidth: 12,
-                          minHeight: 12,
-                        ),
-                        child: const Text(
-                          '1',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 8,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
+                    CircleAvatar(
+                      backgroundColor: Colors.grey[800],
+                      child: const Icon(Icons.person_outline, color: Colors.grey),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'Alin',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white,
                       ),
+                    ),
+                    const Icon(
+                      Icons.arrow_drop_down,
+                      color: Colors.grey,
                     ),
                   ],
                 ),
-                onPressed: () {},
-              ),
-            ],
-          ),
-          body: Column(
-            children: [
-              _buildCalendarSection(),
-              Expanded(
-                child: PageView.builder(
-                  controller: _pageController,
-                  onPageChanged: (index) {
-                    final date = _getDateFromIndex(index);
-                    if (!isSameDay(date, _focusedDay)) {
-                      setState(() {
-                        _focusedDay = date;
-                      });
-                      provider.setSelectedDate(date);
-                    }
-                  },
-                  itemBuilder: (context, index) {
-                    final date = _getDateFromIndex(index);
-                    final dosages = provider.getDosagesForDate(date);
-
-                    return AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: dosages.isEmpty
-                            ? _buildEmptyState()
-                            : _buildDosagesList(dosages, provider),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-          floatingActionButton: Padding(
-            padding: const EdgeInsets.only(bottom: 16.0, right: 8.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (_showOptions) ...[
-                  // Add Strain Option
-                  ScaleTransition(
-                    scale: CurvedAnimation(
-                      parent: _animationController,
-                      curve: Curves.easeOut,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+                actions: [
+                  IconButton(
+                    icon: Stack(
                       children: [
-                        const Text(
-                          'Add Strain',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        FloatingActionButton(
-                          heroTag: 'addStrain',
-                          onPressed: () {
-                            setState(() => _showOptions = false);
-                            _animationController.reverse();
-                            showModalBottomSheet(
-                              context: context,
-                              isScrollControlled: true,
-                              backgroundColor: Theme.of(context).colorScheme.surface,
-                              builder: (context) => const AddStrainForm(),
-                            );
-                          },
-                          backgroundColor: _addStrainColor.withOpacity(0.95),
-                          elevation: 4,
-                          child: const Icon(
-                            Icons.local_florist,
-                            size: 22,
-                            color: Colors.white,
+                        const Icon(Icons.notifications_outlined, color: Colors.grey),
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 12,
+                              minHeight: 12,
+                            ),
+                            child: const Text(
+                              '1',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 8,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
                           ),
                         ),
                       ],
                     ),
+                    onPressed: () {},
                   ),
-                  const SizedBox(height: 12),
-                  // Add Dose Option
-                  ScaleTransition(
-                    scale: CurvedAnimation(
-                      parent: _animationController,
-                      curve: Curves.easeOut,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          'Add Dose',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        FloatingActionButton(
-                          heroTag: 'addDose',
-                          onPressed: () {
-                            setState(() => _showOptions = false);
-                            _animationController.reverse();
-                            showModalBottomSheet(
-                              context: context,
-                              isScrollControlled: true,
-                              backgroundColor: Theme.of(context).colorScheme.surface,
-                              builder: (context) => const AddDosageForm(),
-                            );
-                          },
-                          backgroundColor: _addDoseColor.withOpacity(0.95),
-                          elevation: 4,
-                          child: const Icon(
-                            Icons.add,
-                            size: 22,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
                 ],
-                // Main FAB
-                Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: _mainFabColor.withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+              ),
+              body: Column(
+                children: [
+                  _buildCalendarSection(),
+                  Expanded(
+                    child: PageView.builder(
+                      controller: _pageController,
+                      onPageChanged: (index) {
+                        final date = _getDateFromIndex(index);
+                        if (!isSameDay(date, _focusedDay)) {
+                          setState(() {
+                            _focusedDay = date;
+                          });
+                          provider.setSelectedDate(date);
+                        }
+                      },
+                      itemBuilder: (context, index) {
+                        final date = _getDateFromIndex(index);
+                        final dosages = provider.getDosagesForDate(date);
+
+                        return AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: dosages.isEmpty
+                                ? _buildEmptyState()
+                                : _buildDosagesList(dosages, provider),
+                          ),
+                        );
+                      },
+                    ),
                   ),
-                  child: FloatingActionButton(
-                    onPressed: () {
-                      setState(() => _showOptions = !_showOptions);
-                      if (_showOptions) {
-                        _animationController.forward();
-                      } else {
-                        _animationController.reverse();
-                      }
-                    },
-                    backgroundColor: _mainFabColor,
-                    elevation: 6,
-                    shape: const CircleBorder(),
-                    child: AnimatedRotation(
-                      duration: const Duration(milliseconds: 300),
-                      turns: _showOptions ? 0.125 : 0,
-                      child: const Icon(
-                        Icons.add,
-                        color: Colors.white,
-                        size: 28,
-                      ),
+                ],
+              ),
+            ),
+            if (_showOptions)
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() => _showOptions = false);
+                    _animationController.reverse();
+                  },
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
+                    child: Container(
+                      color: Colors.transparent,
                     ),
                   ),
                 ),
-              ],
+              ),
+            Positioned(
+              right: 16,
+              bottom: 24,
+              child: _buildFABMenu(),
             ),
-          ),
+          ],
         );
       },
     );
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 80),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 180,
-              height: 180,
-              decoration: BoxDecoration(
-                color: Colors.grey[900]?.withOpacity(0.3),
-                shape: BoxShape.circle,
-              ),
-              child: Lottie.asset(
-                'assets/animations/plant.json',
-                width: 150,
-                height: 150,
-                fit: BoxFit.contain,
-                controller: _plantAnimationController,
-                onLoaded: (composition) {
-                  _plantAnimationController
-                    ..duration = composition.duration * 4
-                    ..forward()
-                    ..repeat();
-                },
-              ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: constraints.maxHeight,
             ),
-            const SizedBox(height: 16),
-            Text(
-              'No doses recorded',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: Colors.grey[300],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 10,
-              ),
-              decoration: BoxDecoration(
-                color: Colors.grey[900]?.withOpacity(0.3),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.add_circle_outline,
-                    color: Theme.of(context).colorScheme.primary,
-                    size: 18,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Add your first dose',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Theme.of(context).colorScheme.primary,
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 80),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 180,
+                      height: 180,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[900]?.withOpacity(0.3),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Lottie.asset(
+                        'assets/animations/empty_doses.json',
+                        width: 150,
+                        height: 150,
+                        fit: BoxFit.contain,
+                        controller: _plantAnimationController,
+                        onLoaded: (composition) {
+                          _plantAnimationController
+                            ..duration = composition.duration * 4  // 4x slower
+                            ..forward()
+                            ..repeat();
+                        },
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 24),
+                    Text(
+                      'No doses recorded',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.grey[300],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.add_circle_outline,
+                            color: Theme.of(context).colorScheme.primary,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Add your first dose',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -551,147 +481,164 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildDosagesList(List<Dosage> dosages, KratomProvider provider) {
-    // Sort dosages by timestamp (morning first)
-    final sortedDosages = List<Dosage>.from(dosages)
-      ..sort((a, b) {
-        // First sort by period (morning -> night)
-        final periodA = _getPeriodValue(a.timestamp);
-        final periodB = _getPeriodValue(b.timestamp);
-        if (periodA != periodB) return periodA - periodB;
-        // Then sort by time within each period
-        return a.timestamp.compareTo(b.timestamp);
-      });
+    return ListView.builder(
+      padding: const EdgeInsets.only(
+        top: 12,
+        left: 0,
+        right: 0,
+        bottom: 100,
+      ),
+      itemCount: dosages.length + 1,
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return _buildDailyTimelineCard(dosages, provider);
+        }
+        final dosage = dosages[index - 1];
+        final strain = provider.getStrain(dosage.strainId);
+        final timeStr = DateFormat('h:mm a').format(dosage.timestamp);
+        
+        // Get time period
+        final period = _getPeriod(dosage.timestamp);
+        
+        // Show period label if first item or if period changed
+        final showPeriod = index == 1 || 
+                         _getPeriod(dosages[index - 2].timestamp) != period;
 
-    return Column(
-      children: [
-        _buildDailyTimelineCard(dosages, provider),
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: sortedDosages.length,
-            itemBuilder: (context, index) {
-              final dosage = sortedDosages[index];
-              final strain = provider.getStrain(dosage.strainId);
-              final timeStr = DateFormat('h:mm a').format(dosage.timestamp);
-              
-              // Get time period
-              final hour = dosage.timestamp.hour;
-              final period = hour < 12 ? 'Morning' : 
-                         hour < 17 ? 'Afternoon' : 
-                         hour < 21 ? 'Evening' : 'Night';
-              
-              // Show period label if first item or if period changed
-              final showPeriod = index == 0 || 
-                               _getPeriod(sortedDosages[index - 1].timestamp) != period;
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (showPeriod)
-                    Padding(
-                      padding: const EdgeInsets.only(
-                        left: 8,
-                        top: 16,
-                        bottom: 8,
-                      ),
-                      child: Text(
-                        period,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.5,
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (showPeriod)
+              Padding(
+                padding: const EdgeInsets.only(
+                  left: 8,
+                  top: 16,
+                  bottom: 8,
+                ),
+                child: Text(
+                  period,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: InkWell(
+                onTap: () => _showDosageOptions(context, dosage, provider),
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      // Strain Icon
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Color(strain.color).withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          strainIcons[strain.icon] ?? Icons.local_florist,
+                          color: Color(strain.color),
+                          size: 20,
                         ),
                       ),
-                    ),
-                  Card(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: InkWell(
-                      onTap: () => _showDosageOptions(context, dosage, provider),
-                      borderRadius: BorderRadius.circular(12),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Row(
+                      const SizedBox(width: 16),
+                      // Strain Info with Note Preview
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Strain Icon
-                            Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: Color(strain.color).withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Icon(
-                                Icons.local_florist,
-                                color: Color(strain.color),
-                                size: 20,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            // Strain Info
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    strain.name,
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
+                            Row(
+                              children: [
+                                Text(
+                                  strain.code,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    timeStr,
-                                    style: TextStyle(
-                                      color: Colors.grey[500],
-                                      fontSize: 14,
+                                ),
+                                if (dosage.notes?.isNotEmpty ?? false) ...[
+                                  const SizedBox(width: 8),
+                                  Icon(
+                                    Icons.note_outlined,
+                                    size: 16,
+                                    color: Colors.grey[400],
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Text(
+                                  timeStr,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[400],
+                                  ),
+                                ),
+                                if (dosage.notes?.isNotEmpty ?? false) ...[
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: GestureDetector(
+                                      onTap: () => _showNotePopup(
+                                        context, 
+                                        dosage.notes!, 
+                                        Color(strain.color).value,
+                                      ),
+                                      child: Text(
+                                        dosage.notes!.length > 30 
+                                            ? '${dosage.notes!.substring(0, 30)}...'
+                                            : dosage.notes!,
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.grey[400],
+                                          fontStyle: FontStyle.italic,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
                                   ),
                                 ],
-                              ),
-                            ),
-                            // Dosage Amount
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Color(strain.color),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                '${dosage.amount}g',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
-                              ),
+                              ],
                             ),
                           ],
                         ),
                       ),
-                    ),
+                      // Dosage Amount
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Color(strain.color),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '${dosage.amount}g',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              );
-            },
-          ),
-        ),
-      ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
-  }
-
-  // Helper method to get period value for sorting
-  int _getPeriodValue(DateTime time) {
-    final hour = time.hour;
-    if (hour < 12) return 0; // Morning
-    if (hour < 17) return 1; // Afternoon
-    if (hour < 21) return 2; // Evening
-    return 3; // Night
   }
 
   String _getPeriod(DateTime time) {
@@ -839,5 +786,257 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
     
     return heights;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.paused) {
+      _plantAnimationController.stop();
+      _animationController.stop();
+      _scaleController.stop();
+      _floatController.stop();
+    }
+  }
+
+  Widget _buildFABMenu() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        if (_showOptions) ...[
+          // Add Strain Option
+          ScaleTransition(
+            scale: CurvedAnimation(
+              parent: _animationController,
+              curve: Curves.easeOutBack,
+              reverseCurve: Curves.easeIn,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.black45,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 8,
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  child: const Text(
+                    'Add Strain',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FloatingActionButton(
+                  heroTag: 'addStrain',
+                  onPressed: () {
+                    setState(() => _showOptions = false);
+                    _animationController.reverse();
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (context) => const AddStrainForm(),
+                    );
+                  },
+                  backgroundColor: _addStrainColor.withOpacity(0.95),
+                  elevation: 4,
+                  child: const Icon(Icons.local_florist, size: 22),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          
+          // Add Dose Option
+          ScaleTransition(
+            scale: CurvedAnimation(
+              parent: _animationController,
+              curve: Curves.easeOutBack,
+              reverseCurve: Curves.easeIn,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.black45,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 8,
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  child: const Text(
+                    'Add Dose',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FloatingActionButton(
+                  heroTag: 'addDose',
+                  onPressed: () {
+                    setState(() => _showOptions = false);
+                    _animationController.reverse();
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (context) => const AddDosageForm(),
+                    );
+                  },
+                  backgroundColor: _addDoseColor.withOpacity(0.95),
+                  elevation: 4,
+                  child: const Icon(Icons.add, size: 24),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        
+        // Main FAB with blur background
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            // Blurred background - make it exactly match FAB size and shape
+            ClipOval(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
+                child: Container(
+                  width: 56, // Standard FAB size
+                  height: 56, // Standard FAB size
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.transparent, // Remove the black background
+                  ),
+                ),
+              ),
+            ),
+            // Main FAB
+            FloatingActionButton(
+              onPressed: () {
+                setState(() => _showOptions = !_showOptions);
+                if (_showOptions) {
+                  _animationController.forward();
+                } else {
+                  _animationController.reverse();
+                }
+              },
+              backgroundColor: _mainFabColor,
+              child: AnimatedRotation(
+                duration: const Duration(milliseconds: 150),
+                turns: _showOptions ? 0.125 : 0,
+                child: const Icon(Icons.add),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // Add this method to show the note popup
+  void _showNotePopup(BuildContext context, String note, int strainColor) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 340),
+          decoration: BoxDecoration(
+            color: Colors.grey[900],
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Color(strainColor).withOpacity(0.3),
+              width: 1,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Color(strainColor).withOpacity(0.2),
+                      width: 1,
+                    ),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.notes,
+                      color: Color(strainColor),
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Note',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Color(strainColor),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Note content
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  note,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    color: Colors.white,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+              // Close button
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(
+                    'Close',
+                    style: TextStyle(
+                      color: Color(strainColor),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 } 

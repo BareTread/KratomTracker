@@ -95,51 +95,25 @@ class _EditStrainFormState extends State<EditStrainForm> {
     ],
   };
 
-  // Define icon options similar to AddStrainForm
-  final Map<String, List<_IconOption>> _iconTypes = {
-    'Leaf': [
-      _IconOption(
-        name: 'Leaf',
-        icon: Icons.local_florist,
-      ),
-      _IconOption(
-        name: 'Natural',
-        icon: Icons.eco,
-      ),
-      _IconOption(
-        name: 'Plant',
-        icon: Icons.grass,
-      ),
-    ],
-    'Nature': [
-      _IconOption(
-        name: 'Organic',
-        icon: Icons.spa,
-      ),
-      _IconOption(
-        name: 'Growth',
-        icon: Icons.trending_up,
-      ),
-      _IconOption(
-        name: 'Nature',
-        icon: Icons.nature,
-      ),
-    ],
-    'Other': [
-      _IconOption(
-        name: 'Star',
-        icon: Icons.star,
-      ),
-      _IconOption(
-        name: 'Circle',
-        icon: Icons.circle,
-      ),
-      _IconOption(
-        name: 'Diamond',
-        icon: Icons.diamond,
-      ),
-    ],
-  };
+  // Define icon options matching AddStrainForm and constants
+  final List<_IconOption> _icons = [
+    _IconOption(
+      icon: Icons.local_florist_outlined,
+      name: 'Leaf',
+    ),
+    _IconOption(
+      icon: Icons.eco_outlined,
+      name: 'Natural',
+    ),
+    _IconOption(
+      icon: Icons.grass_outlined,
+      name: 'Plant',
+    ),
+    _IconOption(
+      icon: Icons.spa_outlined,
+      name: 'Organic',
+    ),
+  ];
 
   @override
   void initState() {
@@ -167,25 +141,82 @@ class _EditStrainFormState extends State<EditStrainForm> {
     _selectedColor = foundColor;
 
     // Initialize icon selection
-    String foundIconType = 'Leaf'; // Default
-    _IconOption? foundIconOption;
-
-    // Find matching icon in iconTypes
-    for (var type in _iconTypes.keys) {
-      for (var iconOption in _iconTypes[type]!) {
-        if (iconOption.name == widget.strain.icon) {
-          foundIconType = type;
-          foundIconOption = iconOption;
-          break;
-        }
-      }
-      if (foundIconOption != null) break;
-    }
-
-    _selectedType = foundIconType;
-    _selectedIcon = foundIconOption ?? _iconTypes['Leaf']![0];
+    _selectedIcon = _icons.firstWhere(
+      (icon) => icon.name == widget.strain.icon,
+      orElse: () => _icons[0], // Default to first icon if not found
+    );
   }
 
+  // Rest of the form remains the same, but update the icon selection UI:
+  Widget _buildIconSelection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Icon',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 80,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: _icons.length,
+            itemBuilder: (context, index) {
+              final icon = _icons[index];
+              final isSelected = _selectedIcon == icon;
+              return GestureDetector(
+                onTap: () => setState(() => _selectedIcon = icon),
+                child: Container(
+                  width: 80,
+                  height: 80,
+                  margin: const EdgeInsets.only(right: 8),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? _selectedColor.color.withOpacity(0.2)
+                        : Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isSelected
+                          ? _selectedColor.color
+                          : Colors.transparent,
+                      width: 2,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        icon.icon,
+                        color: isSelected
+                            ? _selectedColor.color
+                            : Theme.of(context).iconTheme.color,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        icon.name,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isSelected
+                              ? _selectedColor.color
+                              : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Update the form's build method to include the icon selection:
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -255,24 +286,7 @@ class _EditStrainFormState extends State<EditStrainForm> {
               ),
             ),
             const SizedBox(height: 16),
-            // Icon selection
-            DropdownButtonFormField<String>(
-              value: _selectedIcon.name,
-              items: _iconTypes.keys.map((String icon) {
-                return DropdownMenuItem<String>(
-                  value: icon,
-                  child: Text(icon),
-                );
-              }).toList(),
-              onChanged: (String? value) {
-                if (value != null) {
-                  setState(() {
-                    _selectedIcon = _iconTypes[value]![0];
-                  });
-                }
-              },
-              decoration: const InputDecoration(labelText: 'Icon'),
-            ),
+            _buildIconSelection(),
             const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,

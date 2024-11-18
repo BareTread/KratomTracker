@@ -2,15 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/kratom_provider.dart';
 import '../widgets/add_strain_form.dart';
+import '../widgets/edit_strain_form.dart';
 import '../models/strain.dart';
 import 'package:lottie/lottie.dart';
-
-final Map<String, IconData> strainIcons = {
-  'Leaf': Icons.local_florist_outlined,
-  'Natural': Icons.eco_outlined,
-  'Plant': Icons.grass_outlined,
-  'Organic': Icons.spa_outlined,
-};
+import '../widgets/strain_details_view.dart';
+import '../constants/icons.dart';
 
 class StrainsScreen extends StatelessWidget {
   const StrainsScreen({super.key});
@@ -113,43 +109,54 @@ class StrainsScreen extends StatelessWidget {
   }
 
   Widget _buildEmptyState(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 160,
-            height: 160,
-            decoration: BoxDecoration(
-              color: Colors.grey[900]?.withOpacity(0.3),
-              shape: BoxShape.circle,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: constraints.maxHeight,
             ),
-            child: Lottie.asset(
-              'assets/animations/plant.json',
-              width: 120,
-              height: 120,
-              fit: BoxFit.contain,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 160,
+                    height: 160,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[900]?.withOpacity(0.3),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Lottie.asset(
+                      'assets/animations/empty_strains.json',
+                      width: 120,
+                      height: 120,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'No strains added yet',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[300],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Add your first strain to get started',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[500],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 24),
-          Text(
-            'No strains added yet',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey[300],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Add your first strain to get started',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[500],
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -242,67 +249,9 @@ class StrainsScreen extends StatelessWidget {
   void _showStrainDetails(BuildContext context, Strain strain) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.grey[900],
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    color: Color(strain.color).withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Color(strain.color).withOpacity(0.3),
-                      width: 1,
-                    ),
-                  ),
-                  child: Icon(
-                    strainIcons[strain.icon] ?? Icons.local_florist,
-                    color: Color(strain.color),
-                    size: 26,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        strain.code,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                      Text(
-                        strain.name,
-                        style: TextStyle(
-                          fontSize: 15,
-                          color: Colors.grey[400],
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            // Add more strain details here
-          ],
-        ),
-      ),
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => StrainDetailsView(strain: strain),
     );
   }
 
@@ -364,7 +313,7 @@ class StrainsScreen extends StatelessWidget {
                 ),
                 onTap: () {
                   Navigator.pop(context);
-                  // Show edit form
+                  _showEditStrainForm(context, strain);
                 },
               ),
               ListTile(
@@ -394,6 +343,15 @@ class StrainsScreen extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  void _showEditStrainForm(BuildContext context, Strain strain) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => EditStrainForm(strain: strain),
     );
   }
 } 

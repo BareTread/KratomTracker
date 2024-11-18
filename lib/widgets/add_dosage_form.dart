@@ -2,17 +2,257 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/kratom_provider.dart';
 import 'package:intl/intl.dart';
+import '../constants/icons.dart';
 
 class AddDosageForm extends StatefulWidget {
-  const AddDosageForm({super.key});
+  final String? preselectedStrainId;
+
+  const AddDosageForm({
+    super.key,
+    this.preselectedStrainId,
+  });
 
   @override
   State<AddDosageForm> createState() => _AddDosageFormState();
 }
 
 class _AddDosageFormState extends State<AddDosageForm> {
+  // Step tracking
+  bool _strainSelected = false;
+  late String? _selectedStrainId;
+  
+  @override
+  void initState() {
+    super.initState();
+    _selectedStrainId = widget.preselectedStrainId;
+    if (_selectedStrainId != null) {
+      _strainSelected = true;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _strainSelected
+        ? _DosageDetailsForm(
+            strainId: _selectedStrainId!,
+            onBack: () => setState(() => _strainSelected = false),
+          )
+        : _StrainSelectionView(
+            onStrainSelected: (strainId) {
+              setState(() {
+                _selectedStrainId = strainId;
+                _strainSelected = true;
+              });
+            },
+          );
+  }
+}
+
+// Step 1: Strain Selection
+class _StrainSelectionView extends StatelessWidget {
+  final Function(String) onStrainSelected;
+
+  const _StrainSelectionView({
+    required this.onStrainSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<KratomProvider>(
+      builder: (context, provider, child) {
+        final strains = provider.strains;
+        final dosages = provider.dosages;
+        
+        // Create a map of strain IDs to their last usage time
+        final lastUsageMap = <String, DateTime>{};
+        for (var strain in strains) {
+          final strainDosages = dosages.where((d) => d.strainId == strain.id);
+          if (strainDosages.isNotEmpty) {
+            lastUsageMap[strain.id] = strainDosages
+                .reduce((a, b) => 
+                    a.timestamp.isAfter(b.timestamp) ? a : b)
+                .timestamp;
+          } else {
+            // If never used, set to epoch to prioritize it
+            lastUsageMap[strain.id] = DateTime.fromMillisecondsSinceEpoch(0);
+          }
+        }
+
+        // Sort strains by last usage (oldest first)
+        final sortedStrains = strains.toList()
+          ..sort((a, b) => lastUsageMap[a.id]!.compareTo(lastUsageMap[b.id]!));
+
+        return Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.local_pharmacy_outlined,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Select Strain',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Top 3 strains recommended for rotation',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[400],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Strain List
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  itemCount: sortedStrains.length,
+                  itemBuilder: (context, index) {
+                    final strain = sortedStrains[index];
+                    final lastUsed = lastUsageMap[strain.id]!;
+                    final isRecommended = index < 3;
+                    final lastUsedText = lastUsed.year == 1970 
+                        ? 'Never used'
+                        : _getLastUsedText(lastUsed);
+
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Material(
+                        color: isRecommended 
+                            ? Color(strain.color).withOpacity(0.15)
+                            : Colors.grey[900]?.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(12),
+                        child: InkWell(
+                          onTap: () => onStrainSelected(strain.id),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              children: [
+                                // Strain Icon
+                                Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    color: Color(strain.color).withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Icon(
+                                    strainIcons[strain.icon] ?? Icons.local_florist,
+                                    color: Color(strain.color),
+                                    size: 22,
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                // Strain Info
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Text(
+                                            strain.code,
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          if (isRecommended) ...[
+                                            const SizedBox(width: 8),
+                                            Icon(
+                                              Icons.star_rounded,
+                                              size: 16,
+                                              color: Color(strain.color),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        lastUsedText,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.grey[400],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  String _getLastUsedText(DateTime lastUsed) {
+    final now = DateTime.now();
+    final difference = now.difference(lastUsed);
+
+    if (difference.inDays > 30) {
+      return 'Last used ${(difference.inDays / 30).floor()} months ago';
+    } else if (difference.inDays > 0) {
+      return 'Last used ${difference.inDays} days ago';
+    } else if (difference.inHours > 0) {
+      return 'Last used ${difference.inHours} hours ago';
+    } else {
+      return 'Used recently';
+    }
+  }
+}
+
+// First, create the DosageDetailsForm widget
+class _DosageDetailsForm extends StatefulWidget {
+  final String strainId;
+  final VoidCallback onBack;
+
+  const _DosageDetailsForm({
+    required this.strainId,
+    required this.onBack,
+  });
+
+  @override
+  State<_DosageDetailsForm> createState() => _DosageDetailsFormState();
+}
+
+class _DosageDetailsFormState extends State<_DosageDetailsForm> {
   final _formKey = GlobalKey<FormState>();
-  String? _selectedStrainId;
   final _amountController = TextEditingController();
   final _notesController = TextEditingController();
   DateTime _selectedDateTime = DateTime.now();
@@ -59,195 +299,167 @@ class _AddDosageFormState extends State<AddDosageForm> {
 
   @override
   Widget build(BuildContext context) {
-    final strains = context.watch<KratomProvider>().strains;
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        16,
-        16,
-        MediaQuery.of(context).viewInsets.bottom + 16,
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Add Dose',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            // Strain Selection
-            DropdownButtonFormField<String>(
-              value: _selectedStrainId,
-              decoration: InputDecoration(
-                labelText: 'Select Strain',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 16,
-                ),
-              ),
-              items: strains.map((strain) {
-                return DropdownMenuItem<String>(
-                  value: strain.id,
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: Color(strain.color).withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Icon(
-                          Icons.local_florist,
-                          size: 16,
-                          color: Color(strain.color),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(strain.name),
-                    ],
-                  ),
-                );
-              }).toList(),
-              onChanged: (value) => setState(() => _selectedStrainId = value),
-              validator: (value) => value == null ? 'Please select a strain' : null,
-            ),
-            const SizedBox(height: 16),
-            // Amount Input
-            TextFormField(
-              controller: _amountController,
-              decoration: InputDecoration(
-                labelText: 'Amount',
-                suffixText: 'g',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please enter an amount';
-                }
-                if (double.tryParse(value) == null) {
-                  return 'Please enter a valid number';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            // Date & Time Selection
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  // Date Selection
-                  Expanded(
-                    child: InkWell(
-                      onTap: () => _selectDate(context),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.calendar_today,
-                            size: 20,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            DateFormat('MMM d, y').format(_selectedDateTime),
-                            style: const TextStyle(fontSize: 16),
-                          ),
-                        ],
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            24,
+            16,
+            24,
+            MediaQuery.of(context).viewInsets.bottom + 24,
+          ),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header with back button
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back),
+                      onPressed: widget.onBack,
+                    ),
+                    const Text(
+                      'Add Dose',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                  ),
-                  // Vertical Divider
-                  Container(
-                    height: 24,
-                    width: 1,
-                    color: Colors.grey,
-                    margin: const EdgeInsets.symmetric(horizontal: 12),
-                  ),
-                  // Time Selection
-                  Expanded(
-                    child: InkWell(
-                      onTap: () => _selectTime(context),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Icon(
-                            Icons.access_time,
-                            size: 20,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            DateFormat('h:mm a').format(_selectedDateTime),
-                            style: const TextStyle(fontSize: 16),
-                          ),
-                        ],
-                      ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                // Amount Input
+                TextFormField(
+                  controller: _amountController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: 'Amount',
+                    suffixText: 'g',
+                    filled: true,
+                    fillColor: Colors.grey[900],
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
                     ),
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            // Notes Input
-            TextFormField(
-              controller: _notesController,
-              decoration: InputDecoration(
-                labelText: 'Notes (optional)',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter an amount';
+                    }
+                    if (double.tryParse(value) == null) {
+                      return 'Please enter a valid number';
+                    }
+                    return null;
+                  },
                 ),
-                alignLabelWithHint: true,
-              ),
-              maxLines: 3,
+                const SizedBox(height: 16),
+                // Date & Time Selection
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildDateTimeButton(
+                        icon: Icons.calendar_today,
+                        label: DateFormat('MMM d, y').format(_selectedDateTime),
+                        onPressed: () => _selectDate(context),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildDateTimeButton(
+                        icon: Icons.access_time,
+                        label: DateFormat('h:mm a').format(_selectedDateTime),
+                        onPressed: () => _selectTime(context),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                // Notes Input
+                TextFormField(
+                  controller: _notesController,
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    labelText: 'Notes (optional)',
+                    alignLabelWithHint: true,
+                    filled: true,
+                    fillColor: Colors.grey[900],
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                // Submit Button
+                ElevatedButton(
+                  onPressed: () {
+                    if (_formKey.currentState!.validate()) {
+                      context.read<KratomProvider>().addDosage(
+                        widget.strainId,
+                        double.parse(_amountController.text),
+                        _selectedDateTime,
+                        _notesController.text.isEmpty ? null : _notesController.text,
+                      );
+                      Navigator.pop(context);
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Add Dose',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 24),
-            // Submit Button
-            ElevatedButton(
-              onPressed: () {
-                if (_formKey.currentState!.validate()) {
-                  context.read<KratomProvider>().addDosage(
-                    _selectedStrainId!,
-                    double.parse(_amountController.text),
-                    _selectedDateTime,
-                    _notesController.text.isEmpty ? null : _notesController.text,
-                  );
-                  Navigator.pop(context);
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDateTimeButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+  }) {
+    return Material(
+      color: Colors.grey[900],
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(fontSize: 16),
                 ),
               ),
-              child: const Text(
-                'Add Dose',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
