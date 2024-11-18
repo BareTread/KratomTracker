@@ -21,6 +21,7 @@ class _EditStrainFormState extends State<EditStrainForm> {
   late final TextEditingController _codeController;
   late String _selectedType;
   late _ColorOption _selectedColor;
+  late _IconOption _selectedIcon;
 
   // Define color options similar to AddStrainForm
   final Map<String, List<_ColorOption>> _strainTypes = {
@@ -94,6 +95,52 @@ class _EditStrainFormState extends State<EditStrainForm> {
     ],
   };
 
+  // Define icon options similar to AddStrainForm
+  final Map<String, List<_IconOption>> _iconTypes = {
+    'Leaf': [
+      _IconOption(
+        name: 'Leaf',
+        icon: Icons.local_florist,
+      ),
+      _IconOption(
+        name: 'Natural',
+        icon: Icons.eco,
+      ),
+      _IconOption(
+        name: 'Plant',
+        icon: Icons.grass,
+      ),
+    ],
+    'Nature': [
+      _IconOption(
+        name: 'Organic',
+        icon: Icons.spa,
+      ),
+      _IconOption(
+        name: 'Growth',
+        icon: Icons.trending_up,
+      ),
+      _IconOption(
+        name: 'Nature',
+        icon: Icons.nature,
+      ),
+    ],
+    'Other': [
+      _IconOption(
+        name: 'Star',
+        icon: Icons.star,
+      ),
+      _IconOption(
+        name: 'Circle',
+        icon: Icons.circle,
+      ),
+      _IconOption(
+        name: 'Diamond',
+        icon: Icons.diamond,
+      ),
+    ],
+  };
+
   @override
   void initState() {
     super.initState();
@@ -118,6 +165,25 @@ class _EditStrainFormState extends State<EditStrainForm> {
 
     _selectedType = foundType;
     _selectedColor = foundColor;
+
+    // Initialize icon selection
+    String foundIconType = 'Leaf'; // Default
+    _IconOption? foundIconOption;
+
+    // Find matching icon in iconTypes
+    for (var type in _iconTypes.keys) {
+      for (var iconOption in _iconTypes[type]!) {
+        if (iconOption.name == widget.strain.icon) {
+          foundIconType = type;
+          foundIconOption = iconOption;
+          break;
+        }
+      }
+      if (foundIconOption != null) break;
+    }
+
+    _selectedType = foundIconType;
+    _selectedIcon = foundIconOption ?? _iconTypes['Leaf']![0];
   }
 
   @override
@@ -188,6 +254,25 @@ class _EditStrainFormState extends State<EditStrainForm> {
                 }).toList(),
               ),
             ),
+            const SizedBox(height: 16),
+            // Icon selection
+            DropdownButtonFormField<String>(
+              value: _selectedIcon.name,
+              items: _iconTypes.keys.map((String icon) {
+                return DropdownMenuItem<String>(
+                  value: icon,
+                  child: Text(icon),
+                );
+              }).toList(),
+              onChanged: (String? value) {
+                if (value != null) {
+                  setState(() {
+                    _selectedIcon = _iconTypes[value]![0];
+                  });
+                }
+              },
+              decoration: const InputDecoration(labelText: 'Icon'),
+            ),
             const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -199,11 +284,13 @@ class _EditStrainFormState extends State<EditStrainForm> {
                 ElevatedButton(
                   onPressed: () {
                     if (_formKey.currentState!.validate()) {
-                      context.read<KratomProvider>().updateStrain(
+                      final provider = Provider.of<KratomProvider>(context, listen: false);
+                      provider.updateStrain(
                         widget.strain.id,
-                        _nameController.text,
-                        _codeController.text,
-                        _selectedColor.color.value,
+                        name: _nameController.text,
+                        code: _codeController.text,
+                        color: _selectedColor.color.value,
+                        icon: _selectedIcon.name,
                       );
                       Navigator.pop(context);
                     }
@@ -277,5 +364,15 @@ class _ColorOption {
     required this.color,
     required this.name,
     required this.intensity,
+  });
+}
+
+class _IconOption {
+  final String name;
+  final IconData icon;
+
+  const _IconOption({
+    required this.name,
+    required this.icon,
   });
 } 

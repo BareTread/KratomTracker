@@ -3,12 +3,14 @@ class Strain {
   final String name;
   final String code;
   final int color;
+  final String icon;
 
-  Strain({
+  const Strain({
     required this.id,
     required this.name,
     required this.code,
     required this.color,
+    required this.icon,
   });
 
   Map<String, dynamic> toJson() {
@@ -17,6 +19,7 @@ class Strain {
       'name': name,
       'code': code,
       'color': color,
+      'icon': icon,
     };
   }
 
@@ -26,6 +29,7 @@ class Strain {
       name: json['name'],
       code: json['code'],
       color: json['color'],
+      icon: json['icon'],
     );
   }
 } 

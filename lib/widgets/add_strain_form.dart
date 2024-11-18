@@ -367,11 +367,13 @@ class _AddStrainFormState extends State<AddStrainForm> {
                   child: ElevatedButton(
                     onPressed: () {
                       if (_formKey.currentState!.validate()) {
-                        context.read<KratomProvider>().addStrain(
-                              _nameController.text,
-                              _codeController.text,
-                              _selectedColor!.color.value,
-                            );
+                        final provider = Provider.of<KratomProvider>(context, listen: false);
+                        provider.addStrain(
+                          _nameController.text,
+                          _codeController.text,
+                          _selectedColor!.color.value,
+                          _icons[_selectedIcon].name,
+                        );
                         Navigator.pop(context);
                       }
                     },

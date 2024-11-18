@@ -18,18 +18,31 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _showOptions = false;
   late AnimationController _animationController;
+  late AnimationController _plantAnimationController;
   late DateTime _focusedDay;
   late PageController _pageController;
+
+  // Define these at the top of the class for consistency
+  final Color _mainFabColor = const Color(0xFF00ACC1); // Vibrant cyan
+  final Color _addDoseColor = const Color(0xFF5E35B1); // Rich violet
+  final Color _addStrainColor = const Color(0xFF43A047); // Natural green
 
   @override
   void initState() {
     super.initState();
+    
+    // Initialize animation controllers
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
+    );
+
+    _plantAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 12),
     );
 
     // Initialize with today's date
@@ -37,10 +50,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _focusedDay = now;
     
     // Initialize page controller with today as the center
-    final initialPage = 10000; // Large number to allow "infinite" scrolling
+    final initialPage = 10000;
     _pageController = PageController(
       initialPage: initialPage,
-      viewportFraction: 0.99, // Slight peek of next/previous pages
+      viewportFraction: 0.99,
     );
 
     // Set initial selected date
@@ -52,6 +65,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   void dispose() {
     _animationController.dispose();
+    _plantAnimationController.dispose();
     _pageController.dispose();
     super.dispose();
   }
@@ -259,59 +273,136 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
             ],
           ),
-          floatingActionButton: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_showOptions) ...[
-                // Add Strain Option
-                FloatingActionButton.extended(
-                  heroTag: 'addStrain',
-                  onPressed: () {
-                    setState(() => _showOptions = false);
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: Theme.of(context).colorScheme.surface,
-                      builder: (context) => const AddStrainForm(),
-                    );
-                  },
-                  icon: const Icon(Icons.local_florist),
-                  label: const Text('Add Strain'),
-                  backgroundColor: const Color(0xFF4CAF50), // Green color
+          floatingActionButton: Padding(
+            padding: const EdgeInsets.only(bottom: 16.0, right: 8.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (_showOptions) ...[
+                  // Add Strain Option
+                  ScaleTransition(
+                    scale: CurvedAnimation(
+                      parent: _animationController,
+                      curve: Curves.easeOut,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Add Strain',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        FloatingActionButton(
+                          heroTag: 'addStrain',
+                          onPressed: () {
+                            setState(() => _showOptions = false);
+                            _animationController.reverse();
+                            showModalBottomSheet(
+                              context: context,
+                              isScrollControlled: true,
+                              backgroundColor: Theme.of(context).colorScheme.surface,
+                              builder: (context) => const AddStrainForm(),
+                            );
+                          },
+                          backgroundColor: _addStrainColor.withOpacity(0.95),
+                          elevation: 4,
+                          child: const Icon(
+                            Icons.local_florist,
+                            size: 22,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Add Dose Option
+                  ScaleTransition(
+                    scale: CurvedAnimation(
+                      parent: _animationController,
+                      curve: Curves.easeOut,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Add Dose',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        FloatingActionButton(
+                          heroTag: 'addDose',
+                          onPressed: () {
+                            setState(() => _showOptions = false);
+                            _animationController.reverse();
+                            showModalBottomSheet(
+                              context: context,
+                              isScrollControlled: true,
+                              backgroundColor: Theme.of(context).colorScheme.surface,
+                              builder: (context) => const AddDosageForm(),
+                            );
+                          },
+                          backgroundColor: _addDoseColor.withOpacity(0.95),
+                          elevation: 4,
+                          child: const Icon(
+                            Icons.add,
+                            size: 22,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                // Main FAB
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: _mainFabColor.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: FloatingActionButton(
+                    onPressed: () {
+                      setState(() => _showOptions = !_showOptions);
+                      if (_showOptions) {
+                        _animationController.forward();
+                      } else {
+                        _animationController.reverse();
+                      }
+                    },
+                    backgroundColor: _mainFabColor,
+                    elevation: 6,
+                    shape: const CircleBorder(),
+                    child: AnimatedRotation(
+                      duration: const Duration(milliseconds: 300),
+                      turns: _showOptions ? 0.125 : 0,
+                      child: const Icon(
+                        Icons.add,
+                        color: Colors.white,
+                        size: 28,
+                      ),
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 12),
-                // Add Dose Option
-                FloatingActionButton.extended(
-                  heroTag: 'addDose',
-                  onPressed: () {
-                    setState(() => _showOptions = false);
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: Theme.of(context).colorScheme.surface,
-                      builder: (context) => const AddDosageForm(),
-                    );
-                  },
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add Dose'),
-                  backgroundColor: const Color(0xFFFF1493), // Hot Pink
-                ),
-                const SizedBox(height: 16),
               ],
-              // Main FAB
-              FloatingActionButton(
-                onPressed: () {
-                  setState(() => _showOptions = !_showOptions);
-                },
-                backgroundColor: const Color(0xFFFF1493), // Hot Pink
-                child: Icon(
-                  _showOptions ? Icons.close : Icons.add,
-                  color: Colors.white, // White icon for better contrast
-                ),
-              ),
-            ],
+            ),
           ),
-          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat, // Position for better one-handed use
         );
       },
     );
@@ -319,31 +410,72 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Widget _buildEmptyState() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Lottie.asset(
-            'assets/animations/empty_doses.json',
-            width: 200,
-            height: 200,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No doses recorded',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[600],
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 80),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 180,
+              height: 180,
+              decoration: BoxDecoration(
+                color: Colors.grey[900]?.withOpacity(0.3),
+                shape: BoxShape.circle,
+              ),
+              child: Lottie.asset(
+                'assets/animations/plant.json',
+                width: 150,
+                height: 150,
+                fit: BoxFit.contain,
+                controller: _plantAnimationController,
+                onLoaded: (composition) {
+                  _plantAnimationController
+                    ..duration = composition.duration * 4
+                    ..forward()
+                    ..repeat();
+                },
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Tap + to add your first dose',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[600],
+            const SizedBox(height: 16),
+            Text(
+              'No doses recorded',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey[300],
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 10,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.grey[900]?.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.add_circle_outline,
+                    color: Theme.of(context).colorScheme.primary,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Add your first dose',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

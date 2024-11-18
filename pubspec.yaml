@@ -100,3 +100,4 @@ flutter:
 
   assets:
     - assets/animations/
+    - assets/animations/plant.json

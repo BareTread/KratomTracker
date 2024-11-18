@@ -68,12 +68,13 @@ class KratomProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> addStrain(String name, String code, int color) async {
+  Future<void> addStrain(String name, String code, int color, String icon) async {
     final strain = Strain(
       id: _uuid.v4(),
       name: name,
       code: code,
       color: color,
+      icon: icon,
     );
     _strains.add(strain);
     await _saveStrains();
@@ -186,14 +187,21 @@ class KratomProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> updateStrain(String id, String name, String code, int color) async {
+  Future<void> updateStrain(String id, {
+    String? name,
+    String? code,
+    int? color,
+    String? icon,
+  }) async {
     final index = _strains.indexWhere((s) => s.id == id);
     if (index != -1) {
+      final strain = _strains[index];
       _strains[index] = Strain(
-        id: id,
-        name: name,
-        code: code,
-        color: color,
+        id: strain.id,
+        name: name ?? strain.name,
+        code: code ?? strain.code,
+        color: color ?? strain.color,
+        icon: icon ?? strain.icon,
       );
       await _saveStrains();
       notifyListeners();
