@@ -56,11 +56,22 @@ class KratomProvider with ChangeNotifier {
   DateTime get selectedDate => _selectedDate;
 
   List<Dosage> getDosagesForDate(DateTime date) {
-    return _dosages.where((dosage) =>
-      dosage.timestamp.year == date.year &&
-      dosage.timestamp.month == date.month &&
-      dosage.timestamp.day == date.day
-    ).toList();
+    return _dosages
+      .where((dosage) =>
+        dosage.timestamp.year == date.year &&
+        dosage.timestamp.month == date.month &&
+        dosage.timestamp.day == date.day
+      )
+      .toList()
+      // Sort by timestamp
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+  }
+
+  List<Dosage> getDosagesForDateRange(DateTime start, DateTime end) {
+    return _dosages.where((dosage) {
+      return dosage.timestamp.isAfter(start) && 
+             dosage.timestamp.isBefore(end.add(const Duration(days: 1)));
+    }).toList();
   }
 
   void setSelectedDate(DateTime date) {
