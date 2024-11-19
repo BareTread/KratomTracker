@@ -6,6 +6,8 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import 'dart:convert';
 import '../providers/theme_provider.dart';
+import 'privacy_policy_screen.dart';
+import 'terms_screen.dart';
 
 class ManageScreen extends StatefulWidget {
   const ManageScreen({super.key});
@@ -233,16 +235,13 @@ class _ManageScreenState extends State<ManageScreen> {
           ListTile(
             leading: const Icon(Icons.notifications_outlined),
             title: const Text('Dosage Reminders'),
-            subtitle: const Text('Get notified about your doses'),
+            subtitle: const Text(
+              'Currently not implemented. We aim to provide tracking tools without encouraging unnecessary usage.',
+              style: TextStyle(fontSize: 13),
+            ),
             trailing: Switch(
-              value: provider.settings.enableNotifications,
-              onChanged: (value) async {
-                // Request notification permissions if enabling
-                if (value) {
-                  // Add notification permission request logic here
-                }
-                provider.updateSettings(enableNotifications: value);
-              },
+              value: false,
+              onChanged: null,  // Disabled switch
             ),
           ),
         ],
@@ -343,7 +342,12 @@ class _ManageScreenState extends State<ManageScreen> {
             title: const Text('Privacy Policy'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
-              // Implement privacy policy view
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const PrivacyPolicyScreen(),
+                ),
+              );
             },
           ),
           const Divider(height: 1),
@@ -352,7 +356,12 @@ class _ManageScreenState extends State<ManageScreen> {
             title: const Text('Terms of Service'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
-              // Implement terms of service view
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const TermsScreen(),
+                ),
+              );
             },
           ),
         ],
