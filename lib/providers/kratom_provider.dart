@@ -15,6 +15,7 @@ class KratomProvider with ChangeNotifier {
   late List<Effect> _effects = [];
   late UserSettings _settings;
   DateTime _selectedDate = DateTime.now();
+  String? _userName;
 
   static const int currentBackupVersion = 1;
 
@@ -35,6 +36,9 @@ class KratomProvider with ChangeNotifier {
     'focus': 0.2,
   };
 
+  bool _isLoading = false;
+  bool get isLoading => _isLoading;
+
   KratomProvider(this._prefs) {
     // Initialize settings with defaults
     _settings = UserSettings(
@@ -49,21 +53,28 @@ class KratomProvider with ChangeNotifier {
       measurementUnit: 'g',
     );
     _loadData();
+    _userName = _prefs.getString('user_name');
   }
 
   List<Strain> get strains => _strains;
   List<Dosage> get dosages => _dosages;
   DateTime get selectedDate => _selectedDate;
+  String? get userName => _userName;
 
   List<Dosage> getDosagesForDate(DateTime date) {
+    // Clean the input date
+    final cleanDate = DateTime(date.year, date.month, date.day);
+    
     return _dosages
-      .where((dosage) =>
-        dosage.timestamp.year == date.year &&
-        dosage.timestamp.month == date.month &&
-        dosage.timestamp.day == date.day
-      )
+      .where((dosage) {
+        final doseDate = DateTime(
+          dosage.timestamp.year,
+          dosage.timestamp.month,
+          dosage.timestamp.day,
+        );
+        return doseDate.isAtSameMomentAs(cleanDate);
+      })
       .toList()
-      // Sort by timestamp
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
   }
 
@@ -75,7 +86,7 @@ class KratomProvider with ChangeNotifier {
   }
 
   void setSelectedDate(DateTime date) {
-    _selectedDate = date;
+    _selectedDate = DateTime(date.year, date.month, date.day);
     notifyListeners();
   }
 
@@ -106,22 +117,38 @@ class KratomProvider with ChangeNotifier {
   }
 
   Future<void> _loadData() async {
-    // Batch load data
     try {
+      _isLoading = true;
+      notifyListeners();
+      
       final strainData = _prefs.getString('strains');
       final dosageData = _prefs.getString('dosages');
       final effectData = _prefs.getString('effects');
       final settingsData = _prefs.getString('settings');
 
-      if (strainData != null) _strains = (jsonDecode(strainData) as List).map((e) => Strain.fromJson(e)).toList();
-      if (dosageData != null) _dosages = (jsonDecode(dosageData) as List).map((e) => Dosage.fromJson(e)).toList();
-      if (effectData != null) _effects = (jsonDecode(effectData) as List).map((e) => Effect.fromJson(e)).toList();
-      if (settingsData != null) _settings = UserSettings.fromJson(jsonDecode(settingsData));
-      
-      // Single notification for all updates
-      notifyListeners();
+      if (strainData != null) {
+        _strains = (jsonDecode(strainData) as List)
+            .map((e) => Strain.fromJson(e))
+            .toList();
+      }
+      if (dosageData != null) {
+        _dosages = (jsonDecode(dosageData) as List)
+            .map((e) => Dosage.fromJson(e))
+            .toList();
+      }
+      if (effectData != null) {
+        _effects = (jsonDecode(effectData) as List)
+            .map((e) => Effect.fromJson(e))
+            .toList();
+      }
+      if (settingsData != null) {
+        _settings = UserSettings.fromJson(jsonDecode(settingsData));
+      }
     } catch (e) {
       debugPrint('Error loading data: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
   }
 
@@ -400,18 +427,34 @@ class KratomProvider with ChangeNotifier {
     };
   }
 
-  // Cache frequently accessed data
-  late final Map<String, Strain> _strainCache = {};
-
+  // Add memory optimization
+  static const int _maxCacheSize = 100;
+  
+  // Implement LRU cache
+  final Map<String, MapEntry<DateTime, Strain>> _strainCache = {};
+  
   Strain getStrain(String strainId) {
-    if (_strainCache.containsKey(strainId)) {
-      return _strainCache[strainId]!;
+    // Clean old cache entries if needed
+    if (_strainCache.length > _maxCacheSize) {
+      final sortedEntries = _strainCache.entries.toList()
+        ..sort((a, b) => a.value.key.compareTo(b.value.key));
+      for (var i = 0; i < _maxCacheSize / 2; i++) {
+        _strainCache.remove(sortedEntries[i].key);
+      }
     }
+
+    // Update or add cache entry
+    if (_strainCache.containsKey(strainId)) {
+      final strain = _strainCache[strainId]!.value;
+      _strainCache[strainId] = MapEntry(DateTime.now(), strain);
+      return strain;
+    }
+
     final strain = _strains.firstWhere(
       (s) => s.id == strainId,
       orElse: () => throw Exception('Strain not found'),
     );
-    _strainCache[strainId] = strain;
+    _strainCache[strainId] = MapEntry(DateTime.now(), strain);
     return strain;
   }
 
@@ -471,5 +514,20 @@ class KratomProvider with ChangeNotifier {
     ]);
     
     notifyListeners();
+  }
+
+  Future<void> updateUserName(String? name) async {
+    _userName = name;
+    notifyListeners();
+    // Save to SharedPreferences
+    if (name != null) {
+      await _prefs.setString('user_name', name);
+    } else {
+      await _prefs.remove('user_name');
+    }
+  }
+
+  Future<void> refreshData() async {
+    await _loadData();
   }
 } 

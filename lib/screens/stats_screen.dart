@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/kratom_provider.dart';
 import '../models/dosage.dart';
 import 'package:intl/intl.dart';
+import 'report_screen.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -50,6 +51,20 @@ class _StatsScreenState extends State<StatsScreen> {
                       _buildAdditionalInsightsCard(context, provider, last30Days),
                       // Add bottom padding for navigation bar
                       SizedBox(height: MediaQuery.of(context).padding.bottom + 24),
+                      ListTile(
+                        leading: const Icon(Icons.history),
+                        title: const Text('Dosage History'),
+                        subtitle: const Text('View detailed history of your doses'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const ReportScreen(),
+                            ),
+                          );
+                        },
+                      ),
                     ],
                   ),
                 ),

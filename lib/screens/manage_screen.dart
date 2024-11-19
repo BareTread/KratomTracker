@@ -8,6 +8,7 @@ import 'dart:convert';
 import '../providers/theme_provider.dart';
 import 'privacy_policy_screen.dart';
 import 'terms_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ManageScreen extends StatefulWidget {
   const ManageScreen({super.key});
@@ -362,6 +363,25 @@ class _ManageScreenState extends State<ManageScreen> {
                   builder: (context) => const TermsScreen(),
                 ),
               );
+            },
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(
+              Icons.favorite_outline,
+              color: Colors.red,
+            ),
+            title: const Text('Support Development'),
+            subtitle: const Text('Buy me a coffee if you find the app useful'),
+            trailing: const Icon(Icons.open_in_new),
+            onTap: () async {
+              const url = 'https://buymeacoffee.com/alint';
+              if (await canLaunchUrl(Uri.parse(url))) {
+                await launchUrl(
+                  Uri.parse(url),
+                  mode: LaunchMode.externalApplication,
+                );
+              }
             },
           ),
         ],

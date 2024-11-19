@@ -6,6 +6,7 @@ import '../widgets/add_dosage_form.dart';
 import '../widgets/add_strain_form.dart';
 import '../widgets/edit_dosage_form.dart';
 import '../widgets/timeline_painter.dart';
+import '../widgets/edit_profile_sheet.dart';
 import '../models/dosage.dart';
 import '../constants/icons.dart';
 import 'package:intl/intl.dart';
@@ -26,6 +27,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   late AnimationController _plantAnimationController;
   late DateTime _focusedDay;
   late PageController _pageController;
+  final Duration _animationDuration = const Duration(milliseconds: 200);
 
   // Define these at the top of the class for consistency
   final Color _mainFabColor = const Color(0xFF00ACC1); // Vibrant cyan
@@ -54,13 +56,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     // Initialize animation controllers for FAB menu
     _scaleController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 3),
-    )..repeat(reverse: true);
+      duration: const Duration(milliseconds: 1500),
+    );
 
     _floatController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 4),
-    )..repeat(reverse: true);
+      duration: const Duration(milliseconds: 2000),
+    );
 
     // Initialize with today's date
     final now = DateTime.now();
@@ -70,13 +72,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     final initialPage = 10000;
     _pageController = PageController(
       initialPage: initialPage,
-      viewportFraction: 0.99,
+      viewportFraction: 1.0,
     );
 
     // Set initial selected date
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<KratomProvider>(context, listen: false).setSelectedDate(now);
     });
+
+    // Only start animations when widget is visible
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _scaleController.repeat(reverse: true);
+        _floatController.repeat(reverse: true);
+      }
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Pause animations when app is in background
+    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
@@ -93,126 +110,190 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   // Helper method to calculate date from page index
   DateTime _getDateFromIndex(int index) {
     final today = DateTime.now();
+    final cleanToday = DateTime(today.year, today.month, today.day);
     final difference = index - 10000; // Subtract initial page
-    return DateTime(
-      today.year,
-      today.month,
-      today.day + difference,
-    );
+    return cleanToday.add(Duration(days: difference));
   }
 
   Widget _buildCalendarSection() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
-    return Container(
-      margin: const EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 8,
-        bottom: 2,
-      ),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.grey[900] : Colors.white,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TableCalendar(
-            firstDay: DateTime.utc(2020, 1, 1),
-            lastDay: DateTime.utc(2030, 12, 31),
-            focusedDay: _focusedDay,
-            currentDay: DateTime.now(),
-            calendarFormat: CalendarFormat.week,
-            availableCalendarFormats: const {
-              CalendarFormat.week: 'Week',
-            },
-            startingDayOfWeek: StartingDayOfWeek.monday,
-            headerStyle: const HeaderStyle(
-              formatButtonVisible: false,
-              titleCentered: true,
-              titleTextStyle: TextStyle(fontSize: 16),
-              leftChevronIcon: Icon(Icons.chevron_left, color: Colors.grey, size: 20),
-              rightChevronIcon: Icon(Icons.chevron_right, color: Colors.grey, size: 20),
-              headerMargin: EdgeInsets.zero,
-              headerPadding: EdgeInsets.symmetric(vertical: 8),
-            ),
-            calendarStyle: CalendarStyle(
-              cellMargin: const EdgeInsets.symmetric(vertical: 2),
-              cellPadding: EdgeInsets.zero,
-              defaultTextStyle: TextStyle(
-                fontSize: 14,
-                color: Theme.of(context).brightness == Brightness.dark 
-                    ? Colors.white 
-                    : Colors.black87,  // Dark text for light mode
+    return Stack(
+      children: [
+        Container(
+          margin: const EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 8,
+            bottom: 2,
+          ),
+          decoration: BoxDecoration(
+            color: isDark ? Colors.grey[900] : Colors.white,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TableCalendar<dynamic>(
+                firstDay: DateTime.utc(2020, 1, 1),
+                lastDay: DateTime.utc(2030, 12, 31),
+                focusedDay: _focusedDay,
+                currentDay: DateTime.now(),
+                calendarFormat: CalendarFormat.week,
+                availableCalendarFormats: const {
+                  CalendarFormat.week: 'Week',
+                },
+                startingDayOfWeek: StartingDayOfWeek.monday,
+                headerStyle: HeaderStyle(
+                  formatButtonVisible: false,
+                  titleCentered: true,
+                  leftChevronVisible: true,
+                  rightChevronVisible: true,
+                  titleTextStyle: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  leftChevronIcon: const Icon(Icons.chevron_left, color: Colors.grey, size: 20),
+                  rightChevronIcon: const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
+                  headerMargin: EdgeInsets.zero,
+                  headerPadding: const EdgeInsets.symmetric(vertical: 8),
+                ),
+                calendarBuilders: CalendarBuilders(
+                  headerTitleBuilder: (context, day) {
+                    return Center(
+                      child: InkWell(
+                        onTap: () => _showMonthPicker(context, day),
+                        borderRadius: BorderRadius.circular(12),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 4,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                DateFormat('MMMM yyyy').format(day),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(
+                                Icons.arrow_drop_down,
+                                size: 20,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                onDaySelected: (selectedDay, focusedDay) {
+                  if (!isSameDay(_focusedDay, selectedDay)) {
+                    final currentIndex = _pageController.page?.round() ?? 10000;
+                    final targetIndex = currentIndex + selectedDay.difference(_focusedDay).inDays;
+                    
+                    setState(() {
+                      _focusedDay = selectedDay;
+                    });
+                    
+                    // Force immediate page update
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      _pageController.jumpToPage(targetIndex);
+                      _pageController.animateToPage(
+                        targetIndex,
+                        duration: _animationDuration,
+                        curve: Curves.easeOut,
+                      );
+                    });
+                    
+                    Provider.of<KratomProvider>(context, listen: false)
+                        .setSelectedDate(selectedDay);
+                  }
+                },
+                selectedDayPredicate: (day) => isSameDay(_focusedDay, day),
               ),
-              selectedTextStyle: const TextStyle(
-                color: Colors.white,  // Keep white for selected day in both modes
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  isSameDay(_focusedDay, DateTime.now())
+                      ? 'Today, ${DateFormat('d MMM').format(_focusedDay)}'
+                      : DateFormat('d MMM').format(_focusedDay),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey,
+                  ),
+                ),
               ),
-              todayTextStyle: const TextStyle(
-                color: Colors.white,  // Keep white for today in both modes
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-              ),
-              outsideDaysVisible: false,
-              holidayTextStyle: TextStyle(
-                color: Theme.of(context).brightness == Brightness.dark 
-                    ? Colors.white 
-                    : Colors.black87,  // Dark text for light mode
-              ),
-              todayDecoration: BoxDecoration(
+            ],
+          ),
+        ),
+        if (!isSameDay(_focusedDay, DateTime.now()))
+          Positioned(
+            top: 0,
+            right: 24,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.primary,
-                shape: BoxShape.circle,
+                borderRadius: BorderRadius.circular(16),
               ),
-              selectedDecoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
-                shape: BoxShape.circle,
-              ),
-            ),
-            onDaySelected: (selectedDay, focusedDay) {
-              setState(() {
-                _focusedDay = focusedDay;
-              });
-              Provider.of<KratomProvider>(context, listen: false)
-                  .setSelectedDate(selectedDay);
-              final difference = selectedDay.difference(DateTime.now()).inDays;
-              _pageController.jumpToPage(10000 + difference);
-            },
-            selectedDayPredicate: (day) => isSameDay(_focusedDay, day),
-            daysOfWeekStyle: DaysOfWeekStyle(
-              weekdayStyle: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).brightness == Brightness.dark 
-                    ? Colors.white 
-                    : Colors.black87,  // Dark text for light mode
-              ),
-              weekendStyle: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).brightness == Brightness.dark 
-                    ? Colors.white 
-                    : Colors.black87,  // Dark text for light mode
-              ),
-              dowTextFormatter: (date, locale) => 
-                  DateFormat.E(locale).format(date)[0],
-            ),
-            daysOfWeekHeight: 16,
-            rowHeight: 32,
-          ),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Text(
-              'Today, ${DateFormat('d MMM').format(_focusedDay)}',
-              style: const TextStyle(
-                fontSize: 14,
-                color: Colors.grey,
+              child: InkWell(
+                onTap: () {
+                  final now = DateTime.now();
+                  final today = DateTime(now.year, now.month, now.day);
+                  final difference = today.difference(_focusedDay).inDays;
+                  final targetIndex = (_pageController.page?.round() ?? 10000) + difference;
+                  
+                  setState(() {
+                    _focusedDay = today;
+                  });
+                  
+                  _pageController.animateToPage(
+                    targetIndex,
+                    duration: _animationDuration,
+                    curve: Curves.easeOut,
+                  );
+                  
+                  Provider.of<KratomProvider>(context, listen: false)
+                      .setSelectedDate(today);
+                },
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.today,
+                      size: 14,
+                      color: Colors.white,
+                    ),
+                    SizedBox(width: 4),
+                    Text(
+                      'Today',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        ],
-      ),
+      ],
     );
+  }
+
+  bool isSameDay(DateTime? a, DateTime? b) {
+    if (a == null || b == null) {
+      return false;
+    }
+    return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
   @override
@@ -227,28 +308,62 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               appBar: AppBar(
                 backgroundColor: Theme.of(context).colorScheme.surface,
                 elevation: 0,
-                title: Row(
-                  children: [
-                    CircleAvatar(
-                      backgroundColor: Colors.grey[800],
-                      child: const Icon(Icons.person_outline, color: Colors.grey),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      'Alin',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w500,
-                        color: Theme.of(context).brightness == Brightness.dark 
-                            ? Colors.white 
-                            : Colors.black87,  // Dark text for light mode
+                title: InkWell(
+                  onTap: () {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (context) => const EditProfileSheet(),
+                    );
+                  },
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: Colors.grey[800],
+                        child: const Icon(Icons.person_outline, color: Colors.grey),
                       ),
-                    ),
-                    const Icon(
-                      Icons.arrow_drop_down,
-                      color: Colors.grey,
-                    ),
-                  ],
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                provider.userName?.isNotEmpty == true 
+                                    ? provider.userName! 
+                                    : 'Guest',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w500,
+                                  color: Theme.of(context).brightness == Brightness.dark 
+                                      ? Colors.white 
+                                      : Colors.black87,
+                                ),
+                              ),
+                              if (provider.userName?.isEmpty ?? true) ...[
+                                const SizedBox(width: 4),
+                                Icon(
+                                  Icons.edit_outlined,
+                                  size: 16,
+                                  color: Colors.grey[400],
+                                ),
+                              ],
+                            ],
+                          ),
+                          if (provider.userName?.isEmpty ?? true)
+                            Text(
+                              'Tap to customize',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[400],
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ).withHover(),
                 ),
                 actions: [
                   IconButton(
@@ -290,21 +405,43 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   Expanded(
                     child: PageView.builder(
                       controller: _pageController,
+                      physics: const PageScrollPhysics(
+                        parent: BouncingScrollPhysics(),
+                      ),
+                      pageSnapping: true,
                       onPageChanged: (index) {
                         final date = _getDateFromIndex(index);
                         if (!isSameDay(date, _focusedDay)) {
                           setState(() {
                             _focusedDay = date;
                           });
-                          provider.setSelectedDate(date);
+                          // Ensure provider is updated with clean date
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) {
+                              Provider.of<KratomProvider>(context, listen: false)
+                                  .setSelectedDate(date);
+                            }
+                          });
                         }
                       },
                       itemBuilder: (context, index) {
                         final date = _getDateFromIndex(index);
                         final dosages = provider.getDosagesForDate(date);
 
-                        return AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
+                        return TweenAnimationBuilder<double>(
+                          duration: _animationDuration,
+                          tween: Tween(begin: 0.0, end: 1.0),
+                          curve: Curves.easeOut,
+                          builder: (context, value, child) {
+                            return AnimatedOpacity(
+                              duration: _animationDuration,
+                              opacity: value,
+                              child: Transform.translate(
+                                offset: Offset(0, 10 * (1 - value)),
+                                child: child!,
+                              ),
+                            );
+                          },
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16),
                             child: dosages.isEmpty
@@ -822,10 +959,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.paused) {
-      _plantAnimationController.stop();
-      _animationController.stop();
       _scaleController.stop();
       _floatController.stop();
+    } else if (state == AppLifecycleState.resumed) {
+      _scaleController.repeat(reverse: true);
+      _floatController.repeat(reverse: true);
     }
   }
 
@@ -1067,6 +1205,171 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           ),
         ),
       ),
+    );
+  }
+
+  // Add this method to show the month picker
+  Future<void> _showMonthPicker(BuildContext context, DateTime initialDate) async {
+    if (!mounted) return;
+    
+    DateTime currentDate = initialDate;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final provider = Provider.of<KratomProvider>(context, listen: false);
+    
+    final selectedDate = await showDialog<DateTime>(
+      context: context,
+      builder: (BuildContext dialogContext) {  // Use dialogContext instead
+        return StatefulBuilder(
+          builder: (dialogContext, setState) {  // Use dialogContext here too
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey[900] : Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Month/Year Header
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.chevron_left),
+                            onPressed: () {
+                              setState(() {
+                                currentDate = DateTime(
+                                  currentDate.year,
+                                  currentDate.month - 1,
+                                );
+                              });
+                            },
+                          ),
+                          Text(
+                            DateFormat('MMMM yyyy').format(currentDate),
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.chevron_right),
+                            onPressed: () {
+                              setState(() {
+                                currentDate = DateTime(
+                                  currentDate.year,
+                                  currentDate.month + 1,
+                                );
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Rest of the calendar (weekday headers and days grid)
+                    // ... keep existing code for weekday headers ...
+                    
+                    // Update the GridView.builder to use currentDate instead of initialDate
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 7,
+                        childAspectRatio: 1,
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 8,
+                      ),
+                      itemCount: _getDaysInMonth(currentDate),
+                      itemBuilder: (context, index) {
+                        final date = DateTime(
+                          currentDate.year,
+                          currentDate.month,
+                          index + 1,
+                        );
+                        final isSelected = isSameDay(date, _focusedDay);
+                        final isToday = isSameDay(date, DateTime.now());
+                        
+                        return InkWell(
+                          onTap: () => Navigator.pop(context, date),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? theme.colorScheme.primary
+                                  : isToday
+                                      ? theme.colorScheme.primary.withOpacity(0.1)
+                                      : null,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Center(
+                              child: Text(
+                                '${index + 1}',
+                                style: TextStyle(
+                                  color: isSelected
+                                      ? Colors.white
+                                      : isToday
+                                          ? theme.colorScheme.primary
+                                          : null,
+                                  fontWeight: isSelected || isToday
+                                      ? FontWeight.bold
+                                      : null,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (!mounted) return;
+
+    if (selectedDate != null && !isSameDay(_focusedDay, selectedDate)) {
+      final difference = selectedDate.difference(_focusedDay).inDays;
+      final targetIndex = (_pageController.page?.round() ?? 10000) + difference;
+
+      setState(() {
+        _focusedDay = selectedDate;
+      });
+
+      _pageController.jumpToPage(targetIndex);
+      provider.setSelectedDate(selectedDate);  // Use the provider we got earlier
+    }
+  }
+
+  // Helper method to get days in month
+  int _getDaysInMonth(DateTime date) {
+    return DateTime(date.year, date.month + 1, 0).day;
+  }
+}
+
+extension HoverExtension on Widget {
+  Widget withHover() {
+    return StatefulBuilder(
+      builder: (context, setState) {
+        return MouseRegion(
+          onEnter: (_) => setState(() {}),
+          onExit: (_) => setState(() {}),
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 200),
+            opacity: 1.0,
+            child: this,
+          ),
+        );
+      },
     );
   }
 } 

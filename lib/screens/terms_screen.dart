@@ -60,6 +60,22 @@ class TermsScreen extends StatelessWidget {
               'We reserve the right to modify these terms at any time. Continued '
               'use of the app constitutes acceptance of any changes.',
             ),
+            _buildSection(
+              'Legal Compliance',
+              'You agree to use this app in compliance with all applicable laws in your '
+              'jurisdiction. The app is intended for personal tracking only and should not '
+              'be used for any illegal purposes.',
+            ),
+            _buildSection(
+              'Termination',
+              'We reserve the right to terminate access to the app for any user who '
+              'violates these terms or uses the app for illegal purposes.',
+            ),
+            _buildSection(
+              'Governing Law',
+              'These terms are governed by applicable laws. Any disputes shall be resolved '
+              'in accordance with the laws of your jurisdiction.',
+            ),
             const SizedBox(height: 24),
             Text(
               'Last updated: ${DateTime.now().year}',

@@ -7,24 +7,31 @@ import 'screens/home_screen.dart';
 import 'screens/strains_screen.dart';
 import 'screens/stats_screen.dart';
 import 'screens/manage_screen.dart';
+import 'package:flutter/services.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
   
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(
-          create: (_) => KratomProvider(prefs),
-        ),
-        ChangeNotifierProvider(
-          create: (_) => ThemeProvider(prefs),
-        ),
-      ],
-      child: const MyApp(),
-    ),
-  );
+  // Force portrait mode
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]).then((_) {
+    runApp(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(
+            create: (_) => KratomProvider(prefs),
+          ),
+          ChangeNotifierProvider(
+            create: (_) => ThemeProvider(prefs),
+          ),
+        ],
+        child: const MyApp(),
+      ),
+    );
+  });
 }
 
 class MyApp extends StatelessWidget {

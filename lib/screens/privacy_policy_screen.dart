@@ -59,6 +59,22 @@ class PrivacyPolicyScreen extends StatelessWidget {
               'data handling practices, please reach out through the official '
               'support channels.',
             ),
+            _buildSection(
+              'Data Security',
+              'While all data is stored locally on your device, we recommend using your '
+              'device\'s built-in security features (like screen lock) to protect your data. '
+              'Keep your backups secure as they contain your personal information.',
+            ),
+            _buildSection(
+              'Age Restriction',
+              'This app is intended for use by adults only. We do not knowingly collect '
+              'or store information from individuals under the legal age in their jurisdiction.',
+            ),
+            _buildSection(
+              'Your Rights',
+              'You have complete control over your data. You can access, modify, export, '
+              'or delete all your data at any time through the app settings.',
+            ),
             const SizedBox(height: 24),
             Text(
               'Last updated: ${DateTime.now().year}',

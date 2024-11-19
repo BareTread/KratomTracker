@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/kratom_provider.dart';
 import 'package:intl/intl.dart';
 import '../constants/icons.dart';
+import '../widgets/add_strain_form.dart';
 
 class AddDosageForm extends StatefulWidget {
   final String? preselectedStrainId;
@@ -32,6 +33,13 @@ class _AddDosageFormState extends State<AddDosageForm> {
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<KratomProvider>();
+    final strains = provider.strains;
+
+    if (strains.isEmpty) {
+      return _buildEmptyStrainsState();
+    }
+
     return _strainSelected
         ? _DosageDetailsForm(
             strainId: _selectedStrainId!,
@@ -45,6 +53,69 @@ class _AddDosageFormState extends State<AddDosageForm> {
               });
             },
           );
+  }
+
+  Widget _buildEmptyStrainsState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                color: Colors.grey[900]?.withOpacity(0.3),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.local_florist_outlined,
+                size: 48,
+                color: Theme.of(context).colorScheme.primary.withOpacity(0.7),
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'No Strains Added',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Add your first strain to start tracking doses',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[400],
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pop(context);  // Close add dose sheet
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (context) => const AddStrainForm(),
+                );
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Add Strain'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -343,10 +414,31 @@ class _DosageDetailsFormState extends State<_DosageDetailsForm> {
                     labelText: 'Amount',
                     suffixText: 'g',
                     filled: true,
-                    fillColor: Colors.grey[900],
+                    fillColor: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.grey[850] // Slightly lighter than background in dark mode
+                        : Colors.grey[100], // Light grey in light mode
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
+                      borderSide: BorderSide(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.grey[700]! // Visible border in dark mode
+                            : Colors.grey[300]!, // Subtle border in light mode
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.grey[700]! // Visible border in dark mode
+                            : Colors.grey[300]!, // Subtle border in light mode
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: Theme.of(context).colorScheme.primary,
+                        width: 2,
+                      ),
                     ),
                   ),
                   validator: (value) {
@@ -389,10 +481,31 @@ class _DosageDetailsFormState extends State<_DosageDetailsForm> {
                     labelText: 'Notes (optional)',
                     alignLabelWithHint: true,
                     filled: true,
-                    fillColor: Colors.grey[900],
+                    fillColor: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.grey[850] // Slightly lighter than background in dark mode
+                        : Colors.grey[100], // Light grey in light mode
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
+                      borderSide: BorderSide(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.grey[700]! // Visible border in dark mode
+                            : Colors.grey[300]!, // Subtle border in light mode
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.grey[700]! // Visible border in dark mode
+                            : Colors.grey[300]!, // Subtle border in light mode
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: Theme.of(context).colorScheme.primary,
+                        width: 2,
+                      ),
                     ),
                   ),
                 ),
@@ -437,16 +550,24 @@ class _DosageDetailsFormState extends State<_DosageDetailsForm> {
     required String label,
     required VoidCallback onPressed,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Material(
-      color: Colors.grey[900],
+      color: isDark ? Colors.grey[850] : Colors.grey[100],
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onPressed,
         borderRadius: BorderRadius.circular(12),
-        child: Padding(
+        child: Container(
           padding: const EdgeInsets.symmetric(
             horizontal: 16,
             vertical: 12,
+          ),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+            ),
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
             children: [

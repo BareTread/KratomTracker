@@ -296,31 +296,33 @@ class _EditDosageFormState extends State<EditDosageForm> {
                 Expanded(
                   child: ElevatedButton(
                     onPressed: () {
-                      if (_formKey.currentState!.validate()) {
-                        provider.updateDosage(
+                      final amount = double.tryParse(_amountController.text);
+                      if (amount != null) {
+                        Provider.of<KratomProvider>(context, listen: false)
+                            .updateDosage(
                           widget.dosage.id,
                           _selectedStrainId,
-                          double.parse(_amountController.text),
+                          amount,
                           _selectedDateTime,
-                          _notesController.text.isEmpty
-                              ? null
-                              : _notesController.text,
+                          _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
                         );
                         Navigator.pop(context);
                       }
                     },
                     style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
                       backgroundColor: Theme.of(context).colorScheme.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                     ),
                     child: const Text(
-                      'Save Changes',
+                      'Save',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
+                        color: Colors.white,
                       ),
                     ),
                   ),
