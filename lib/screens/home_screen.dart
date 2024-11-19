@@ -102,6 +102,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   }
 
   Widget _buildCalendarSection() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Container(
       margin: const EdgeInsets.only(
         left: 16,
@@ -110,7 +112,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         bottom: 2,
       ),
       decoration: BoxDecoration(
-        color: Colors.grey[900],
+        color: isDark ? Colors.grey[900] : Colors.white,
         borderRadius: BorderRadius.circular(24),
       ),
       child: Column(
@@ -138,22 +140,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             calendarStyle: CalendarStyle(
               cellMargin: const EdgeInsets.symmetric(vertical: 2),
               cellPadding: EdgeInsets.zero,
-              defaultTextStyle: const TextStyle(
+              defaultTextStyle: TextStyle(
                 fontSize: 14,
-                color: Colors.white,
+                color: Theme.of(context).brightness == Brightness.dark 
+                    ? Colors.white 
+                    : Colors.black87,  // Dark text for light mode
               ),
               selectedTextStyle: const TextStyle(
-                color: Colors.white,
+                color: Colors.white,  // Keep white for selected day in both modes
                 fontSize: 14,
                 fontWeight: FontWeight.bold,
               ),
               todayTextStyle: const TextStyle(
-                color: Colors.white,
+                color: Colors.white,  // Keep white for today in both modes
                 fontSize: 14,
                 fontWeight: FontWeight.bold,
               ),
               outsideDaysVisible: false,
-              holidayTextStyle: const TextStyle(color: Colors.white),
+              holidayTextStyle: TextStyle(
+                color: Theme.of(context).brightness == Brightness.dark 
+                    ? Colors.white 
+                    : Colors.black87,  // Dark text for light mode
+              ),
               todayDecoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.primary,
                 shape: BoxShape.circle,
@@ -174,9 +182,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             },
             selectedDayPredicate: (day) => isSameDay(_focusedDay, day),
             daysOfWeekStyle: DaysOfWeekStyle(
-              weekdayStyle: const TextStyle(fontSize: 12),
-              weekendStyle: const TextStyle(fontSize: 12),
-              dowTextFormatter: (date, locale) => DateFormat.E(locale).format(date)[0],
+              weekdayStyle: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).brightness == Brightness.dark 
+                    ? Colors.white 
+                    : Colors.black87,  // Dark text for light mode
+              ),
+              weekendStyle: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).brightness == Brightness.dark 
+                    ? Colors.white 
+                    : Colors.black87,  // Dark text for light mode
+              ),
+              dowTextFormatter: (date, locale) => 
+                  DateFormat.E(locale).format(date)[0],
             ),
             daysOfWeekHeight: 16,
             rowHeight: 32,
@@ -203,10 +222,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         return Stack(
           children: [
             Scaffold(
-              backgroundColor: Colors.black,
+              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
               extendBody: true,
               appBar: AppBar(
-                backgroundColor: Colors.grey[900],
+                backgroundColor: Theme.of(context).colorScheme.surface,
                 elevation: 0,
                 title: Row(
                   children: [
@@ -215,12 +234,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       child: const Icon(Icons.person_outline, color: Colors.grey),
                     ),
                     const SizedBox(width: 12),
-                    const Text(
+                    Text(
                       'Alin',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w500,
-                        color: Colors.white,
+                        color: Theme.of(context).brightness == Brightness.dark 
+                            ? Colors.white 
+                            : Colors.black87,  // Dark text for light mode
                       ),
                     ),
                     const Icon(
@@ -341,7 +362,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                       width: 180,
                       height: 180,
                       decoration: BoxDecoration(
-                        color: Colors.grey[900]?.withOpacity(0.3),
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.grey[900]?.withOpacity(0.3)  // Keep dark mode
+                            : Colors.grey[100]?.withOpacity(0.3),  // Light mode
                         shape: BoxShape.circle,
                       ),
                       child: Lottie.asset(
@@ -444,15 +467,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1A1A1A),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF1A1A1A)  // Keep dark mode
+                      : Colors.grey[200],  // Light mode
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
                   '${dailyTotal.toStringAsFixed(1)}g',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white  // Keep dark mode
+                        : Colors.black,  // Light mode
                   ),
                 ),
               ),
@@ -526,6 +553,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               ),
             Card(
               margin: const EdgeInsets.only(bottom: 8),
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Theme.of(context).cardColor  // Keep dark mode
+                  : Colors.white,  // Light mode
               child: InkWell(
                 onTap: () => _showDosageOptions(context, dosage, provider),
                 borderRadius: BorderRadius.circular(12),

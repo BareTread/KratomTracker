@@ -2,51 +2,84 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/kratom_provider.dart';
 import '../models/dosage.dart';
+import 'package:intl/intl.dart';
 
-class StatsScreen extends StatelessWidget {
+class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return Consumer<KratomProvider>(
-      builder: (context, provider, child) {
-        final now = DateTime.now();
-        final last30Days = provider.getDosagesForDateRange(
-          now.subtract(const Duration(days: 30)),
-          now,
-        );
+  State<StatsScreen> createState() => _StatsScreenState();
+}
 
-        return SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildDailyIntakeStats(context, last30Days),
-                const SizedBox(height: 16),
-                _buildUsagePatternStats(context, last30Days),
-                const SizedBox(height: 16),
-                _buildStrainRotationStats(context, provider, last30Days),
-              ],
-            ),
-          ),
-        );
-      },
+class _StatsScreenState extends State<StatsScreen> {
+  @override
+  Widget build(BuildContext context) {
+    return ScrollConfiguration(
+      behavior: _SmoothScrollBehavior(),
+      child: Consumer<KratomProvider>(
+        builder: (context, provider, child) {
+          final now = DateTime.now();
+          final last30Days = provider.getDosagesForDateRange(
+            now.subtract(const Duration(days: 30)),
+            now,
+          );
+
+          return CustomScrollView(
+            physics: const ClampingScrollPhysics(),
+            slivers: [
+              // Custom Sliver App Bar for status bar spacing
+              SliverAppBar(
+                expandedHeight: MediaQuery.of(context).padding.top,
+                backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+                pinned: true,
+                elevation: 0,
+                toolbarHeight: 0,
+                collapsedHeight: 0,
+              ),
+              // Content
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildDailyIntakeCard(context, last30Days),
+                      const SizedBox(height: 16),
+                      _buildUsagePatternCard(context, provider),
+                      const SizedBox(height: 16),
+                      _buildAdditionalInsightsCard(context, provider, last30Days),
+                      // Add bottom padding for navigation bar
+                      SizedBox(height: MediaQuery.of(context).padding.bottom + 24),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 
-  Widget _buildDailyIntakeStats(BuildContext context, List<Dosage> dosages) {
+  Widget _buildDailyIntakeCard(BuildContext context, List<Dosage> dosages) {
+    // Calculate active days
     final activeDays = dosages
         .map((d) => DateTime(d.timestamp.year, d.timestamp.month, d.timestamp.day))
         .toSet()
         .length;
 
+    // Calculate averages
     final totalAmount = dosages.fold(0.0, (sum, d) => sum + d.amount);
     final avgDailyActive = activeDays > 0 ? totalAmount / activeDays : 0.0;
     final avgDaily30Days = totalAmount / 30;
 
+    // Calculate average doses per day
+    final avgDosesActive = activeDays > 0 ? dosages.length / activeDays : 0.0;
+    final avgDoses30Days = dosages.length / 30;
+
     return Card(
       elevation: 2,
+      color: Theme.of(context).colorScheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -55,35 +88,51 @@ class StatsScreen extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.scale_outlined, 
+                Icon(Icons.monitor_weight_outlined,  // Changed from scale_balance_outlined
                   size: 20, 
-                  color: Theme.of(context).colorScheme.primary,
+                  color: Colors.teal[300],  // Changed color
                 ),
                 const SizedBox(width: 8),
-                Text(
+                const Text(
                   'Daily Intake',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.primary,
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 16),
             _buildStatRow(
+              context,
               'Average (Active Days)',
               '${avgDailyActive.toStringAsFixed(1)}g',
               subtitle: '$activeDays active days',
               icon: Icons.calendar_today_outlined,
             ),
             _buildStatRow(
+              context,
               'Average (30 Days)',
               '${avgDaily30Days.toStringAsFixed(1)}g',
               subtitle: 'Including inactive days',
               icon: Icons.date_range_outlined,
             ),
             _buildStatRow(
+              context,
+              'Doses per Active Day',
+              avgDosesActive.toStringAsFixed(1),
+              subtitle: 'When using',
+              icon: Icons.local_pharmacy_outlined,
+            ),
+            _buildStatRow(
+              context,
+              'Doses per Day (30d)',
+              avgDoses30Days.toStringAsFixed(1),
+              subtitle: 'Including inactive days',
+              icon: Icons.medication_outlined,
+            ),
+            _buildStatRow(
+              context,
               'Total Intake',
               '${totalAmount.toStringAsFixed(1)}g',
               subtitle: 'Last 30 days',
@@ -95,25 +144,21 @@ class StatsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildUsagePatternStats(BuildContext context, List<Dosage> dosages) {
-    final hourlyUsage = <int, int>{};
-    for (var dosage in dosages) {
-      final hour = dosage.timestamp.hour;
-      hourlyUsage[hour] = (hourlyUsage[hour] ?? 0) + 1;
-    }
+  Widget _buildUsagePatternCard(BuildContext context, KratomProvider provider) {
+    final now = DateTime.now();
+    final today = provider.getDosagesForDate(now);
+    final lastDose = today.isEmpty 
+        ? provider.getDosagesForDate(now.subtract(const Duration(days: 1))).lastOrNull
+        : today.last;
 
-    final sortedHours = hourlyUsage.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    // Calculate doses per active day
-    final activeDays = dosages
-        .map((d) => DateTime(d.timestamp.year, d.timestamp.month, d.timestamp.day))
-        .toSet()
-        .length;
-    final avgDosesPerActiveDay = activeDays > 0 ? dosages.length / activeDays : 0;
+    // Calculate time since last dose
+    final timeSinceLastDose = lastDose != null 
+        ? now.difference(lastDose.timestamp)
+        : null;
 
     return Card(
       elevation: 2,
+      color: Theme.of(context).colorScheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -122,34 +167,35 @@ class StatsScreen extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.insights_outlined, size: 20),
+                Icon(Icons.query_stats,  // Changed to a more appropriate icon
+                  size: 20,
+                  color: Colors.blue[300],  // Changed color
+                ),
                 const SizedBox(width: 8),
                 const Text(
                   'Usage Patterns',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            if (sortedHours.isNotEmpty) ...[
+            // Remove streak indicator and keep essential info
+            if (timeSinceLastDose != null)
               _buildStatRow(
-                'Peak Usage Time',
-                _formatHour(sortedHours[0].key),
-                subtitle: '${sortedHours[0].value} doses',
-                icon: Icons.schedule_outlined,
+                context,
+                'Time Since Last Dose',
+                _formatTimeDifference(timeSinceLastDose),
+                icon: Icons.timer_outlined,
               ),
-            ],
             _buildStatRow(
-              'Doses per Active Day',
-              avgDosesPerActiveDay.toStringAsFixed(1),
-              subtitle: 'Average when using',
-              icon: Icons.local_pharmacy_outlined,
-            ),
-            _buildStatRow(
-              'Average Doses/Day',
-              (dosages.length / 30).toStringAsFixed(1),
-              subtitle: 'Over 30 days',
-              icon: Icons.trending_up_outlined,
+              context,
+              'Peak Usage Time',
+              _calculatePeakTime(provider.dosages),
+              subtitle: 'Most common dosing time',
+              icon: Icons.schedule_outlined,
             ),
           ],
         ),
@@ -157,133 +203,111 @@ class StatsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildStrainRotationStats(
-    BuildContext context,
-    KratomProvider provider,
-    List<Dosage> dosages,
-  ) {
-    final strainUsage = <String, List<Dosage>>{};
+  String _formatTimeDifference(Duration duration) {
+    if (duration.inDays > 0) {
+      return '${duration.inDays}d ${duration.inHours % 24}h ago';
+    } else if (duration.inHours > 0) {
+      return '${duration.inHours}h ${duration.inMinutes % 60}m ago';
+    } else {
+      return '${duration.inMinutes}m ago';
+    }
+  }
+
+  String _calculatePeakTime(List<Dosage> dosages) {
+    if (dosages.isEmpty) return 'No data';
+
+    final hourCounts = <int, int>{};
     for (var dosage in dosages) {
-      strainUsage.putIfAbsent(dosage.strainId, () => []).add(dosage);
+      final hour = dosage.timestamp.hour;
+      hourCounts[hour] = (hourCounts[hour] ?? 0) + 1;
     }
 
-    // Calculate effectiveness metrics
-    final strainEffectiveness = strainUsage.map((id, doses) {
-      final strain = provider.getStrain(id);
-      final avgAmount = doses.fold(0.0, (sum, d) => sum + d.amount) / doses.length;
-      final frequency = doses.length;
-      
-      return MapEntry(strain.name, {
-        'avgAmount': avgAmount,
-        'frequency': frequency,
-        'lastUsed': doses.map((d) => d.timestamp).reduce((a, b) => a.isAfter(b) ? a : b),
-      });
-    });
+    final peakHour = hourCounts.entries
+        .reduce((a, b) => a.value > b.value ? a : b)
+        .key;
 
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    final time = DateTime(2024, 1, 1, peakHour);
+    return DateFormat('h:mm a').format(time);
+  }
+
+  Widget _buildStatRow(
+    BuildContext context,
+    String label,
+    String value, {
+    String? subtitle,
+    required IconData icon,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          // Keep dark mode exactly as it is
+          color: isDark 
+              ? Theme.of(context).colorScheme.surface.withOpacity(0.8)
+              : Colors.grey[100],
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.analytics_outlined, 
-                      size: 20,
-                      color: Theme.of(context).colorScheme.primary,
+            Icon(
+              icon, 
+              size: 20, 
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      fontSize: 14,
                     ),
-                    const SizedBox(width: 8),
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
                     Text(
-                      'Strain Insights',
+                      subtitle,
                       style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.primary,
+                        fontSize: 12,
+                        color: isDark ? Colors.grey[600] : Colors.grey[500],
                       ),
                     ),
                   ],
-                ),
-                IconButton(
-                  icon: const Icon(Icons.info_outline),
-                  onPressed: () => _showStrainAnalysisInfo(context),
-                ),
-              ],
+                ],
+              ),
             ),
-            const SizedBox(height: 16),
-            _buildStrainEffectivenessChart(strainEffectiveness),
-            const Divider(height: 24),
-            _buildStrainRotationMetrics(strainUsage, provider),
-            if (strainEffectiveness.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              _buildStrainRecommendations(context, strainEffectiveness),
-            ],
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black,
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStrainEffectivenessChart(Map<String, Map<String, dynamic>> effectiveness) {
-    // Implement a visual chart showing strain usage patterns
-    // Could be a mini bar chart or radar chart
-    return Container(
-      height: 120,
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: effectiveness.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final strain = effectiveness.entries.elementAt(index);
-          return _buildStrainEffectivenessBar(
-            strain.key,
-            strain.value['frequency'] as int,
-            strain.value['avgAmount'] as double,
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildStrainRecommendations(
-    BuildContext context,
-    Map<String, Map<String, dynamic>> effectiveness,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Recommendations',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 8),
-        _buildRecommendationCard(
-          context,
-          title: 'Rotation Opportunity',
-          description: 'Consider rotating between your top strains more frequently',
-          icon: Icons.swap_horiz,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatRow(String label, String value, {String? subtitle, IconData? icon}) {
+  Widget _buildInsightRow(
+    String label,
+    String value, {
+    String? subtitle,
+    required IconData icon,
+  }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         children: [
-          if (icon != null) ...[
-            Icon(icon, size: 20, color: Colors.grey[600]),
-            const SizedBox(width: 12),
-          ],
+          Icon(icon, size: 20, color: Colors.grey[400]),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -320,111 +344,132 @@ class StatsScreen extends StatelessWidget {
     );
   }
 
-  String _formatHour(int hour) {
-    final period = hour < 12 ? 'AM' : 'PM';
-    final displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
-    return '$displayHour:00 $period';
+  String _calculateAverageTimeBetweenDoses(List<Dosage> dosages) {
+    if (dosages.length < 2) return 'N/A';
+    
+    // Sort dosages by timestamp
+    final sortedDosages = dosages.toList()
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    
+    // Calculate time differences
+    var totalMinutes = 0;
+    var count = 0;
+    
+    for (var i = 1; i < sortedDosages.length; i++) {
+      final diff = sortedDosages[i].timestamp.difference(sortedDosages[i-1].timestamp);
+      // Only count if less than 24 hours (to exclude sleep periods)
+      if (diff.inHours < 24) {
+        totalMinutes += diff.inMinutes;
+        count++;
+      }
+    }
+    
+    if (count == 0) return 'N/A';
+    
+    final avgMinutes = totalMinutes ~/ count;
+    final hours = avgMinutes ~/ 60;
+    final minutes = avgMinutes % 60;
+    
+    return hours > 0 ? '${hours}h ${minutes}m' : '${minutes}m';
   }
 
-  void _showStrainAnalysisInfo(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Understanding Strain Analysis'),
-        content: const SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('• Strain Effectiveness shows how often you use each strain'),
-              SizedBox(height: 8),
-              Text('• Rotation Score indicates how well you vary your strains'),
-              SizedBox(height: 8),
-              Text('• Recommendations are based on your usage patterns'),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Got it'),
-          ),
-        ],
-      ),
-    );
+  String _getMostActiveDays(List<Dosage> dosages) {
+    if (dosages.isEmpty) return 'N/A';
+    
+    final dayCount = <int, int>{};
+    for (var dosage in dosages) {
+      final weekday = dosage.timestamp.weekday;
+      dayCount[weekday] = (dayCount[weekday] ?? 0) + 1;
+    }
+    
+    final mostActive = dayCount.entries
+        .reduce((a, b) => a.value > b.value ? a : b)
+        .key;
+        
+    return DateFormat('EEEE').format(DateTime(2024, 1, mostActive));
   }
 
-  Widget _buildRecommendationCard(
-    BuildContext context, {
-    required String title,
-    required String description,
-    required IconData icon,
-  }) {
+  Widget _buildAdditionalInsightsCard(
+    BuildContext context,
+    KratomProvider provider,
+    List<Dosage> dosages,
+  ) {
+    // Calculate most used strain
+    final strainUsage = <String, int>{};
+    for (var dosage in dosages) {
+      strainUsage[dosage.strainId] = (strainUsage[dosage.strainId] ?? 0) + 1;
+    }
+
+    String? mostUsedStrainId;
+    int mostUsedCount = 0;
+    if (strainUsage.isNotEmpty) {
+      final mostUsed = strainUsage.entries
+          .reduce((a, b) => a.value > b.value ? a : b);
+      mostUsedStrainId = mostUsed.key;
+      mostUsedCount = mostUsed.value;
+    }
+
+    // Calculate average time between doses
+    final avgTimeBetweenDoses = _calculateAverageTimeBetweenDoses(dosages);
+
+    // Get most active days
+    final mostActiveDays = _getMostActiveDays(dosages);
+
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Icon(
-          icon,
-          color: Theme.of(context).colorScheme.secondary,
-        ),
-        title: Text(title),
-        subtitle: Text(description),
-      ),
-    );
-  }
-
-  Widget _buildStrainRotationMetrics(Map<String, List<Dosage>> strainUsage, KratomProvider provider) {
-    final uniqueStrains = strainUsage.length;
-    final totalStrains = provider.strains.length;
-    final rotationScore = totalStrains > 0 
-        ? (uniqueStrains / totalStrains * 100).round()
-        : 0;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildStatRow(
-          'Strain Rotation',
-          '$rotationScore%',
-          subtitle: '$uniqueStrains of $totalStrains strains used',
-          icon: Icons.swap_horiz_outlined,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStrainEffectivenessBar(String strainName, int frequency, double avgAmount) {
-    return Container(
-      width: 100,
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: Colors.grey[850],
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          Container(
-            height: 60 * (frequency / 10), // Scale height based on frequency
-            width: 20,
-            decoration: BoxDecoration(
-              color: Colors.teal,
-              borderRadius: BorderRadius.circular(4),
+      elevation: 2,
+      color: Theme.of(context).colorScheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.lightbulb_outline,  // Changed to insights icon
+                  size: 20,
+                  color: Colors.amber[300],  // Changed color
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'Additional Insights',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            strainName,
-            style: const TextStyle(fontSize: 12),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          Text(
-            '${avgAmount.toStringAsFixed(1)}g',
-            style: const TextStyle(fontSize: 10, color: Colors.grey),
-          ),
-        ],
+            const SizedBox(height: 16),
+            if (mostUsedStrainId != null) ...[
+              _buildInsightRow(
+                'Most Used Strain',
+                provider.getStrain(mostUsedStrainId).name,
+                subtitle: '$mostUsedCount doses in 30 days',
+                icon: Icons.star_outline,
+              ),
+            ],
+            _buildInsightRow(
+              'Average Time Between Doses',
+              avgTimeBetweenDoses,
+              icon: Icons.timer_outlined,
+            ),
+            _buildInsightRow(
+              'Most Active Days',
+              mostActiveDays,
+              subtitle: 'Based on 30-day history',
+              icon: Icons.calendar_today_outlined,
+            ),
+          ],
+        ),
       ),
     );
+  }
+}
+
+class _SmoothScrollBehavior extends ScrollBehavior {
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) {
+    return const BouncingScrollPhysics();
   }
 } 

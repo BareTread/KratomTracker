@@ -5,8 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import 'dart:convert';
-import 'dart:typed_data';
-import 'package:intl/intl.dart';
+import '../providers/theme_provider.dart';
 
 class ManageScreen extends StatefulWidget {
   const ManageScreen({super.key});
@@ -16,326 +15,348 @@ class ManageScreen extends StatefulWidget {
 }
 
 class _ManageScreenState extends State<ManageScreen> {
-  bool _isProcessing = false;
+  Future<void> _showAsyncDialog(
+    BuildContext context,
+    Future<void> Function() action,
+    String successMessage,
+  ) async {
+    try {
+      await action();
+      if (!context.mounted) return;
+      _showSuccessDialog(context, successMessage);
+    } catch (e) {
+      if (!context.mounted) return;
+      _showErrorDialog(context, e.toString());
+    }
+  }
 
-  void _showMessage(String message, {bool isError = false}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(
-              isError ? Icons.error : Icons.check_circle,
-              color: isError ? Colors.red : Colors.green,
+  Future<void> _createBackup(BuildContext context, KratomProvider provider) async {
+    await _showAsyncDialog(
+      context,
+      () async {
+        final backupData = await provider.createBackup();
+        final backupJson = jsonEncode(backupData);
+        
+        final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+        final filename = 'kratom_tracker_backup_$timestamp.json';
+        
+        await Share.shareXFiles(
+          [
+            XFile.fromData(
+              utf8.encode(backupJson) as dynamic,
+              name: filename,
+              mimeType: 'application/json',
             ),
-            const SizedBox(width: 8),
-            Expanded(child: Text(message)),
           ],
-        ),
-        backgroundColor: isError 
-            ? Colors.red.withOpacity(0.1)
-            : Colors.green.withOpacity(0.1),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-      ),
+          subject: 'Kratom Tracker Backup',
+        );
+      },
+      'Backup created successfully',
     );
   }
 
-  Future<void> _showRestoreConfirmDialog(
-    BuildContext context,
-    Map<String, dynamic> backupInfo,
-    Function() onConfirm,
-  ) {
-    return showDialog<void>(
+  Future<void> _restoreBackup(BuildContext context, KratomProvider provider) async {
+    await _showAsyncDialog(
+      context,
+      () async {
+        final result = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: ['json'],
+        );
+
+        if (result != null) {
+          final file = File(result.files.single.path!);
+          final jsonData = await file.readAsString();
+          
+          if (provider.validateBackup(jsonData)) {
+            await provider.restoreBackup(jsonData);
+          } else {
+            throw Exception('Invalid backup file');
+          }
+        }
+      },
+      'Backup restored successfully',
+    );
+  }
+
+  Future<void> _showClearDataDialog(BuildContext context, KratomProvider provider) async {
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Confirm Restore'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Backup date: ${DateFormat('MMM d, y').format(backupInfo['timestamp'])}'),
-            Text('Strains: ${backupInfo['strainCount']}'),
-            Text('Dosages: ${backupInfo['dosageCount']}'),
-            Text('Effects: ${backupInfo['effectCount']}'),
-            const SizedBox(height: 16),
-            const Text(
-              'Warning: This will replace all existing data. '
-              'This action cannot be undone.',
-              style: TextStyle(color: Colors.red),
-            ),
-          ],
+      builder: (context) => AlertDialog(
+        title: const Text('Clear All Data?'),
+        content: const Text(
+          'This action cannot be undone. Consider creating a backup first.',
+          style: TextStyle(color: Colors.red),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
+            onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              onConfirm();
-            },
-            child: const Text('Restore'),
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Clear Data'),
           ),
         ],
       ),
     );
-  }
 
-  Future<void> _handleBackup() async {
-    if (_isProcessing) return;
-    
-    setState(() => _isProcessing = true);
-    
-    try {
-      final provider = context.read<KratomProvider>();
-      final data = await provider.exportData();
-      
-      final now = DateTime.now();
-      final fileName = 'kratom_tracker_backup_${now.year}${now.month}${now.day}.json';
-      
-      if (!mounted) return;
-      
-      final bytes = Uint8List.fromList(utf8.encode(data));
-      await Share.shareXFiles(
-        [
-          XFile.fromData(
-            bytes,
-            name: fileName,
-            mimeType: 'application/json',
-          ),
-        ],
-        subject: 'Kratom Tracker Backup',
-      );
-
-      if (!mounted) return;
-      _showMessage('Backup created successfully');
-    } catch (e) {
-      if (!mounted) return;
-      _showMessage('Failed to create backup: $e', isError: true);
-    } finally {
-      if (mounted) {
-        setState(() => _isProcessing = false);
-      }
-    }
-  }
-
-  Future<void> _handleRestore() async {
-    if (_isProcessing) return;
-    
-    setState(() => _isProcessing = true);
-    
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['json'],
-      );
-
-      if (result == null) {
-        if (mounted) setState(() => _isProcessing = false);
-        return;
-      }
-
-      if (!mounted) return;
-
-      final file = File(result.files.single.path!);
-      final jsonData = await file.readAsString();
-
-      if (!mounted) return;
-      final provider = context.read<KratomProvider>();
-      
-      // Validate backup first
-      if (!provider.validateBackup(jsonData)) {
-        throw Exception('Invalid backup file');
-      }
-
-      // Show backup info before restoring
-      final backupInfo = provider.getBackupInfo(jsonData);
-      
-      if (!mounted) return;
-
-      await _showRestoreConfirmDialog(
+    if (confirmed == true && context.mounted) {
+      await _showAsyncDialog(
         context,
-        backupInfo,
-        () async {
-          if (!mounted) return;
-          await provider.importData(jsonData);
-          if (!mounted) return;
-          _showMessage('Data restored successfully');
-        },
+        () => provider.clearAllData(),
+        'All data has been cleared',
       );
-    } catch (e) {
-      if (!mounted) return;
-      _showMessage('Failed to restore backup: $e', isError: true);
-    } finally {
-      if (mounted) {
-        setState(() => _isProcessing = false);
-      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Manage'),
-      ),
-      body: Stack(
-        children: [
-          SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const _SectionTitle(
-                    icon: Icons.backup,
-                    title: 'Backup & Restore',
-                  ),
-                  Card(
-                    child: Column(
-                      children: [
-                        _ManageOption(
-                          icon: Icons.file_upload,
-                          title: 'Create Backup',
-                          subtitle: 'Export your data as JSON file',
-                          onTap: _handleBackup,
-                        ),
-                        const Divider(height: 1),
-                        _ManageOption(
-                          icon: Icons.file_download,
-                          title: 'Restore Backup',
-                          subtitle: 'Import data from backup file',
-                          onTap: _handleRestore,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  const _SectionTitle(
-                    icon: Icons.delete_outline,
-                    title: 'Data Management',
-                  ),
-                  Card(
-                    child: _ManageOption(
-                      icon: Icons.delete_forever,
-                      title: 'Clear All Data',
-                      subtitle: 'Delete all tracked data',
-                      iconColor: Colors.red,
-                      onTap: () {
-                        showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: Row(
-                              children: [
-                                const Icon(Icons.warning, color: Colors.red),
-                                const SizedBox(width: 8),
-                                const Text('Clear All Data'),
-                              ],
-                            ),
-                            content: const Text(
-                              'This action will permanently delete all your tracked data. '
-                              'Consider creating a backup before proceeding.\n\n'
-                              'Are you sure you want to continue?',
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: const Text('Cancel'),
-                              ),
-                              ElevatedButton(
-                                onPressed: () {
-                                  context.read<KratomProvider>().clearAllData();
-                                  Navigator.pop(context);
-                                  _showMessage('All data has been cleared');
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red,
-                                ),
-                                child: const Text('Clear All Data'),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
+    return Consumer<KratomProvider>(
+      builder: (context, provider, child) {
+        return Scaffold(
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          appBar: AppBar(
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+            elevation: 0,
+            title: Text(
+              'Manage',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.5,
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
           ),
-          if (_isProcessing)
-            Container(
-              color: Colors.black54,
-              child: const Center(
-                child: CircularProgressIndicator(),
-              ),
+          body: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 24),
+                // App Settings Section
+                _buildSectionHeader(
+                  'App Settings',
+                  Icons.settings_outlined,
+                  Colors.blue,
+                ),
+                _buildThemeSettings(context),
+                _buildNotificationSettings(context, provider),
+                
+                const SizedBox(height: 24),
+                // Backup & Restore Section
+                _buildSectionHeader(
+                  'Backup & Restore',
+                  Icons.cloud_outlined,
+                  Colors.teal,
+                ),
+                _buildBackupCard(context, provider),
+                
+                const SizedBox(height: 24),
+                // Data Management Section
+                _buildSectionHeader(
+                  'Data Management',
+                  Icons.storage_outlined,
+                  Colors.purple,
+                ),
+                _buildDataManagementCard(context, provider),
+                
+                const SizedBox(height: 24),
+                // About Section
+                _buildSectionHeader(
+                  'About',
+                  Icons.info_outline,
+                  Colors.amber,
+                ),
+                _buildAboutCard(context),
+                const SizedBox(height: 24),
+              ],
             ),
-        ],
-      ),
+          ),
+        );
+      },
     );
   }
-}
 
-class _SectionTitle extends StatelessWidget {
-  final IconData icon;
-  final String title;
-
-  const _SectionTitle({
-    required this.icon,
-    required this.title,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildSectionHeader(String title, IconData icon, Color color) {
     return Padding(
-      padding: const EdgeInsets.only(left: 8, bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
+          Icon(icon, size: 20, color: color),
           const SizedBox(width: 8),
           Text(
             title,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: color,
+              letterSpacing: 0.5,
             ),
           ),
         ],
       ),
     );
   }
-}
 
-class _ManageOption extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-  final Color? iconColor;
-
-  const _ManageOption({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-    this.iconColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      leading: Icon(
-        icon,
-        color: iconColor ?? Theme.of(context).colorScheme.primary,
+  Widget _buildThemeSettings(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        children: [
+          Consumer<ThemeProvider>(
+            builder: (context, themeProvider, child) {
+              return ListTile(
+                leading: const Icon(Icons.brightness_6_outlined),
+                title: const Text('Dark Mode'),
+                subtitle: const Text('Enable dark theme'),
+                trailing: Switch(
+                  value: themeProvider.isDarkMode,
+                  onChanged: (value) {
+                    themeProvider.toggleTheme();
+                  },
+                ),
+              );
+            },
+          ),
+        ],
       ),
-      title: Text(title),
-      subtitle: Text(subtitle),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: onTap,
+    );
+  }
+
+  Widget _buildNotificationSettings(BuildContext context, KratomProvider provider) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.notifications_outlined),
+            title: const Text('Dosage Reminders'),
+            subtitle: const Text('Get notified about your doses'),
+            trailing: Switch(
+              value: provider.settings.enableNotifications,
+              onChanged: (value) async {
+                // Request notification permissions if enabling
+                if (value) {
+                  // Add notification permission request logic here
+                }
+                provider.updateSettings(enableNotifications: value);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBackupCard(BuildContext context, KratomProvider provider) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.upload_outlined),
+            title: const Text('Create Backup'),
+            subtitle: const Text('Export your data as JSON file'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _createBackup(context, provider),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.download_outlined),
+            title: const Text('Restore Backup'),
+            subtitle: const Text('Import data from backup file'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _restoreBackup(context, provider),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDataManagementCard(BuildContext context, KratomProvider provider) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.delete_outline, color: Colors.red),
+            title: const Text(
+              'Clear All Data',
+              style: TextStyle(color: Colors.red),
+            ),
+            subtitle: const Text('Delete all tracked data'),
+            trailing: const Icon(Icons.chevron_right, color: Colors.red),
+            onTap: () => _showClearDataDialog(context, provider),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showErrorDialog(BuildContext context, String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Error'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSuccessDialog(BuildContext context, String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Success'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAboutCard(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('Version'),
+            subtitle: const Text('1.0.0'),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.privacy_tip_outlined),
+            title: const Text('Privacy Policy'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              // Implement privacy policy view
+            },
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.description_outlined),
+            title: const Text('Terms of Service'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              // Implement terms of service view
+            },
+          ),
+        ],
+      ),
     );
   }
 } 

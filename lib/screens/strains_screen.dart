@@ -18,20 +18,20 @@ class StrainsScreen extends StatelessWidget {
         final strains = provider.strains;
         
         return Scaffold(
-          backgroundColor: Colors.black,
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           appBar: AppBar(
-            backgroundColor: Colors.black,
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
             elevation: 0,
             title: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Strains',
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.5,
-                    color: Colors.white,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
                 Text(
@@ -169,7 +169,7 @@ class StrainsScreen extends StatelessWidget {
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: Material(
-            color: Colors.grey[900]?.withOpacity(0.3),
+            color: Theme.of(context).colorScheme.surface.withOpacity(0.3),
             borderRadius: BorderRadius.circular(12),
             child: InkWell(
               onTap: () => _showStrainDetails(context, strain),
@@ -204,10 +204,12 @@ class StrainsScreen extends StatelessWidget {
                         children: [
                           Text(
                             strain.code,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.w600,
-                              color: Colors.white,
+                              color: Theme.of(context).brightness == Brightness.dark 
+                                  ? Colors.white 
+                                  : Colors.black87,
                               letterSpacing: 0.3,
                             ),
                           ),

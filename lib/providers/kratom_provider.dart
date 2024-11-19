@@ -414,4 +414,62 @@ class KratomProvider with ChangeNotifier {
     _strainCache[strainId] = strain;
     return strain;
   }
+
+  // Add settings getter and update method
+  UserSettings get settings => _settings;
+
+  Future<void> updateSettings({
+    bool? darkMode,
+    bool? enableNotifications,
+    TimeOfDay? morningReminder,
+    TimeOfDay? eveningReminder,
+    double? dailyLimit,
+    bool? enableToleranceTracking,
+    int? toleranceBreakInterval,
+    List<String>? trackedEffects,
+    String? measurementUnit,
+  }) async {
+    _settings = UserSettings(
+      darkMode: darkMode ?? _settings.darkMode,
+      enableNotifications: enableNotifications ?? _settings.enableNotifications,
+      morningReminder: morningReminder ?? _settings.morningReminder,
+      eveningReminder: eveningReminder ?? _settings.eveningReminder,
+      dailyLimit: dailyLimit ?? _settings.dailyLimit,
+      enableToleranceTracking: enableToleranceTracking ?? _settings.enableToleranceTracking,
+      toleranceBreakInterval: toleranceBreakInterval ?? _settings.toleranceBreakInterval,
+      trackedEffects: trackedEffects ?? _settings.trackedEffects,
+      measurementUnit: measurementUnit ?? _settings.measurementUnit,
+    );
+    await _saveSettings();
+    notifyListeners();
+  }
+
+  // Add backup methods
+  Future<Map<String, dynamic>> createBackup() async {
+    return {
+      'version': currentBackupVersion,
+      'timestamp': DateTime.now().toIso8601String(),
+      'strains': _strains.map((s) => s.toJson()).toList(),
+      'dosages': _dosages.map((d) => d.toJson()).toList(),
+      'effects': _effects.map((e) => e.toJson()).toList(),
+      'settings': _settings.toJson(),
+    };
+  }
+
+  Future<void> restoreBackup(String jsonData) async {
+    final data = jsonDecode(jsonData);
+    _strains = (data['strains'] as List).map((e) => Strain.fromJson(e)).toList();
+    _dosages = (data['dosages'] as List).map((e) => Dosage.fromJson(e)).toList();
+    _effects = (data['effects'] as List).map((e) => Effect.fromJson(e)).toList();
+    _settings = UserSettings.fromJson(data['settings']);
+    
+    await Future.wait([
+      _saveStrains(),
+      _saveDosages(),
+      _saveEffects(),
+      _saveSettings(),
+    ]);
+    
+    notifyListeners();
+  }
 } 
