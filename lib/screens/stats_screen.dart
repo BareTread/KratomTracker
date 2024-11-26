@@ -92,10 +92,28 @@ class _StatsScreenState extends State<StatsScreen> {
     final avgDosesActive = activeDays > 0 ? dosages.length / activeDays : 0.0;
     final avgDoses30Days = dosages.length / 30;
 
-    return Card(
-      elevation: 2,
-      color: Theme.of(context).colorScheme.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+      decoration: BoxDecoration(
+        color: Theme.of(context).brightness == Brightness.dark
+            ? Color(0xFF1E1E1E)  // Slightly lighter than pure black
+            : Colors.white,
+        borderRadius: BorderRadius.circular(16.0),
+        boxShadow: [
+          if (Theme.of(context).brightness == Brightness.dark)
+            BoxShadow(
+              color: Colors.black26,
+              blurRadius: 8.0,
+              offset: Offset(0, 2),
+            )
+          else
+            BoxShadow(
+              color: Colors.black12,
+              blurRadius: 8.0,
+              offset: Offset(0, 2),
+            ),
+        ],
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -108,11 +126,14 @@ class _StatsScreenState extends State<StatsScreen> {
                   color: Colors.teal[300],  // Changed color
                 ),
                 const SizedBox(width: 8),
-                const Text(
+                Text(
                   'Daily Intake',
                   style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Color(0xFF00ACC1)  // Your app's accent color
+                        : Theme.of(context).primaryColor,
                   ),
                 ),
               ],
@@ -171,10 +192,28 @@ class _StatsScreenState extends State<StatsScreen> {
         ? now.difference(lastDose.timestamp)
         : null;
 
-    return Card(
-      elevation: 2,
-      color: Theme.of(context).colorScheme.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+      decoration: BoxDecoration(
+        color: Theme.of(context).brightness == Brightness.dark
+            ? Color(0xFF1E1E1E)  // Slightly lighter than pure black
+            : Colors.white,
+        borderRadius: BorderRadius.circular(16.0),
+        boxShadow: [
+          if (Theme.of(context).brightness == Brightness.dark)
+            BoxShadow(
+              color: Colors.black26,
+              blurRadius: 8.0,
+              offset: Offset(0, 2),
+            )
+          else
+            BoxShadow(
+              color: Colors.black12,
+              blurRadius: 8.0,
+              offset: Offset(0, 2),
+            ),
+        ],
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -187,11 +226,14 @@ class _StatsScreenState extends State<StatsScreen> {
                   color: Colors.blue[300],  // Changed color
                 ),
                 const SizedBox(width: 8),
-                const Text(
+                Text(
                   'Usage Patterns',
                   style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Color(0xFF00ACC1)  // Your app's accent color
+                        : Theme.of(context).primaryColor,
                   ),
                 ),
               ],
@@ -430,10 +472,28 @@ class _StatsScreenState extends State<StatsScreen> {
     // Get most active days
     final mostActiveDays = _getMostActiveDays(dosages);
 
-    return Card(
-      elevation: 2,
-      color: Theme.of(context).colorScheme.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+      decoration: BoxDecoration(
+        color: Theme.of(context).brightness == Brightness.dark
+            ? Color(0xFF1E1E1E)  // Slightly lighter than pure black
+            : Colors.white,
+        borderRadius: BorderRadius.circular(16.0),
+        boxShadow: [
+          if (Theme.of(context).brightness == Brightness.dark)
+            BoxShadow(
+              color: Colors.black26,
+              blurRadius: 8.0,
+              offset: Offset(0, 2),
+            )
+          else
+            BoxShadow(
+              color: Colors.black12,
+              blurRadius: 8.0,
+              offset: Offset(0, 2),
+            ),
+        ],
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -446,11 +506,14 @@ class _StatsScreenState extends State<StatsScreen> {
                   color: Colors.amber[300],  // Changed color
                 ),
                 const SizedBox(width: 8),
-                const Text(
+                Text(
                   'Additional Insights',
                   style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Color(0xFF00ACC1)  // Your app's accent color
+                        : Theme.of(context).primaryColor,
                   ),
                 ),
               ],

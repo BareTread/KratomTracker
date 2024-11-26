@@ -4,9 +4,9 @@ import '../providers/kratom_provider.dart';
 import '../widgets/add_strain_form.dart';
 import '../widgets/edit_strain_form.dart';
 import '../models/strain.dart';
-import 'package:lottie/lottie.dart';
 import '../widgets/strain_details_view.dart';
 import '../constants/icons.dart';
+import 'dart:ui';  // For ImageFilter
 
 class StrainsScreen extends StatelessWidget {
   const StrainsScreen({super.key});
@@ -18,260 +18,337 @@ class StrainsScreen extends StatelessWidget {
         final strains = provider.strains;
         
         return Scaffold(
-          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-          appBar: AppBar(
-            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-            elevation: 0,
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Strains',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.5,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
-                ),
-                Text(
-                  '${strains.length} strain${strains.length != 1 ? 's' : ''} total',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey[400],
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              if (strains.isNotEmpty)
-                IconButton(
-                  icon: Icon(
-                    Icons.search,
-                    color: Colors.grey[400],
-                  ),
-                  onPressed: () {
-                    // Implement search functionality
-                  },
-                ),
-            ],
-          ),
-          
-          body: strains.isEmpty
-              ? _buildEmptyState(context)
-              : _buildStrainsList(context, strains),
-          
-          bottomNavigationBar: Padding(
-            padding: const EdgeInsets.only(bottom: 24, left: 64, right: 64),
-            child: SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton(
-                onPressed: () {
-                  showModalBottomSheet(
-                    context: context,
-                    isScrollControlled: true,
-                    backgroundColor: Colors.transparent,
-                    builder: (context) => const AddStrainForm(),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF43A047),
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+          backgroundColor: Theme.of(context).brightness == Brightness.dark 
+              ? Colors.black 
+              : Colors.white,
+          body: Column(
+            children: [
+              // Status bar spacing
+              SizedBox(height: MediaQuery.of(context).padding.top + 8),
+              // Header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.add, size: 20),
-                    SizedBox(width: 8),
-                    Text(
-                      'Add Strain',
+                    const Text(
+                      'Strains',
                       style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0.5,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w600,
+                        height: 1.1,
+                      ),
+                    ),
+                    Text(
+                      '${strains.length} strains total',
+                      style: TextStyle(
+                        color: Colors.grey[500],
+                        fontSize: 14,
+                        height: 1.2,
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildEmptyState(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SingleChildScrollView(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight: constraints.maxHeight,
-            ),
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 160,
-                    height: 160,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[900]?.withOpacity(0.3),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Lottie.asset(
-                      'assets/animations/empty_strains.json',
-                      width: 120,
-                      height: 120,
-                      fit: BoxFit.contain,
-                    ),
+              // Strains List
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.only(
+                    left: 16,
+                    right: 16,
+                    top: 8,
+                    bottom: 80,
                   ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'No strains added yet',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey[300],
-                    ),
+                  physics: const AlwaysScrollableScrollPhysics(
+                    parent: BouncingScrollPhysics(),
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Add your first strain to get started',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[500],
-                    ),
-                  ),
-                ],
+                  addAutomaticKeepAlives: false,
+                  addRepaintBoundaries: false,
+                  itemCount: strains.length,
+                  itemBuilder: (context, index) {
+                    final strain = strains[index];
+                    return _buildStrainCard(context, strain, provider);
+                  },
+                ),
               ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildStrainsList(BuildContext context, List<Strain> strains) {
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      itemCount: strains.length,
-      itemBuilder: (context, index) {
-        final strain = strains[index];
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Material(
-            color: Theme.of(context).colorScheme.surface.withOpacity(0.3),
-            borderRadius: BorderRadius.circular(12),
-            child: InkWell(
-              onTap: () => _showStrainDetails(context, strain),
-              borderRadius: BorderRadius.circular(12),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                child: Row(
-                  children: [
-                    // Enhanced Strain Icon
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: Color(strain.color).withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: Color(strain.color).withOpacity(0.3),
-                          width: 1,
+              // Add Strain Button
+              Padding(
+                padding: EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  bottom: MediaQuery.of(context).padding.bottom + 8,
+                  top: 4,
+                ),
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00ACC1),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    minimumSize: const Size.fromHeight(42),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                    surfaceTintColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                  ),
+                  onPressed: () => _showAddStrainForm(context),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.add,
+                        size: 18,
+                        color: Colors.white,
+                      ),
+                      SizedBox(width: 8),
+                      Text(
+                        'Add Strain',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white,
                         ),
                       ),
-                      child: Icon(
-                        strainIcons[strain.icon] ?? Icons.local_florist,
-                        color: Color(strain.color),
-                        size: 22,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    // Enhanced Strain Info
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStrainCard(BuildContext context, Strain strain, KratomProvider provider) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final lastDose = provider.dosages
+        .where((d) => d.strainId == strain.id)
+        .toList()
+        ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => _showStrainDetails(context, strain),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Color(strain.color).withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    strainIcons[strain.icon] ?? Icons.local_florist,
+                    color: Color(strain.color),
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
                         children: [
                           Text(
                             strain.code,
                             style: TextStyle(
-                              fontSize: 17,
+                              color: Color(strain.color),
+                              fontSize: 16,
                               fontWeight: FontWeight.w600,
-                              color: Theme.of(context).brightness == Brightness.dark 
-                                  ? Colors.white 
-                                  : Colors.black87,
-                              letterSpacing: 0.3,
+                              letterSpacing: 0.5,
                             ),
                           ),
-                          if (strain.name.isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Text(
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
                               strain.name,
                               style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey[400],
-                                letterSpacing: 0.2,
+                                color: isDark ? Colors.grey[300] : Colors.grey[800],
+                                fontSize: 16,
                               ),
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          ],
+                          ),
                         ],
                       ),
-                    ),
-                    // More Options Button
-                    IconButton(
-                      icon: Icon(
-                        Icons.more_vert,
-                        color: Colors.grey[400],
-                        size: 20,
-                      ),
-                      onPressed: () => _showStrainOptions(context, strain),
-                      padding: EdgeInsets.zero,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  ],
+                      if (lastDose.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          _formatLastUsed(DateTime.now().difference(lastDose.first.timestamp)),
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
+                IconButton(
+                  icon: Icon(
+                    Icons.more_vert,
+                    color: Colors.grey[500],
+                    size: 20,
+                  ),
+                  onPressed: () => _showStrainOptions(context, strain),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 32,
+                    minHeight: 32,
+                  ),
+                ),
+              ],
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
+  }
+
+  String _formatLastUsed(Duration difference) {
+    if (difference.inMinutes < 60) {
+      return 'Used recently';
+    } else if (difference.inHours < 24) {
+      return 'Last used ${difference.inHours} hours ago';
+    } else {
+      return 'Last used ${difference.inDays} days ago';
+    }
   }
 
   void _showStrainDetails(BuildContext context, Strain strain) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.transparent,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (context) => StrainDetailsView(strain: strain),
     );
   }
 
+  void _showAddStrainForm(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const AddStrainForm(),
+    );
+  }
+
+  void _showStrainOptions(BuildContext context, Strain strain) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 8),
+          Container(
+            width: 32,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[600],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.edit_outlined),
+            title: const Text('Edit Strain'),
+            onTap: () {
+              Navigator.pop(context);
+              _showEditStrainForm(context, strain);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('View Details'),
+            onTap: () {
+              Navigator.pop(context);
+              _showStrainDetails(context, strain);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_outline, color: Colors.red),
+            title: const Text(
+              'Delete Strain',
+              style: TextStyle(color: Colors.red),
+            ),
+            onTap: () {
+              Navigator.pop(context);
+              _showDeleteConfirmation(context, strain);
+            },
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+
+  void _showEditStrainForm(BuildContext context, Strain strain) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => BackdropFilter(
+        filter: ImageFilter.blur(
+          sigmaX: 5,
+          sigmaY: 5,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.black.withOpacity(0.85)
+                : Colors.white.withOpacity(0.9),
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(20),
+            ),
+          ),
+          child: EditStrainForm(strain: strain),
+        ),
+      ),
+    );
+  }
+
   void _showDeleteConfirmation(BuildContext context, Strain strain) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
+        backgroundColor: isDark ? const Color(0xFF1A1A1A) : Colors.white,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
-        title: const Text(
+        title: Text(
           'Delete Strain',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(
+            color: isDark ? Colors.white : Colors.black87,
+          ),
         ),
         content: Text(
-          'Are you sure you want to delete ${strain.name}?',
-          style: TextStyle(color: Colors.grey[300]),
+          'Are you sure you want to delete ${strain.name}? This action cannot be undone.',
+          style: TextStyle(
+            color: isDark ? Colors.grey[400] : Colors.grey[600],
+          ),
         ),
         actions: [
           TextButton(
@@ -291,69 +368,6 @@ class StrainsScreen extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-
-  void _showStrainOptions(BuildContext context, Strain strain) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: Colors.grey[900],
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.edit_outlined, color: Colors.white),
-                title: const Text(
-                  'Edit Strain',
-                  style: TextStyle(color: Colors.white),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showEditStrainForm(context, strain);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.info_outline, color: Colors.white),
-                title: const Text(
-                  'View Details',
-                  style: TextStyle(color: Colors.white),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showStrainDetails(context, strain);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.delete_outline, color: Colors.red),
-                title: const Text(
-                  'Delete Strain',
-                  style: TextStyle(color: Colors.red),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showDeleteConfirmation(context, strain);
-                },
-              ),
-              const SizedBox(height: 8),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showEditStrainForm(BuildContext context, Strain strain) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => EditStrainForm(strain: strain),
     );
   }
 } 

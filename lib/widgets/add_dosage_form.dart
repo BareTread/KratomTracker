@@ -512,28 +512,32 @@ class _DosageDetailsFormState extends State<_DosageDetailsForm> {
                 const SizedBox(height: 24),
                 // Submit Button
                 ElevatedButton(
-                  onPressed: () {
-                    if (_formKey.currentState!.validate()) {
-                      context.read<KratomProvider>().addDosage(
-                        widget.strainId,
-                        double.parse(_amountController.text),
-                        _selectedDateTime,
-                        _notesController.text.isEmpty ? null : _notesController.text,
-                      );
-                      Navigator.pop(context);
-                    }
-                  },
                   style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    backgroundColor: const Color(0xFF00ACC1),  // Teal accent color
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    minimumSize: const Size.fromHeight(44),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
+                    elevation: 0,
                   ),
+                  onPressed: () {
+                    if (_formKey.currentState!.validate()) {
+                      final amount = double.tryParse(_amountController.text);
+                      if (amount != null && amount > 0) {
+                        Provider.of<KratomProvider>(context, listen: false)
+                            .addDosage(widget.strainId, amount, _selectedDateTime);
+                        Navigator.pop(context);
+                      }
+                    }
+                  },
                   child: const Text(
                     'Add Dose',
                     style: TextStyle(
                       fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white,
                     ),
                   ),
                 ),

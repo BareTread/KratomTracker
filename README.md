@@ -1,63 +1,70 @@
 # Kratom Tracker
 
-A comprehensive mobile application for tracking and analyzing your kratom usage, built with Flutter.
+A comprehensive mobile application for tracking and analyzing kratom usage, built with Flutter. This application provides detailed dosage logging, strain management, and analytics to help users make informed decisions about their kratom consumption.
 
 ![Flutter Version](https://img.shields.io/badge/flutter-^3.5.4-blue.svg)
 ![Dart Version](https://img.shields.io/badge/dart-^3.0.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
-## Features
+## 🌟 Key Features
 
-- 📊 Track daily kratom usage with detailed dosage logging
-- 🌿 Manage multiple strains with custom colors and codes
-- 📈 View usage statistics and trends
-- 🔄 Smart strain recommendations based on effects
-- 📱 Modern Material Design 3 UI
-- 🌙 Dark mode support
-- 💾 Backup and restore functionality
-- 📅 Calendar view for historical data
-- 📝 Note-taking for each dose
-- ⏰ Optional dosage reminders
+### 📊 Dosage Tracking
+- Precise dosage logging with timestamp recording
+- Custom notes for each dose
+- Multiple measurement units support
+- Visual dosage history timeline
+- Daily, weekly, and monthly consumption tracking
 
-## Screenshots
+### 🌿 Strain Management
+- Create and manage multiple kratom strains
+- Customizable strain colors and icons
+- Strain effectiveness tracking
+- Strain rotation recommendations
+- Batch tracking and inventory management
 
-[Consider adding screenshots of key screens here]
+### 📈 Analytics & Insights
+- Detailed usage statistics and trends
+- Strain effectiveness analysis
+- Optimal dosage recommendations
+- Pattern recognition for effects
+- Export data for external analysis
+- Interactive charts and graphs
 
-## Installation
+### 🎨 User Interface
+- Material Design 3 implementation
+- Dark mode support
+- Responsive layout for all screen sizes
+- Custom color themes based on strains
+- Intuitive navigation and gestures
+- Accessibility features
 
-1. **Prerequisites**
-   - Flutter SDK (^3.5.4)
-   - Dart SDK (^3.0.0)
-   - Android Studio / Xcode
+### 💾 Data Management
+- Local data storage using SharedPreferences
+- Backup and restore functionality
+- Data export in multiple formats
+- Privacy-focused design (no cloud storage)
+- Data validation and integrity checks
 
-2. **Clone the Repository**
-   ```bash
-   git clone https://github.com/yourusername/kratom_tracker.git
-   cd kratom_tracker
-   ```
+### ⚙️ Additional Features
+- Customizable reminders and notifications
+- Multi-language support
+- Detailed privacy policy and terms of service
+- Comprehensive settings management
+- Emergency information access
 
-3. **Install Dependencies**
-   ```bash
-   flutter pub get
-   ```
+## 🛠️ Technical Architecture
 
-4. **Run the App**
-   ```bash
-   flutter run
-   ```
+### Frontend
+- **Framework**: Flutter 3.5.4+
+- **State Management**: Provider pattern
+- **UI Components**: Material Design 3
+- **Navigation**: Flutter Navigation 2.0
+- **Animations**: Custom animations and Lottie
 
-## Dependencies
+### Backend (Local)
+- **Database**: SharedPreferences
+- **File Storage**: Local device storage
+- **Data Models**: Custom Dart classes
+- **Validation**: Built-in validation logic
 
-- `provider: ^6.1.1` - State management
-- `shared_preferences: ^2.2.2` - Local data storage
-- `uuid: ^4.2.1` - Unique ID generation
-- `intl: ^0.19.0` - Internationalization and formatting
-- `table_calendar: ^3.0.9` - Calendar widget
-- `share_plus: ^7.2.1` - Share functionality
-- `file_picker: ^6.1.1` - File operations
-- `fl_chart: ^0.66.2` - Statistical charts
-- `lottie: ^2.7.0` - Animated assets
-
-## Architecture
-
-The app follows a clean architecture pattern with Provider for state management:
+### Dependencies

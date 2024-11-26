@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'dart:ui' as ui;
-import 'package:path/path.dart' as path;
 
 Future<void> main() async {
   // Load SVG file

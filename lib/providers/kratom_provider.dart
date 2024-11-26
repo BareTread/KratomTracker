@@ -290,7 +290,13 @@ class KratomProvider with ChangeNotifier {
     }
   }
 
-  Future<void> updateDosage(String id, String strainId, double amount, DateTime timestamp, String? notes) async {
+  Future<void> updateDosage({
+    required String id,
+    required String strainId,
+    required double amount,
+    required DateTime timestamp,
+    String? notes,
+  }) async {
     final index = _dosages.indexWhere((d) => d.id == id);
     if (index != -1) {
       _dosages[index] = Dosage(
