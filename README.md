@@ -57,7 +57,7 @@ A comprehensive mobile application for tracking and analyzing kratom usage, buil
 ## 🛠️ Installation
 
 ### Download
-- [Download APK](https://github.com/alinciocan/HerbalTracker/releases/download/v1.0.0/app-release.apk)
+- [Download APK](https://github.com/BareTread/KratomTracker/releases/download/1.0.0/app-release.apk)
 - Play Store: Coming Soon!
 
 ### Build from Source
