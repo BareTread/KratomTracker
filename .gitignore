@@ -52,3 +52,15 @@ build/
 .flutter-plugins-dependencies
 .packages
 pubspec.lock
+
+# Keystore files
+**/keystore/
+**/upload-keystore.jks
+**/key.properties
+
+# Additional security
+*.keystore
+*.jks
+*.key
+*.p12
+*.pfx
