@@ -1,70 +1,133 @@
 # Kratom Tracker
 
-A comprehensive mobile application for tracking and analyzing kratom usage, built with Flutter. This application provides detailed dosage logging, strain management, and analytics to help users make informed decisions about their kratom consumption.
+<div align="center">
 
-![Flutter Version](https://img.shields.io/badge/flutter-^3.5.4-blue.svg)
-![Dart Version](https://img.shields.io/badge/dart-^3.0.0-blue.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
+[assets/icon/app_icon.png]
 
-## 🌟 Key Features
+A comprehensive mobile application for tracking and analyzing kratom usage, built with Flutter. Features detailed analytics, strain management, and a privacy-focused design.
+
+[![Flutter Version](https://img.shields.io/badge/flutter-^3.5.4-blue.svg)](https://flutter.dev)
+[![Dart Version](https://img.shields.io/badge/dart-^3.0.0-blue.svg)](https://dart.dev)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![GitHub Release](https://img.shields.io/github/release/username/KratomTracker.svg)](https://github.com/username/KratomTracker/releases)
+
+[Features](#features) • [Screenshots](#screenshots) • [Installation](#installation) • [Privacy](#privacy) • [Contributing](#contributing)
+</div>
+
+## 📱 Screenshots
+[Add 4-5 screenshots showing main features like timeline, strain management, analytics, etc.]
+
+## 🌟 Features
 
 ### 📊 Dosage Tracking
-- Precise dosage logging with timestamp recording
+- Visual timeline with timestamp recording
 - Custom notes for each dose
 - Multiple measurement units support
-- Visual dosage history timeline
 - Daily, weekly, and monthly consumption tracking
+- Interactive timeline visualization
 
 ### 🌿 Strain Management
-- Create and manage multiple kratom strains
+- Create and manage multiple strains
 - Customizable strain colors and icons
 - Strain effectiveness tracking
 - Strain rotation recommendations
-- Batch tracking and inventory management
+- Batch tracking
 
 ### 📈 Analytics & Insights
 - Detailed usage statistics and trends
 - Strain effectiveness analysis
-- Optimal dosage recommendations
-- Pattern recognition for effects
+- Pattern recognition
 - Export data for external analysis
 - Interactive charts and graphs
 
+### 🔒 Privacy-Focused
+- All data stored locally on device
+- No cloud storage or external servers
+- Offline-first design
+- Easy data export and backup
+- No account required
+
 ### 🎨 User Interface
-- Material Design 3 implementation
+- Material Design 3
 - Dark mode support
-- Responsive layout for all screen sizes
-- Custom color themes based on strains
-- Intuitive navigation and gestures
+- Custom color themes
+- Intuitive navigation
 - Accessibility features
 
-### 💾 Data Management
-- Local data storage using SharedPreferences
-- Backup and restore functionality
-- Data export in multiple formats
-- Privacy-focused design (no cloud storage)
-- Data validation and integrity checks
+## 🛠️ Installation
 
-### ⚙️ Additional Features
-- Customizable reminders and notifications
-- Multi-language support
-- Detailed privacy policy and terms of service
-- Comprehensive settings management
-- Emergency information access
+### Download
+- [Download APK](link-to-release)
+- Play Store: Coming Soon!
 
-## 🛠️ Technical Architecture
+### Build from Source
+```bash
+# Clone the repository
+git clone https://github.com/username/KratomTracker.git
 
-### Frontend
+# Navigate to the project
+cd KratomTracker
+
+# Get dependencies
+flutter pub get
+
+# Run in debug mode
+flutter run
+
+# Build release APK
+flutter build apk --release
+```
+
+## 📱 Requirements
+- Android 5.0 (API level 21) or higher
+- 50MB of free storage
+- No special permissions required
+
+## 🏗️ Technical Details
+
+### Architecture
+```
+lib/
+├── models/         # Data models
+├── providers/      # State management
+├── screens/        # UI screens
+├── widgets/        # Reusable components
+├── constants/      # App constants
+└── main.dart       # Entry point
+```
+
+### Technologies Used
 - **Framework**: Flutter 3.5.4+
 - **State Management**: Provider pattern
-- **UI Components**: Material Design 3
-- **Navigation**: Flutter Navigation 2.0
-- **Animations**: Custom animations and Lottie
+- **Storage**: SharedPreferences
+- **UI**: Material Design 3
+- **Animations**: Lottie
 
-### Backend (Local)
-- **Database**: SharedPreferences
-- **File Storage**: Local device storage
-- **Data Models**: Custom Dart classes
-- **Validation**: Built-in validation logic
+## 🤝 Contributing
 
-### Dependencies
+Contributions are welcome! Check out our [Contributing Guidelines](CONTRIBUTING.md) for details on how to:
+- Report bugs
+- Suggest features
+- Submit pull requests
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 💙 Acknowledgments
+- [provider](https://pub.dev/packages/provider) for state management
+- [shared_preferences](https://pub.dev/packages/shared_preferences) for local storage
+- [lottie](https://pub.dev/packages/lottie) for animations
+- [table_calendar](https://pub.dev/packages/table_calendar) for calendar widget
+- Full list in [pubspec.yaml](pubspec.yaml)
+
+## 📞 Support
+
+- Report issues on [GitHub Issues](link-to-issues)
+- For support, reach out through [GitHub Discussions](link-to-discussions)
+
+---
+
+<div align="center">
+Made with ❤️ by [Your Name]
+</div>
