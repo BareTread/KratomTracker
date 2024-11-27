@@ -9,7 +9,7 @@ A comprehensive mobile application for tracking and analyzing kratom usage, buil
 [![Flutter Version](https://img.shields.io/badge/flutter-^3.5.4-blue.svg)](https://flutter.dev)
 [![Dart Version](https://img.shields.io/badge/dart-^3.0.0-blue.svg)](https://dart.dev)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![GitHub Release](https://img.shields.io/github/release/username/KratomTracker.svg)](https://github.com/username/KratomTracker/releases)
+[![GitHub Release](https://img.shields.io/github/release/username/KratomTracker.svg)](https://github.com/BareTread/KratomTracker/releases)
 
 [Features](#features) • [Screenshots](#screenshots) • [Installation](#installation) • [Privacy](#privacy) • [Contributing](#contributing)
 </div>
