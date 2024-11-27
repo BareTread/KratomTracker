@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[assets/icon/app_icon.png]
+![App Icon](assets/icon/app_icon.png)
 
 A comprehensive mobile application for tracking and analyzing kratom usage, built with Flutter. Features detailed analytics, strain management, and a privacy-focused design.
 
