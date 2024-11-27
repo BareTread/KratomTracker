@@ -123,7 +123,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- Report issues on [GitHub Issues](link-to-issues)
+- Report issues on [GitHub Issues](https://github.com/BareTread/KratomTracker/issues)
 - For support, reach out through [GitHub Discussions](link-to-discussions)
 
 ---
