@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/kratom_provider.dart';
 import '../models/dosage.dart';
+import '../widgets/advanced_analytics_card.dart';
 import 'package:intl/intl.dart';
 import 'report_screen.dart';
 
@@ -49,21 +50,45 @@ class _StatsScreenState extends State<StatsScreen> {
                       _buildUsagePatternCard(context, provider),
                       const SizedBox(height: 16),
                       _buildAdditionalInsightsCard(context, provider, last30Days),
+                      const SizedBox(height: 16),
+                      // Advanced Analytics
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        child: Row(
+                          children: [
+                            Icon(Icons.analytics, size: 20, color: Colors.purple),
+                            SizedBox(width: 8),
+                            Text(
+                              'Advanced Analytics',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.purple,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const AdvancedAnalyticsCard(),
+                      const SizedBox(height: 16),
                       // Add bottom padding for navigation bar
                       SizedBox(height: MediaQuery.of(context).padding.bottom + 24),
-                      ListTile(
-                        leading: const Icon(Icons.history),
-                        title: const Text('Dosage History'),
-                        subtitle: const Text('View detailed history of your doses'),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const ReportScreen(),
-                            ),
-                          );
-                        },
+                      Card(
+                        margin: const EdgeInsets.symmetric(horizontal: 16),
+                        child: ListTile(
+                          leading: const Icon(Icons.history),
+                          title: const Text('Dosage History'),
+                          subtitle: const Text('View detailed history of your doses'),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const ReportScreen(),
+                              ),
+                            );
+                          },
+                        ),
                       ),
                     ],
                   ),

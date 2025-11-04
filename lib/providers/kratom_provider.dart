@@ -2,10 +2,12 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import 'package:intl/intl.dart';
 import '../models/strain.dart';
 import '../models/dosage.dart';
 import '../models/effect.dart';
 import '../models/settings.dart';
+import '../services/notification_service.dart';
 
 class KratomProvider with ChangeNotifier {
   final SharedPreferences _prefs;
@@ -103,17 +105,30 @@ class KratomProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> addDosage(String strainId, double amount, DateTime timestamp, [String? notes]) async {
+  Future<void> addDosage(
+    String strainId,
+    double amount,
+    DateTime timestamp, [
+    String? notes,
+    List<String>? tags,
+  ]) async {
     final dosage = Dosage(
       id: _uuid.v4(),
       strainId: strainId,
       amount: amount,
       timestamp: timestamp,
       notes: notes,
+      tags: tags ?? [],
     );
     _dosages.add(dosage);
     await _saveDosages();
     notifyListeners();
+
+    // Check for daily limit and notify if needed
+    await _checkDailyLimit(timestamp);
+
+    // Check for tolerance tracking
+    await _checkToleranceBreak();
   }
 
   Future<void> _loadData() async {
@@ -296,6 +311,7 @@ class KratomProvider with ChangeNotifier {
     required double amount,
     required DateTime timestamp,
     String? notes,
+    List<String>? tags,
   }) async {
     final index = _dosages.indexWhere((d) => d.id == id);
     if (index != -1) {
@@ -305,6 +321,7 @@ class KratomProvider with ChangeNotifier {
         amount: amount,
         timestamp: timestamp,
         notes: notes,
+        tags: tags ?? _dosages[index].tags,
       );
       await _saveDosages();
       notifyListeners();
@@ -536,4 +553,312 @@ class KratomProvider with ChangeNotifier {
   Future<void> refreshData() async {
     await _loadData();
   }
+
+  // ==================== NEW FEATURES ====================
+
+  // Duplicate detection
+  bool isPotentialDuplicate(String strainId, DateTime timestamp, {int minutesThreshold = 30}) {
+    final recentDosages = _dosages.where((d) {
+      final timeDiff = timestamp.difference(d.timestamp).inMinutes.abs();
+      return d.strainId == strainId && timeDiff <= minutesThreshold;
+    });
+    return recentDosages.isNotEmpty;
+  }
+
+  // Get daily total
+  double getDailyTotal(DateTime date) {
+    final dosages = getDosagesForDate(date);
+    return dosages.fold(0.0, (sum, d) => sum + d.amount);
+  }
+
+  // Check daily limit and notify
+  Future<void> _checkDailyLimit(DateTime timestamp) async {
+    if (_settings.dailyLimit <= 0 || !_settings.enableNotifications) return;
+
+    final dailyTotal = getDailyTotal(timestamp);
+
+    try {
+      if (dailyTotal >= _settings.dailyLimit) {
+        await NotificationService().showDailyLimitExceeded(
+          dailyTotal,
+          _settings.dailyLimit,
+        );
+      } else if (dailyTotal >= _settings.dailyLimit * 0.8) {
+        // Warn at 80% of limit
+        await NotificationService().showDailyLimitWarning(
+          dailyTotal,
+          _settings.dailyLimit,
+        );
+      }
+    } catch (e) {
+      debugPrint('Error checking daily limit: $e');
+    }
+  }
+
+  // Check tolerance break
+  Future<void> _checkToleranceBreak() async {
+    if (!_settings.enableToleranceTracking || !_settings.enableNotifications) return;
+
+    final consecutiveDays = getConsecutiveUsageDays();
+
+    if (consecutiveDays >= _settings.toleranceBreakInterval) {
+      try {
+        await NotificationService().showToleranceBreakReminder(
+          consecutiveDays,
+          _settings.toleranceBreakInterval,
+        );
+      } catch (e) {
+        debugPrint('Error checking tolerance break: $e');
+      }
+    }
+  }
+
+  // Get consecutive usage days
+  int getConsecutiveUsageDays() {
+    if (_dosages.isEmpty) return 0;
+
+    final sortedDosages = List<Dosage>.from(_dosages)
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+    final uniqueDays = <String>[];
+    for (var dosage in sortedDosages) {
+      final dateKey = DateFormat('yyyy-MM-dd').format(dosage.timestamp);
+      if (!uniqueDays.contains(dateKey)) {
+        uniqueDays.add(dateKey);
+      }
+    }
+
+    // Count consecutive days from today backwards
+    int consecutive = 0;
+    final today = DateTime.now();
+
+    for (int i = 0; i < 365; i++) {
+      final checkDate = today.subtract(Duration(days: i));
+      final dateKey = DateFormat('yyyy-MM-dd').format(checkDate);
+
+      if (uniqueDays.contains(dateKey)) {
+        consecutive++;
+      } else if (i > 0) {
+        // Break if we find a day with no usage (but not on first day)
+        break;
+      }
+    }
+
+    return consecutive;
+  }
+
+  // Search and filter dosages
+  List<Dosage> searchDosages({
+    String? query,
+    String? strainId,
+    DateTime? startDate,
+    DateTime? endDate,
+    List<String>? tags,
+  }) {
+    var results = List<Dosage>.from(_dosages);
+
+    // Filter by strain
+    if (strainId != null) {
+      results = results.where((d) => d.strainId == strainId).toList();
+    }
+
+    // Filter by date range
+    if (startDate != null) {
+      results = results.where((d) => d.timestamp.isAfter(startDate)).toList();
+    }
+    if (endDate != null) {
+      results = results.where((d) => d.timestamp.isBefore(endDate.add(const Duration(days: 1)))).toList();
+    }
+
+    // Filter by tags
+    if (tags != null && tags.isNotEmpty) {
+      results = results.where((d) {
+        return tags.any((tag) => d.tags.contains(tag));
+      }).toList();
+    }
+
+    // Filter by query (notes or strain name)
+    if (query != null && query.isNotEmpty) {
+      final lowerQuery = query.toLowerCase();
+      results = results.where((d) {
+        final strain = _strains.firstWhere((s) => s.id == d.strainId, orElse: () => throw Exception('Strain not found'));
+        final matchesStrain = strain.name.toLowerCase().contains(lowerQuery);
+        final matchesNotes = d.notes?.toLowerCase().contains(lowerQuery) ?? false;
+        return matchesStrain || matchesNotes;
+      }).toList();
+    }
+
+    return results..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+  }
+
+  // Advanced analytics - Peak usage times
+  Map<String, int> getPeakUsageTimes() {
+    final timeSlots = <String, int>{
+      'Early Morning (0-6)': 0,
+      'Morning (6-9)': 0,
+      'Late Morning (9-12)': 0,
+      'Afternoon (12-15)': 0,
+      'Late Afternoon (15-18)': 0,
+      'Evening (18-21)': 0,
+      'Night (21-24)': 0,
+    };
+
+    for (var dosage in _dosages) {
+      final hour = dosage.timestamp.hour;
+      if (hour < 6) {
+        timeSlots['Early Morning (0-6)'] = timeSlots['Early Morning (0-6)']! + 1;
+      } else if (hour < 9) {
+        timeSlots['Morning (6-9)'] = timeSlots['Morning (6-9)']! + 1;
+      } else if (hour < 12) {
+        timeSlots['Late Morning (9-12)'] = timeSlots['Late Morning (9-12)']! + 1;
+      } else if (hour < 15) {
+        timeSlots['Afternoon (12-15)'] = timeSlots['Afternoon (12-15)']! + 1;
+      } else if (hour < 18) {
+        timeSlots['Late Afternoon (15-18)'] = timeSlots['Late Afternoon (15-18)']! + 1;
+      } else if (hour < 21) {
+        timeSlots['Evening (18-21)'] = timeSlots['Evening (18-21)']! + 1;
+      } else {
+        timeSlots['Night (21-24)'] = timeSlots['Night (21-24)']! + 1;
+      }
+    }
+
+    return timeSlots;
+  }
+
+  // Weekly summary
+  Map<String, dynamic> getWeeklySummary() {
+    final now = DateTime.now();
+    final weekStart = now.subtract(Duration(days: now.weekday - 1));
+    final weekEnd = weekStart.add(const Duration(days: 7));
+
+    final weekDosages = getDosagesForDateRange(weekStart, weekEnd);
+    final totalAmount = weekDosages.fold(0.0, (sum, d) => sum + d.amount);
+
+    final dailyAmounts = <String, double>{};
+    for (int i = 0; i < 7; i++) {
+      final day = weekStart.add(Duration(days: i));
+      final dayKey = DateFormat('EEEE').format(day);
+      final dayDosages = getDosagesForDate(day);
+      dailyAmounts[dayKey] = dayDosages.fold(0.0, (sum, d) => sum + d.amount);
+    }
+
+    return {
+      'totalDosages': weekDosages.length,
+      'totalAmount': totalAmount,
+      'avgPerDay': totalAmount / 7,
+      'dailyBreakdown': dailyAmounts,
+      'daysActive': dailyAmounts.values.where((v) => v > 0).length,
+    };
+  }
+
+  // Monthly summary
+  Map<String, dynamic> getMonthlySummary() {
+    final now = DateTime.now();
+    final monthStart = DateTime(now.year, now.month, 1);
+    final monthEnd = DateTime(now.year, now.month + 1, 0);
+
+    final monthDosages = getDosagesForDateRange(monthStart, monthEnd);
+    final totalAmount = monthDosages.fold(0.0, (sum, d) => sum + d.amount);
+
+    final uniqueDays = <String>{};
+    for (var dosage in monthDosages) {
+      uniqueDays.add(DateFormat('yyyy-MM-dd').format(dosage.timestamp));
+    }
+
+    return {
+      'totalDosages': monthDosages.length,
+      'totalAmount': totalAmount,
+      'avgPerDay': totalAmount / uniqueDays.length,
+      'daysActive': uniqueDays.length,
+      'daysInMonth': monthEnd.day,
+    };
+  }
+
+  // Strain comparison
+  Map<String, dynamic> compareStrains(List<String> strainIds) {
+    final comparison = <String, Map<String, dynamic>>{};
+
+    for (var strainId in strainIds) {
+      final strainDosages = _dosages.where((d) => d.strainId == strainId).toList();
+      final strainEffects = _effects
+          .where((e) => strainDosages.any((d) => d.id == e.dosageId))
+          .toList();
+
+      final totalAmount = strainDosages.fold(0.0, (sum, d) => sum + d.amount);
+      final avgAmount = strainDosages.isEmpty ? 0.0 : totalAmount / strainDosages.length;
+
+      // Calculate average effects
+      final avgMood = strainEffects.isEmpty ? 0.0 :
+          strainEffects.fold(0, (sum, e) => sum + e.mood) / strainEffects.length;
+      final avgEnergy = strainEffects.isEmpty ? 0.0 :
+          strainEffects.fold(0, (sum, e) => sum + e.energy) / strainEffects.length;
+      final avgPain = strainEffects.isEmpty ? 0.0 :
+          strainEffects.fold(0, (sum, e) => sum + e.painRelief) / strainEffects.length;
+
+      comparison[strainId] = {
+        'totalUses': strainDosages.length,
+        'totalAmount': totalAmount,
+        'avgAmount': avgAmount,
+        'avgMood': avgMood,
+        'avgEnergy': avgEnergy,
+        'avgPainRelief': avgPain,
+      };
+    }
+
+    return comparison;
+  }
+
+  // Effectiveness trends over time
+  Map<String, dynamic> getEffectivenessTrends(String strainId, {int days = 30}) {
+    final now = DateTime.now();
+    final startDate = now.subtract(Duration(days: days));
+
+    final recentDosages = _dosages.where((d) {
+      return d.strainId == strainId && d.timestamp.isAfter(startDate);
+    }).toList()..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+    final trends = <String, List<double>>{
+      'mood': [],
+      'energy': [],
+      'painRelief': [],
+    };
+
+    for (var dosage in recentDosages) {
+      final effect = _effects.firstWhere(
+        (e) => e.dosageId == dosage.id,
+        orElse: () => throw Exception('Effect not found'),
+      );
+
+      trends['mood']!.add(effect.mood.toDouble());
+      trends['energy']!.add(effect.energy.toDouble());
+      trends['painRelief']!.add(effect.painRelief.toDouble());
+    }
+
+    return {
+      'trends': trends,
+      'sampleSize': recentDosages.length,
+      'dateRange': days,
+    };
+  }
+
+  // Get all unique tags
+  List<String> getAllTags() {
+    final tags = <String>{};
+    for (var dosage in _dosages) {
+      tags.addAll(dosage.tags);
+    }
+    return tags.toList()..sort();
+  }
+
+  // Tag analytics
+  Map<String, int> getTagUsageCount() {
+    final tagCounts = <String, int>{};
+    for (var dosage in _dosages) {
+      for (var tag in dosage.tags) {
+        tagCounts[tag] = (tagCounts[tag] ?? 0) + 1;
+      }
+    }
+    return tagCounts;
+  }
+
 } 

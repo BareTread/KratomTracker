@@ -7,12 +7,17 @@ import 'screens/home_screen.dart';
 import 'screens/strains_screen.dart';
 import 'screens/stats_screen.dart';
 import 'screens/manage_screen.dart';
+import 'services/notification_service.dart';
 import 'package:flutter/services.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
-  
+
+  // Initialize notification service
+  await NotificationService().initialize();
+  await NotificationService().requestPermissions();
+
   // Force portrait mode
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
