@@ -30,7 +30,7 @@ class ThemeProvider with ChangeNotifier {
       surfaceTint: Colors.black,
       onSurface: Colors.white,
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: Colors.grey[900],
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
@@ -46,7 +46,7 @@ class ThemeProvider with ChangeNotifier {
       elevation: 0,
       foregroundColor: Colors.white,
     ),
-    dialogTheme: DialogTheme(
+    dialogTheme: DialogThemeData(
       backgroundColor: Colors.grey[900],
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
@@ -87,7 +87,7 @@ class ThemeProvider with ChangeNotifier {
       surfaceTint: Colors.grey[100]!,
       onSurface: Colors.black,
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: Colors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
@@ -106,7 +106,7 @@ class ThemeProvider with ChangeNotifier {
       foregroundColor: Colors.black,
       iconTheme: IconThemeData(color: Colors.grey[800]),
     ),
-    dialogTheme: DialogTheme(
+    dialogTheme: DialogThemeData(
       backgroundColor: Colors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
