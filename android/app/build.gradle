@@ -36,11 +36,12 @@ android {
     }
 
     defaultConfig {
-        applicationId "org.kratomtracker.app"
+        // Use .beta suffix for PR builds to install alongside production app
+        applicationId "org.kratomtracker.app.beta"
         minSdkVersion flutter.minSdkVersion
         targetSdkVersion flutter.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "1.1.0-beta"
     }
 
     signingConfigs {
