@@ -70,6 +70,7 @@ jobs:
         run: flutter pub get
 
  
+ 
 
       - name: Build Debug APK
 
@@ -189,7 +190,7 @@ jobs:
 
             - App name: "Herbal Tracker Beta"
 
-            - Package: org.kratomtracker.app.beta
+            - Package: com.alinciocan.kratomtracker.beta
 
             - Version: 1.1.0-beta
 
