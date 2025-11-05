@@ -55,7 +55,8 @@ android {
 
     buildTypes {
         release {
-            signingConfig signingConfigs.release
+            // Only use release signing if keystore exists (not in CI)
+            signingConfig keystoreProperties['storeFile'] ? signingConfigs.release : signingConfigs.debug
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
