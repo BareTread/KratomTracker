@@ -6,6 +6,9 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import 'dart:convert';
 import '../providers/theme_provider.dart';
+import '../services/csv_export_service.dart';
+import '../services/pdf_export_service.dart';
+import '../services/notification_service.dart';
 import 'privacy_policy_screen.dart';
 import 'terms_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -229,25 +232,185 @@ class _ManageScreenState extends State<ManageScreen> {
   }
 
   Widget _buildNotificationSettings(BuildContext context, KratomProvider provider) {
+    final settings = provider.settings;
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
         children: [
           ListTile(
             leading: const Icon(Icons.notifications_outlined),
-            title: const Text('Dosage Reminders'),
-            subtitle: const Text(
-              'Currently not implemented. We aim to provide tracking tools without encouraging unnecessary usage.',
-              style: TextStyle(fontSize: 13),
-            ),
+            title: const Text('Enable Notifications'),
+            subtitle: const Text('Daily reminders and alerts'),
             trailing: Switch(
-              value: false,
-              onChanged: null,  // Disabled switch
+              value: settings.enableNotifications,
+              onChanged: (value) async {
+                await provider.updateSettings(enableNotifications: value);
+                if (value) {
+                  await NotificationService().scheduleReminders(provider.settings);
+                } else {
+                  await NotificationService().cancelAllReminders();
+                }
+              },
             ),
+          ),
+          if (settings.enableNotifications) ...[
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.wb_sunny_outlined),
+              title: const Text('Morning Reminder'),
+              subtitle: Text(settings.morningReminder != null
+                  ? 'Set for ${settings.morningReminder!.format(context)}'
+                  : 'Not set'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () async {
+                final time = await showTimePicker(
+                  context: context,
+                  initialTime: settings.morningReminder ?? const TimeOfDay(hour: 8, minute: 0),
+                );
+                if (time != null) {
+                  await provider.updateSettings(morningReminder: time);
+                  await NotificationService().scheduleReminders(provider.settings);
+                }
+              },
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.nightlight_outlined),
+              title: const Text('Evening Reminder'),
+              subtitle: Text(settings.eveningReminder != null
+                  ? 'Set for ${settings.eveningReminder!.format(context)}'
+                  : 'Not set'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () async {
+                final time = await showTimePicker(
+                  context: context,
+                  initialTime: settings.eveningReminder ?? const TimeOfDay(hour: 20, minute: 0),
+                );
+                if (time != null) {
+                  await provider.updateSettings(eveningReminder: time);
+                  await NotificationService().scheduleReminders(provider.settings);
+                }
+              },
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.warning_amber_outlined),
+              title: const Text('Daily Limit'),
+              subtitle: Text(settings.dailyLimit > 0
+                  ? '${settings.dailyLimit.toStringAsFixed(1)}g per day'
+                  : 'No limit set'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showDailyLimitDialog(context, provider),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.health_and_safety_outlined),
+              title: const Text('Tolerance Tracking'),
+              subtitle: Text(settings.enableToleranceTracking
+                  ? 'Alert every ${settings.toleranceBreakInterval} days'
+                  : 'Disabled'),
+              trailing: Switch(
+                value: settings.enableToleranceTracking,
+                onChanged: (value) async {
+                  await provider.updateSettings(enableToleranceTracking: value);
+                },
+              ),
+            ),
+            if (settings.enableToleranceTracking) ...[
+              const Divider(height: 1),
+              ListTile(
+                leading: const SizedBox(width: 24), // Indent
+                title: const Text('Break Interval (days)'),
+                subtitle: Text('${settings.toleranceBreakInterval} days'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _showToleranceIntervalDialog(context, provider),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showDailyLimitDialog(BuildContext context, KratomProvider provider) async {
+    final controller = TextEditingController(
+      text: provider.settings.dailyLimit > 0
+          ? provider.settings.dailyLimit.toStringAsFixed(1)
+          : '',
+    );
+
+    final result = await showDialog<double>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Set Daily Limit'),
+        content: TextField(
+          controller: controller,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(
+            labelText: 'Daily limit (grams)',
+            hintText: '0 for no limit',
+            suffixText: 'g',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              final value = double.tryParse(controller.text) ?? 0;
+              Navigator.pop(context, value);
+            },
+            child: const Text('Save'),
           ),
         ],
       ),
     );
+
+    if (result != null) {
+      await provider.updateSettings(dailyLimit: result);
+    }
+  }
+
+  Future<void> _showToleranceIntervalDialog(BuildContext context, KratomProvider provider) async {
+    final controller = TextEditingController(
+      text: provider.settings.toleranceBreakInterval.toString(),
+    );
+
+    final result = await showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Tolerance Break Interval'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Days',
+            hintText: 'Recommended: 7-30 days',
+            suffixText: 'days',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              final value = int.tryParse(controller.text) ?? 7;
+              Navigator.pop(context, value);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null) {
+      await provider.updateSettings(toleranceBreakInterval: result);
+    }
   }
 
   Widget _buildBackupCard(BuildContext context, KratomProvider provider) {
@@ -257,7 +420,7 @@ class _ManageScreenState extends State<ManageScreen> {
         children: [
           ListTile(
             leading: const Icon(Icons.upload_outlined),
-            title: const Text('Create Backup'),
+            title: const Text('Create Backup (JSON)'),
             subtitle: const Text('Export your data as JSON file'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _createBackup(context, provider),
@@ -270,8 +433,176 @@ class _ManageScreenState extends State<ManageScreen> {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _restoreBackup(context, provider),
           ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.table_chart_outlined),
+            title: const Text('Export to CSV'),
+            subtitle: const Text('Export data for spreadsheet analysis'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _exportCsv(context, provider),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.picture_as_pdf_outlined),
+            title: const Text('Generate PDF Report'),
+            subtitle: const Text('Create a professional report'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _exportPdf(context, provider),
+          ),
         ],
       ),
+    );
+  }
+
+  Future<void> _exportCsv(BuildContext context, KratomProvider provider) async {
+    final options = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Export CSV'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: const Text('Basic Dosage Log'),
+              subtitle: const Text('Date, time, strain, amount, notes'),
+              onTap: () => Navigator.pop(context, 'basic'),
+            ),
+            ListTile(
+              title: const Text('Detailed with Effects'),
+              subtitle: const Text('Includes mood, energy, pain ratings'),
+              onTap: () => Navigator.pop(context, 'detailed'),
+            ),
+            ListTile(
+              title: const Text('Monthly Summary'),
+              subtitle: const Text('Grouped by month'),
+              onTap: () => Navigator.pop(context, 'monthly'),
+            ),
+            ListTile(
+              title: const Text('Strain Analytics'),
+              subtitle: const Text('Strain effectiveness data'),
+              onTap: () => Navigator.pop(context, 'strains'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (options == null) return;
+
+    await _showAsyncDialog(
+      context,
+      () async {
+        final strainMap = {for (var s in provider.strains) s.id: s};
+        String csvContent;
+        String filename;
+
+        switch (options) {
+          case 'basic':
+            csvContent = await CsvExportService.generateDosagesCsv(
+              provider.dosages,
+              strainMap,
+            );
+            filename = 'kratom_dosages.csv';
+            break;
+          case 'detailed':
+            csvContent = await CsvExportService.generateDetailedCsv(
+              provider.dosages,
+              strainMap,
+              [], // Effects - would need to be added to provider
+            );
+            filename = 'kratom_detailed.csv';
+            break;
+          case 'monthly':
+            csvContent = await CsvExportService.generateMonthlySummaryCsv(
+              provider.dosages,
+            );
+            filename = 'kratom_monthly_summary.csv';
+            break;
+          case 'strains':
+            final analytics = {
+              for (var strain in provider.strains)
+                strain.id: provider.getStrainAnalytics(strain.id)
+            };
+            csvContent = await CsvExportService.generateStrainAnalyticsCsv(
+              provider.strains,
+              analytics,
+            );
+            filename = 'kratom_strain_analytics.csv';
+            break;
+          default:
+            return;
+        }
+
+        await CsvExportService.exportAndShare(csvContent, filename);
+      },
+      'CSV exported successfully',
+    );
+  }
+
+  Future<void> _exportPdf(BuildContext context, KratomProvider provider) async {
+    final timeRange = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Select Time Range'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: const Text('Last 7 Days'),
+              onTap: () => Navigator.pop(context, '7days'),
+            ),
+            ListTile(
+              title: const Text('Last 30 Days'),
+              onTap: () => Navigator.pop(context, '30days'),
+            ),
+            ListTile(
+              title: const Text('Last 90 Days'),
+              onTap: () => Navigator.pop(context, '90days'),
+            ),
+            ListTile(
+              title: const Text('All Time'),
+              onTap: () => Navigator.pop(context, 'all'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (timeRange == null) return;
+
+    await _showAsyncDialog(
+      context,
+      () async {
+        DateTime? startDate;
+        DateTime? endDate;
+
+        switch (timeRange) {
+          case '7days':
+            endDate = DateTime.now();
+            startDate = endDate.subtract(const Duration(days: 7));
+            break;
+          case '30days':
+            endDate = DateTime.now();
+            startDate = endDate.subtract(const Duration(days: 30));
+            break;
+          case '90days':
+            endDate = DateTime.now();
+            startDate = endDate.subtract(const Duration(days: 90));
+            break;
+        }
+
+        final strainMap = {for (var s in provider.strains) s.id: s};
+
+        await PdfExportService.generateAndShareReport(
+          dosages: provider.dosages,
+          strainMap: strainMap,
+          effects: [], // Effects - would need to be added to provider
+          userName: provider.userName ?? 'User',
+          startDate: startDate,
+          endDate: endDate,
+        );
+      },
+      'PDF report generated successfully',
     );
   }
 

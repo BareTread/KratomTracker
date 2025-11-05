@@ -19,7 +19,7 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace "org.kratomtracker.app"
+    namespace "com.alinciocan.kratomtracker"
     compileSdkVersion flutter.compileSdkVersion
 
     compileOptions {
@@ -36,11 +36,12 @@ android {
     }
 
     defaultConfig {
-        applicationId "org.kratomtracker.app"
+        // Use .beta suffix for PR builds to install alongside production app
+        applicationId "com.alinciocan.kratomtracker.beta"
         minSdkVersion flutter.minSdkVersion
         targetSdkVersion flutter.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "1.1.0-beta"
     }
 
     signingConfigs {
@@ -54,9 +55,11 @@ android {
 
     buildTypes {
         release {
-            signingConfig signingConfigs.release
-            minifyEnabled true
-            shrinkResources true
+            // Only use release signing if keystore exists (not in CI)
+            signingConfig keystoreProperties['storeFile'] ? signingConfigs.release : signingConfigs.debug
+            // Disable minification to prevent R8 from stripping Flutter classes
+            minifyEnabled false
+            shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }

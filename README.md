@@ -20,39 +20,69 @@ A comprehensive mobile application for tracking and analyzing kratom usage, buil
 ## 🌟 Features
 
 ### 📊 Dosage Tracking
-- Visual timeline with timestamp recording
-- Custom notes for each dose
+- **Visual timeline** with precise timestamp recording
+- **Custom notes and tags** for context ("With Food", "Empty Stomach", etc.)
+- **Duplicate detection** to prevent accidental double-logging
 - Multiple measurement units support
 - Daily, weekly, and monthly consumption tracking
-- Interactive timeline visualization
+- Interactive timeline visualization with time-of-day periods
+- **Daily limit tracking** with automatic warnings at 80% and alerts when exceeded
 
 ### 🌿 Strain Management
 - Create and manage multiple strains
-- Customizable strain colors and icons
-- Strain effectiveness tracking
-- Strain rotation recommendations
-- Batch tracking
+- Customizable strain colors (12 color variants) and icons (6 icon choices)
+- **Strain effectiveness tracking** with detailed analytics
+- **Strain comparison** - Compare effectiveness side-by-side
+- **Optimal dosage recommendations** based on historical data
+- Batch tracking support
 
 ### 📈 Analytics & Insights
-- Detailed usage statistics and trends
-- Strain effectiveness analysis
-- Pattern recognition
-- Export data for external analysis
-- Interactive charts and graphs
+- **Advanced usage pattern analysis** - Peak times, usage trends
+- **Weekly/Monthly summaries** with comprehensive statistics
+- **Consecutive usage tracking** with tolerance break recommendations
+- **Strain effectiveness trends** over time
+- **Interactive charts and graphs** (bar charts, usage patterns)
+- Pattern recognition and insights
+- **Tag analytics** to understand context patterns
+
+### 🔔 Smart Notifications & Reminders
+- **Customizable morning/evening reminders** for dosage logging
+- **Daily limit warnings** (at 80% and when exceeded)
+- **Tolerance break reminders** with configurable intervals
+- **Duplicate dosage alerts** to prevent errors
+- All notifications fully customizable or can be disabled
+
+### 📤 Export & Reporting
+- **CSV Export** with 4 formats:
+  - Basic dosage log
+  - Detailed with effects
+  - Monthly summary
+  - Strain analytics
+- **Professional PDF Reports** with customizable date ranges
+- **JSON Backup/Restore** for data portability
+- Share exports via any app
 
 ### 🔒 Privacy-Focused
-- All data stored locally on device
+- **100% offline** - All data stored locally on device
 - No cloud storage or external servers
-- Offline-first design
-- Easy data export and backup
-- No account required
+- No tracking, analytics, or telemetry
+- No account or sign-up required
+- Easy data export for full data ownership
 
 ### 🎨 User Interface
-- Material Design 3
-- Dark mode support
-- Custom color themes
-- Intuitive navigation
+- Material Design 3 with modern aesthetics
+- **Full dark mode support** with optimized color schemes
+- Custom color themes per strain
+- Intuitive navigation with bottom nav bar
+- Smooth animations and transitions
 - Accessibility features
+
+### 🔍 Search & Filter
+- **Search dosages** by strain name, notes, or date
+- **Filter by strain** to see usage patterns
+- **Filter by date range** for specific periods
+- **Filter by tags** to analyze context
+- Combined filtering for precise queries
 
 ## 🛠️ Installation
 
@@ -99,9 +129,14 @@ lib/
 ### Technologies Used
 - **Framework**: Flutter 3.5.4+
 - **State Management**: Provider pattern
-- **Storage**: SharedPreferences
+- **Local Storage**: SharedPreferences
+- **Notifications**: flutter_local_notifications with timezone support
+- **Charts**: fl_chart for interactive visualizations
+- **Export**: CSV generation & PDF printing
 - **UI**: Material Design 3
 - **Animations**: Lottie
+- **Calendar**: table_calendar
+- **File Handling**: share_plus, file_picker, path_provider
 
 ## 🤝 Contributing
 
