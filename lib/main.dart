@@ -14,9 +14,14 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
 
-  // Initialize notification service
-  await NotificationService().initialize();
-  await NotificationService().requestPermissions();
+  // Initialize notification service (non-blocking, won't crash app if it fails)
+  try {
+    await NotificationService().initialize();
+    await NotificationService().requestPermissions();
+  } catch (e) {
+    debugPrint('Notification service initialization failed (non-critical): $e');
+    // App will work fine without notifications
+  }
 
   // Force portrait mode
   SystemChrome.setPreferredOrientations([
