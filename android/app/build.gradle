@@ -37,7 +37,7 @@ android {
 
     defaultConfig {
         // Use .beta suffix for PR builds to install alongside production app
-        applicationId "org.kratomtracker.app.beta"
+        applicationId "com.alinciocan.kratomtracker.beta"
         minSdkVersion flutter.minSdkVersion
         targetSdkVersion flutter.targetSdkVersion
         versionCode 2
