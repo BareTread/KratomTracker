@@ -19,7 +19,7 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace "org.kratomtracker.app"
+    namespace "com.alinciocan.kratomtracker"
     compileSdkVersion flutter.compileSdkVersion
 
     compileOptions {
