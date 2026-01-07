@@ -52,8 +52,6 @@ jobs:
 
         with:
 
-          flutter-version: '3.5.4'
-
           channel: 'stable'
 
           cache: true
