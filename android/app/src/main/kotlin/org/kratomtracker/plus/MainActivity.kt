@@ -1,4 +1,4 @@
-package org.kratomtracker.app
+package org.kratomtracker.plus
 
 import io.flutter.embedding.android.FlutterActivity
 

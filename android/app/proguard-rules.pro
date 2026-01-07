@@ -7,7 +7,7 @@
 -keep class io.flutter.plugins.**  { *; }
 
 # Keep MainActivity
--keep class org.kratomtracker.app.MainActivity { *; }
+-keep class org.kratomtracker.plus.MainActivity { *; }
 
 # Ignore missing Play Core classes (not using deferred components)
 -dontwarn com.google.android.play.core.splitcompat.SplitCompatApplication
