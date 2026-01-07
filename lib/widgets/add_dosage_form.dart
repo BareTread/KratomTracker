@@ -144,14 +144,34 @@ class _StrainSelectionView extends StatelessWidget {
                     a.timestamp.isAfter(b.timestamp) ? a : b)
                 .timestamp;
           } else {
-            // If never used, set to epoch to prioritize it
             lastUsageMap[strain.id] = DateTime.fromMillisecondsSinceEpoch(0);
           }
         }
 
-        // Sort strains by last usage (oldest first)
+        // Calculate 30-day consumption for each strain
+        final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
+        final thirtyDayTotals = <String, double>{};
+        for (var strain in strains) {
+          thirtyDayTotals[strain.id] = dosages
+              .where((d) => d.strainId == strain.id && d.timestamp.isAfter(thirtyDaysAgo))
+              .fold(0.0, (sum, d) => sum + d.amount);
+        }
+
+        // Calculate rotation scores (higher = better rotation choice)
+        final rotationScores = <String, double>{};
+        for (var strain in strains) {
+          final lastUsed = lastUsageMap[strain.id]!;
+          final daysSinceUse = lastUsed.year == 1970 
+              ? 365.0
+              : DateTime.now().difference(lastUsed).inDays.toDouble();
+          
+          final consumptionScore = 1.0 - (thirtyDayTotals[strain.id]! / 500.0).clamp(0.0, 1.0);
+          rotationScores[strain.id] = (daysSinceUse * 0.7) + (consumptionScore * 100 * 0.3);
+        }
+
+        // Sort strains by rotation score (highest first)
         final sortedStrains = strains.toList()
-          ..sort((a, b) => lastUsageMap[a.id]!.compareTo(lastUsageMap[b.id]!));
+          ..sort((a, b) => rotationScores[b.id]!.compareTo(rotationScores[a.id]!));
 
         return Container(
           decoration: BoxDecoration(
@@ -208,9 +228,10 @@ class _StrainSelectionView extends StatelessWidget {
                     final strain = sortedStrains[index];
                     final lastUsed = lastUsageMap[strain.id]!;
                     final isRecommended = index < 3;
+                    final monthlyTotal = thirtyDayTotals[strain.id]!;
                     final lastUsedText = lastUsed.year == 1970 
                         ? 'Never used'
-                        : _getLastUsedText(lastUsed);
+                        : '${_getLastUsedText(lastUsed)} · ${monthlyTotal.toStringAsFixed(0)}g/mo';
 
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),

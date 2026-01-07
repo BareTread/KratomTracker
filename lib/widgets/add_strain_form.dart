@@ -53,17 +53,17 @@ class _AddStrainFormState extends State<AddStrainForm> {
     ],
     'White': [
       _ColorOption(
-        color: const Color(0xFFCFD8DC), // Light grey
+        color: const Color(0xFFE3F2FD), // Light blue-white
         name: 'Pearl',
         intensity: 'Mild',
       ),
       _ColorOption(
-        color: const Color(0xFFB0BEC5), // Medium grey
+        color: const Color(0xFFBBDEFB), // Brighter blue-white
         name: 'Silver',
         intensity: 'Medium',
       ),
       _ColorOption(
-        color: const Color(0xFF90A4AE), // Dark grey
+        color: const Color(0xFF90CAF9), // More vibrant blue
         name: 'Platinum',
         intensity: 'Strong',
       ),
@@ -93,19 +93,35 @@ class _AddStrainFormState extends State<AddStrainForm> {
   final List<_IconOption> _icons = [
     _IconOption(
       icon: Icons.local_florist_outlined,
-      name: 'Leaf',
+      name: 'Plant',
     ),
     _IconOption(
       icon: Icons.eco_outlined,
-      name: 'Natural',
+      name: 'Leaf',
     ),
     _IconOption(
       icon: Icons.grass_outlined,
-      name: 'Plant',
+      name: 'Natural',
     ),
     _IconOption(
       icon: Icons.spa_outlined,
       name: 'Organic',
+    ),
+    _IconOption(
+      icon: Icons.forest_outlined,
+      name: 'Forest',
+    ),
+    _IconOption(
+      icon: Icons.nature_outlined,
+      name: 'Nature',
+    ),
+    _IconOption(
+      icon: Icons.park_outlined,
+      name: 'Park',
+    ),
+    _IconOption(
+      icon: Icons.yard_outlined,
+      name: 'Yard',
     ),
   ];
 

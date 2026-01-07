@@ -8,6 +8,10 @@ final Map<String, IconData> strainIcons = {
   'Organic': Icons.spa_outlined,
   'Flower': Icons.local_florist,
   'Herb': Icons.eco,
+  'Forest': Icons.forest_outlined,
+  'Nature': Icons.nature_outlined,
+  'Park': Icons.park_outlined,
+  'Yard': Icons.yard_outlined,
 };
 
 // Define icon options for forms
@@ -18,4 +22,8 @@ final List<Map<String, dynamic>> iconOptions = [
   {'name': 'Organic', 'icon': Icons.spa_outlined},
   {'name': 'Flower', 'icon': Icons.local_florist},
   {'name': 'Herb', 'icon': Icons.eco},
+  {'name': 'Forest', 'icon': Icons.forest_outlined},
+  {'name': 'Nature', 'icon': Icons.nature_outlined},
+  {'name': 'Park', 'icon': Icons.park_outlined},
+  {'name': 'Yard', 'icon': Icons.yard_outlined},
 ]; 

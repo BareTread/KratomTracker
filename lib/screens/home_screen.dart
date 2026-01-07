@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../providers/kratom_provider.dart';
 import '../widgets/add_dosage_form.dart';
 import '../widgets/add_strain_form.dart';
@@ -365,39 +366,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     ],
                   ).withHover(),
                 ),
-                actions: [
-                  IconButton(
-                    icon: Stack(
-                      children: [
-                        const Icon(Icons.notifications_outlined, color: Colors.grey),
-                        Positioned(
-                          right: 0,
-                          top: 0,
-                          child: Container(
-                            padding: const EdgeInsets.all(2),
-                            decoration: BoxDecoration(
-                              color: Colors.red,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            constraints: const BoxConstraints(
-                              minWidth: 12,
-                              minHeight: 12,
-                            ),
-                            child: const Text(
-                              '1',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 8,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    onPressed: () {},
-                  ),
-                ],
+                actions: const [],
               ),
               body: Column(
                 children: [
@@ -570,6 +539,232 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     );
   }
 
+  Widget _buildWeeklySparkline(KratomProvider provider) {
+    final now = DateTime.now();
+    final weekData = <double>[];
+    
+    for (int i = 6; i >= 0; i--) {
+      final date = DateTime(now.year, now.month, now.day).subtract(Duration(days: i));
+      final dayTotal = provider.getDosagesForDate(date)
+          .fold(0.0, (sum, d) => sum + d.amount);
+      weekData.add(dayTotal);
+    }
+    
+    final thisWeekTotal = weekData.reduce((a, b) => a + b);
+    final maxValue = weekData.reduce((a, b) => a > b ? a : b);
+    
+    final lastWeekData = <double>[];
+    for (int i = 13; i >= 7; i--) {
+      final date = DateTime(now.year, now.month, now.day).subtract(Duration(days: i));
+      final dayTotal = provider.getDosagesForDate(date)
+          .fold(0.0, (sum, d) => sum + d.amount);
+      lastWeekData.add(dayTotal);
+    }
+    final lastWeekTotal = lastWeekData.reduce((a, b) => a + b);
+    
+    final percentChange = lastWeekTotal > 0 
+        ? ((thisWeekTotal - lastWeekTotal) / lastWeekTotal * 100)
+        : 0.0;
+    
+    final trendColor = percentChange > 10 
+        ? Colors.amber[400]!
+        : percentChange < -10 
+            ? Colors.green[400]!
+            : Colors.grey[400]!;
+    
+    final spots = weekData.asMap().entries.map((e) => 
+        FlSpot(e.key.toDouble(), e.value)).toList();
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: Theme.of(context).brightness == Brightness.dark
+            ? Colors.grey[900]?.withOpacity(0.5)
+            : Colors.grey[100],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.show_chart, color: Colors.grey[500], size: 18),
+          const SizedBox(width: 10),
+          Text(
+            '${thisWeekTotal.toStringAsFixed(1)}g',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : Colors.black87,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            'this week',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey[500],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: SizedBox(
+              height: 24,
+              child: LineChart(
+                LineChartData(
+                  gridData: const FlGridData(show: false),
+                  titlesData: const FlTitlesData(show: false),
+                  borderData: FlBorderData(show: false),
+                  minX: 0,
+                  maxX: 6,
+                  minY: 0,
+                  maxY: maxValue > 0 ? maxValue * 1.2 : 10,
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: spots,
+                      isCurved: true,
+                      curveSmoothness: 0.3,
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.8),
+                      barWidth: 2,
+                      isStrokeCapRound: true,
+                      dotData: const FlDotData(show: false),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                      ),
+                    ),
+                  ],
+                  lineTouchData: const LineTouchData(enabled: false),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: trendColor.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  percentChange >= 0 ? Icons.trending_up : Icons.trending_down,
+                  size: 14,
+                  color: trendColor,
+                ),
+                const SizedBox(width: 3),
+                Text(
+                  '${percentChange.abs().toStringAsFixed(0)}%',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: trendColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimeSinceLastDose(KratomProvider provider) {
+    final allDosages = provider.dosages;
+    if (allDosages.isEmpty) return const SizedBox.shrink();
+    
+    final sortedDosages = allDosages.toList()
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    final lastDose = sortedDosages.first;
+    final timeSince = DateTime.now().difference(lastDose.timestamp);
+    
+    String text;
+    Color color;
+    IconData icon;
+    
+    if (timeSince.inDays > 0) {
+      text = '${timeSince.inDays}d ${timeSince.inHours % 24}h ago';
+      color = Colors.grey;
+      icon = Icons.history;
+    } else if (timeSince.inHours >= 4) {
+      text = '${timeSince.inHours}h ${timeSince.inMinutes % 60}m ago';
+      color = Colors.green[400]!;
+      icon = Icons.check_circle_outline;
+    } else if (timeSince.inHours >= 2) {
+      text = '${timeSince.inHours}h ${timeSince.inMinutes % 60}m ago';
+      color = Colors.amber[400]!;
+      icon = Icons.schedule;
+    } else {
+      final mins = timeSince.inMinutes;
+      text = mins < 1 ? 'Just now' : '${mins}m ago';
+      color = Colors.grey[400]!;
+      icon = Icons.access_time;
+    }
+    
+    final strain = provider.getStrain(lastDose.strainId);
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).brightness == Brightness.dark
+            ? Colors.grey[900]?.withOpacity(0.5)
+            : Colors.grey[100],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: color.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Last dose',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[500],
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '$text · ${strain.code}',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: color,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: Color(strain.color).withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              '${lastDose.amount}g',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Color(strain.color),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDailyTimelineCard(List<Dosage> dosages, KratomProvider provider) {
     final dailyTotal = dosages.fold(0.0, (sum, dosage) => sum + dosage.amount);
     final dosageHeights = _calculateDosageHeights(dosages);
@@ -652,12 +847,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         right: 0,
         bottom: 100,
       ),
-      itemCount: dosages.length + 1,
+      itemCount: dosages.length + 3,
       itemBuilder: (context, index) {
         if (index == 0) {
+          return _buildTimeSinceLastDose(provider);
+        }
+        if (index == 1) {
+          return _buildWeeklySparkline(provider);
+        }
+        if (index == 2) {
           return _buildDailyTimelineCard(dosages, provider);
         }
-        final dosage = dosages[index - 1];
+        final dosage = dosages[index - 3];
         final strain = provider.getStrain(dosage.strainId);
         final timeStr = DateFormat('h:mm a').format(dosage.timestamp);
         
@@ -665,8 +866,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         final period = _getPeriod(dosage.timestamp);
         
         // Show period label if first item or if period changed
-        final showPeriod = index == 1 || 
-                         _getPeriod(dosages[index - 2].timestamp) != period;
+        final showPeriod = index == 3 || 
+                         _getPeriod(dosages[index - 4].timestamp) != period;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
