@@ -1,0 +1,75 @@
+name: Build APK
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches-ignore:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Debug APK
+        run: flutter build apk --debug
+
+      - name: Build Release APK
+        run: flutter build apk --release
+
+      - name: Build Split APKs (per ABI)
+        run: flutter build apk --release --split-per-abi
+
+      - name: Rename APKs with version info
+        run: |
+          cd build/app/outputs/flutter-apk
+          VERSION=$(grep "version:" ../../../../pubspec.yaml | sed 's/version: //' | tr -d ' ')
+          mv app-release.apk kratom-tracker-v${VERSION}-release.apk || true
+          mv app-debug.apk kratom-tracker-v${VERSION}-debug.apk || true
+          ls -lh *.apk
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: kratom-tracker-release-apk
+          path: build/app/outputs/flutter-apk/*-release.apk
+          retention-days: 14
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: kratom-tracker-debug-apk
+          path: build/app/outputs/flutter-apk/*-debug.apk
+          retention-days: 14
+
+      - name: Upload Split APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: kratom-tracker-split-apks
+          path: build/app/outputs/flutter-apk/app-*-release.apk
+          retention-days: 14
