@@ -8,3 +8,8 @@
 
 # Keep MainActivity
 -keep class org.kratomtracker.app.MainActivity { *; }
+
+# Ignore missing Play Core classes (not using deferred components)
+-dontwarn com.google.android.play.core.splitcompat.SplitCompatApplication
+-dontwarn com.google.android.play.core.splitinstall.**
+-dontwarn com.google.android.play.core.tasks.**
