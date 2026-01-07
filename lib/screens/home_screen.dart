@@ -9,6 +9,7 @@ import '../widgets/edit_dosage_form.dart';
 import '../widgets/timeline_painter.dart';
 import '../widgets/edit_profile_sheet.dart';
 import '../models/dosage.dart';
+import '../models/strain.dart';
 import '../constants/icons.dart';
 import 'package:intl/intl.dart';
 import 'dart:math';
@@ -550,8 +551,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       weekData.add(dayTotal);
     }
     
-    final thisWeekTotal = weekData.reduce((a, b) => a + b);
-    final maxValue = weekData.reduce((a, b) => a > b ? a : b);
+    // Handle empty data safely
+    if (weekData.isEmpty) return const SizedBox.shrink();
+    
+    final thisWeekTotal = weekData.fold(0.0, (a, b) => a + b);
+    final maxValue = weekData.fold(0.0, (a, b) => a > b ? a : b);
     
     final lastWeekData = <double>[];
     for (int i = 13; i >= 7; i--) {
@@ -560,7 +564,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           .fold(0.0, (sum, d) => sum + d.amount);
       lastWeekData.add(dayTotal);
     }
-    final lastWeekTotal = lastWeekData.reduce((a, b) => a + b);
+    final lastWeekTotal = lastWeekData.fold(0.0, (a, b) => a + b);
     
     final percentChange = lastWeekTotal > 0 
         ? ((thisWeekTotal - lastWeekTotal) / lastWeekTotal * 100)
@@ -703,7 +707,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       icon = Icons.access_time;
     }
     
-    final strain = provider.getStrain(lastDose.strainId);
+    // Safely get strain, return empty widget if not found
+    Strain? strain;
+    try {
+      strain = provider.getStrain(lastDose.strainId);
+    } catch (e) {
+      return const SizedBox.shrink();
+    }
     
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
