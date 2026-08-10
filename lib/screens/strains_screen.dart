@@ -149,7 +149,7 @@ class StrainsScreen extends StatelessWidget {
                   height: 40,
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Color(strain.color).withOpacity(0.15),
+                    color: Color(strain.color).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
@@ -316,8 +316,8 @@ class StrainsScreen extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             color: Theme.of(context).brightness == Brightness.dark
-                ? Colors.black.withOpacity(0.85)
-                : Colors.white.withOpacity(0.9),
+                ? Colors.black.withValues(alpha: 0.85)
+                : Colors.white.withValues(alpha: 0.9),
             borderRadius: const BorderRadius.vertical(
               top: Radius.circular(20),
             ),
