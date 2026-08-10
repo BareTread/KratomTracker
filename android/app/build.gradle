@@ -12,19 +12,46 @@ if (localPropertiesFile.exists()) {
     }
 }
 
+// ---- Release signing -----------------------------------------------------
+// Resolve signing config from, in order:
+//   1. android/key.properties (committed example only; real file is gitignored)
+//   2. path in the KRATOM_KEYSTORE_PROPERTIES env var
+// A release build FAILS if neither is available. Debug builds are unaffected.
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file('key.properties')
-if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+if (!keystorePropertiesFile.exists()) {
+    def envPath = System.getenv('KRATOM_KEYSTORE_PROPERTIES')
+    if (envPath != null && !envPath.isEmpty()) {
+        keystorePropertiesFile = new File(envPath)
+    }
 }
+def hasReleaseKeystore = false
+if (keystorePropertiesFile != null && keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withReader('UTF-8') { reader ->
+        keystoreProperties.load(reader)
+    }
+    hasReleaseKeystore = keystoreProperties['keystore'] != null &&
+            keystoreProperties['storePassword'] != null &&
+            keystoreProperties['keyAlias'] != null &&
+            keystoreProperties['keyPassword'] != null
+}
+
+// Version comes from Flutter (injected into local.properties from pubspec.yaml
+// `version: <name>+<code>`), with a sane fallback for bare gradle invocations.
+def flutterVersionCode = localProperties.getProperty('flutter.versionCode') ?: '1'
+def flutterVersionName = localProperties.getProperty('flutter.versionName') ?: '1.0'
 
 android {
     namespace "org.kratomtracker.plus"
     compileSdkVersion flutter.compileSdkVersion
+    ndkVersion flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+        // Required by some Flutter plugins that target newer Java APIs on old
+        // Android (e.g. java.time usage in dependencies).
+        coreLibraryDesugaringEnabled true
     }
 
     kotlinOptions {
@@ -37,32 +64,54 @@ android {
 
     defaultConfig {
         applicationId "org.kratomtracker.plus"
-        minSdkVersion flutter.minSdkVersion
+        minSdkVersion Math.max(flutter.minSdkVersion, 23)
         targetSdkVersion flutter.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode flutterVersionCode.toInteger()
+        versionName flutterVersionName
     }
 
     signingConfigs {
         release {
-            if (keystorePropertiesFile.exists()) {
+            if (hasReleaseKeystore) {
                 keyAlias keystoreProperties['keyAlias']
                 keyPassword keystoreProperties['keyPassword']
-                storeFile file(keystoreProperties['storeFile'])
+                storeFile file(keystoreProperties['keystore'])
                 storePassword keystoreProperties['storePassword']
+                v1SigningEnabled true
+                v2SigningEnabled true
+                // v3 and v4 signing are enabled by default when the signing
+                // config is present; explicit enablement is not required.
             }
         }
     }
 
     buildTypes {
         release {
-            // Use debug signing if no release keystore available (for CI builds)
-            signingConfig keystorePropertiesFile.exists() ? signingConfigs.release : signingConfigs.debug
+            signingConfig hasReleaseKeystore ? signingConfigs.release : null
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+}
+
+// Fail fast on `flutter build apk --release` (=> :app:assembleRelease) when no
+// release keystore is configured, instead of silently shipping a debug-signed
+// APK. Debug builds are never affected.
+gradle.taskGraph.whenReady { graph ->
+    if (graph.hasTask(':app:assembleRelease') && !hasReleaseKeystore) {
+        throw new GradleException(
+            "Release build requires a signing keystore, but none was found.\n" +
+            "Provide android/key.properties (see android/key.properties.example)\n" +
+            "or set KRATOM_KEYSTORE_PROPERTIES to the path of a properties file\n" +
+            "with keystore/storePassword/keyAlias/keyPassword. Debug builds need\n" +
+            "no keystore."
+        )
+    }
+}
+
+dependencies {
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
 }
 
 flutter {

@@ -1,13 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Add any required permissions here -->
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <!--
+      No permissions are required by the release app:
+        - Storage: file_picker + share_plus use the Storage Access Framework and
+          the system share sheet, which need no storage permissions on modern
+          Android (and never did for app-private files).
+        - Internet: the app is local-first with no backend. url_launcher opens
+          external https links in the user's browser, which does not require
+          INTERNET in *this* app's manifest. INTERNET remains declared in the
+          debug/profile source sets for the Flutter dev tooling.
+    -->
     <application
         android:label="Herbal Tracker+"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:enableOnBackInvokedCallback="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

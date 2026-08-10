@@ -53,10 +53,11 @@ build/
 .packages
 pubspec.lock
 
-# Keystore files
+# Keystore files — never commit signing material
 **/keystore/
 **/upload-keystore.jks
 **/key.properties
+android/key.properties
 
 # Additional security
 *.keystore
