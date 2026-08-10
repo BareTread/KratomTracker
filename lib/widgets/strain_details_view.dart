@@ -1,49 +1,37 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+
+import '../constants/icons.dart';
+import '../domain/analytics_service.dart';
+import '../models/effect.dart';
 import '../models/strain.dart';
 import '../providers/kratom_provider.dart';
+import '../theme/app_theme.dart';
 import '../widgets/add_dosage_form.dart';
-import '../constants/icons.dart';
 import '../widgets/edit_strain_form.dart';
 
 class StrainDetailsView extends StatelessWidget {
   final Strain strain;
 
-  const StrainDetailsView({
-    super.key,
-    required this.strain,
-  });
+  const StrainDetailsView({super.key, required this.strain});
 
   @override
   Widget build(BuildContext context) {
+    final c = context.c;
     return Consumer<KratomProvider>(
       builder: (context, provider, child) {
-        // Get all dosages for this strain
-        final strainDosages = provider.dosages
-            .where((d) => d.strainId == strain.id)
-            .toList();
-
-        // Calculate statistics
-        final totalDoses = strainDosages.length;
-        final lastDose = strainDosages.isNotEmpty 
-            ? strainDosages.reduce((a, b) => 
-                a.timestamp.isAfter(b.timestamp) ? a : b)
-            : null;
-        
-        // Calculate last 30 days consumption
-        final now = DateTime.now();
-        final thirtyDaysAgo = now.subtract(const Duration(days: 30));
-        final last30DaysDosages = strainDosages
-            .where((d) => d.timestamp.isAfter(thirtyDaysAgo))
-            .toList();
-        final last30DaysTotal = last30DaysDosages.fold(
-            0.0, (sum, dose) => sum + dose.amount);
+        final insight = computeStrainInsight(
+          strain.id,
+          provider.dosages,
+          provider.effects,
+        );
 
         return SingleChildScrollView(
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.grey[900],
+              color: c.surfaceRaised,
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(20),
               ),
@@ -51,157 +39,28 @@ class StrainDetailsView extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Header
-                Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(
-                        color: Color(strain.color).withOpacity(0.2),
-                        width: 1,
-                      ),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 52,
-                        height: 52,
-                        decoration: BoxDecoration(
-                          color: Color(strain.color).withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: Color(strain.color).withOpacity(0.3),
-                            width: 1,
-                          ),
-                        ),
-                        child: Icon(
-                          strainIcons[strain.icon] ?? Icons.local_florist,
-                          color: Color(strain.color),
-                          size: 26,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              strain.code,
-                              style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
-                            ),
-                            Text(
-                              strain.name,
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.grey[400],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        icon: Icon(
-                          Icons.edit_outlined,
-                          color: Color(strain.color),
-                        ),
-                        onPressed: () {
-                          Navigator.pop(context);
-                          showModalBottomSheet(
-                            context: context,
-                            isScrollControlled: true,
-                            backgroundColor: Colors.transparent,
-                            builder: (context) => EditStrainForm(strain: strain),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-                
-                // Statistics
+                _Header(strain: strain),
                 Padding(
                   padding: const EdgeInsets.all(24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Statistics',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Color(strain.color),
-                        ),
-                      ),
+                      _SectionTitle(strain: strain, text: 'Statistics'),
                       const SizedBox(height: 16),
-                      _buildStatCard(
-                        title: 'Total Uses',
-                        value: '$totalDoses times',
-                        icon: Icons.history,
-                        color: strain.color,
-                      ),
-                      if (lastDose != null) ...[
-                        const SizedBox(height: 12),
-                        _buildStatCard(
-                          title: 'Last Taken',
-                          value: DateFormat('MMM d, y').format(lastDose.timestamp),
-                          subtitle: '${lastDose.amount}g at ${DateFormat('h:mm a').format(lastDose.timestamp)}',
-                          icon: Icons.access_time,
-                          color: strain.color,
-                        ),
-                      ],
+                      _StatsGrid(strain: strain, insight: insight),
+                      const SizedBox(height: 20),
+                      _SectionTitle(strain: strain, text: 'Dose size spread'),
                       const SizedBox(height: 12),
-                      _buildStatCard(
-                        title: 'Last 30 Days',
-                        value: '${last30DaysTotal.toStringAsFixed(1)}g',
-                        subtitle: '${last30DaysDosages.length} doses',
-                        icon: Icons.calendar_today,
-                        color: strain.color,
-                      ),
+                      _DoseSpread(insight: insight),
+                      const SizedBox(height: 20),
+                      _SectionTitle(strain: strain, text: 'Effect profile'),
+                      const SizedBox(height: 12),
+                      _EffectProfile(insight: insight),
                     ],
                   ),
                 ),
-                
-                // Add Dose Button
-                Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        showModalBottomSheet(
-                          context: context,
-                          isScrollControlled: true,
-                          backgroundColor: Colors.transparent,
-                          builder: (context) => AddDosageForm(
-                            preselectedStrainId: strain.id,
-                          ),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Color(strain.color),
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      child: const Text(
-                        'Add Dose',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+                _AddDoseButton(strain: strain),
+                const SizedBox(height: 24),
               ],
             ),
           ),
@@ -209,36 +68,43 @@ class StrainDetailsView extends StatelessWidget {
       },
     );
   }
+}
 
-  Widget _buildStatCard({
-    required String title,
-    required String value,
-    String? subtitle,
-    required IconData icon,
-    required int color,
-  }) {
+class _Header extends StatelessWidget {
+  const _Header({required this.strain});
+
+  final Strain strain;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Color(color).withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Color(color).withOpacity(0.2),
-          width: 1,
+        border: Border(
+          bottom: BorderSide(
+            color: Color(strain.color).withValues(alpha: 0.2),
+            width: 1,
+          ),
         ),
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            width: 52,
+            height: 52,
             decoration: BoxDecoration(
-              color: Color(color).withOpacity(0.2),
-              borderRadius: BorderRadius.circular(8),
+              color: Color(strain.color).withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Color(strain.color).withValues(alpha: 0.3),
+                width: 1,
+              ),
             ),
             child: Icon(
-              icon,
-              color: Color(color),
-              size: 20,
+              strainIcons[strain.icon] ?? Icons.local_florist,
+              color: Color(strain.color),
+              size: 26,
             ),
           ),
           const SizedBox(width: 16),
@@ -247,31 +113,179 @@ class StrainDetailsView extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[400],
-                  ),
+                  strain.code,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: c.textPrimary,
+                      ),
                 ),
-                const SizedBox(height: 4),
+                Text(
+                  strain.name,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: c.textSecondary,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.edit_outlined, color: Color(strain.color)),
+            onPressed: () {
+              Navigator.pop(context);
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => EditStrainForm(strain: strain),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle({required this.strain, required this.text});
+
+  final Strain strain;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: Color(strain.color),
+          ),
+    );
+  }
+}
+
+class _StatsGrid extends StatelessWidget {
+  const _StatsGrid({required this.strain, required this.insight});
+
+  final Strain strain;
+  final StrainInsight insight;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Color(strain.color);
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: [
+        _StatChip(
+          title: 'Total doses',
+          value: '${insight.totalDoses}',
+          icon: Icons.history,
+          color: color,
+        ),
+        _StatChip(
+          title: 'Total grams',
+          value: '${insight.totalGrams.toStringAsFixed(1)}g',
+          icon: Icons.monitor_weight_outlined,
+          color: color,
+        ),
+        _StatChip(
+          title: 'Avg dose size',
+          value: insight.totalDoses == 0
+              ? '—'
+              : '${insight.avgDoseSize.toStringAsFixed(1)}g',
+          icon: Icons.local_pharmacy_outlined,
+          color: color,
+        ),
+        _StatChip(
+          title: 'First used',
+          value: insight.firstUsed == null
+              ? '—'
+              : DateFormat('MMM d, y').format(insight.firstUsed!),
+          icon: Icons.play_arrow_outlined,
+          color: color,
+        ),
+        _StatChip(
+          title: 'Last used',
+          value: insight.lastUsed == null
+              ? '—'
+              : DateFormat('MMM d, y').format(insight.lastUsed!),
+          icon: Icons.access_time,
+          color: color,
+        ),
+        if (insight.avgReportedDuration != null)
+          _StatChip(
+            title: 'Avg reported duration',
+            value: _formatDuration(insight.avgReportedDuration!),
+            icon: Icons.timer_outlined,
+            color: color,
+          ),
+      ],
+    );
+  }
+
+  String _formatDuration(Duration d) {
+    if (d.inHours >= 1) {
+      final m = d.inMinutes % 60;
+      return m > 0 ? '${d.inHours}h ${m}m' : '${d.inHours}h';
+    }
+    return '${d.inMinutes}m';
+  }
+}
+
+class _StatChip extends StatelessWidget {
+  const _StatChip({
+    required this.title,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  final String title;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Container(
+      width: (MediaQuery.sizeOf(context).width - 48 - 12) / 2,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.2), width: 1),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: color, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: c.textSecondary,
+                      ),
+                ),
+                const SizedBox(height: 2),
                 Text(
                   value,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: c.textPrimary,
+                      ),
                 ),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[400],
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
@@ -279,4 +293,226 @@ class StrainDetailsView extends StatelessWidget {
       ),
     );
   }
-} 
+}
+
+class _DoseSpread extends StatelessWidget {
+  const _DoseSpread({required this.insight});
+
+  final StrainInsight insight;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final spread = insight.doseSpread;
+    if (spread == null) {
+      return Text(
+        'No doses logged yet.',
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: c.textTertiary,
+            ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            _spreadChip(context, 'p25', '${spread.p25.toStringAsFixed(1)}g'),
+            const SizedBox(width: 8),
+            _spreadChip(
+              context,
+              'median',
+              '${spread.median.toStringAsFixed(1)}g',
+              emphasized: true,
+            ),
+            const SizedBox(width: 8),
+            _spreadChip(context, 'p75', '${spread.p75.toStringAsFixed(1)}g'),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Half of your doses of this strain fall between '
+          '${spread.p25.toStringAsFixed(1)}g and ${spread.p75.toStringAsFixed(1)}g; '
+          'the median is ${spread.median.toStringAsFixed(1)}g.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: c.textSecondary,
+              ),
+        ),
+      ],
+    );
+  }
+
+  Widget _spreadChip(
+    BuildContext context,
+    String label,
+    String value, {
+    bool emphasized = false,
+  }) {
+    final c = context.c;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: emphasized ? c.accent.withValues(alpha: 0.12) : c.surfaceSunken,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: c.hairline),
+      ),
+      child: Column(
+        children: [
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: c.textTertiary,
+                ),
+          ),
+          Text(
+            value,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: c.textPrimary,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EffectProfile extends StatelessWidget {
+  const _EffectProfile({required this.insight});
+
+  final StrainInsight insight;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    if (insight.effectSampleCount < 3) {
+      return Text(
+        'Not enough logged effects yet '
+        '(${insight.effectSampleCount} of 3 needed) to show a profile.',
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: c.textTertiary,
+            ),
+      );
+    }
+
+    final metrics = EffectMetric.values
+        .where((m) => insight.avgEffects.containsKey(m))
+        .toList();
+    if (metrics.isEmpty) {
+      return Text(
+        'No effect ratings logged for this strain yet.',
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: c.textTertiary,
+            ),
+      );
+    }
+
+    final summary = metrics
+        .map((m) => '${m.label} ${insight.avgEffects[m]!.toStringAsFixed(1)}')
+        .join(', ');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          height: 200,
+          child: Semantics(
+            container: true,
+            label: 'Effect profile radar chart across ${metrics.length} '
+                'metrics, averaged from ${insight.effectSampleCount} logs.',
+            child: _EffectRadar(metrics: metrics, insight: insight),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Averaged from ${insight.effectSampleCount} logged effect(s). '
+          '$summary.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: c.textSecondary,
+              ),
+        ),
+      ],
+    );
+  }
+}
+
+class _EffectRadar extends StatelessWidget {
+  const _EffectRadar({required this.metrics, required this.insight});
+
+  final List<EffectMetric> metrics;
+  final StrainInsight insight;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return RadarChart(
+      RadarChartData(
+        radarBackgroundColor: c.surfaceSunken,
+        radarBorderData: BorderSide(color: c.hairline, width: 1),
+        tickBorderData: BorderSide(color: c.hairline, width: 1),
+        gridBorderData: BorderSide(color: c.hairline, width: 1),
+        tickCount: 4,
+        ticksTextStyle: const TextStyle(color: Colors.transparent, fontSize: 0),
+        titleTextStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: c.textSecondary,
+              fontSize: 11,
+            ),
+        getTitle: (index, angle) {
+          if (index >= metrics.length) return const RadarChartTitle(text: '');
+          return RadarChartTitle(text: metrics[index].label, angle: angle);
+        },
+        dataSets: [
+          RadarDataSet(
+            fillColor: c.accent.withValues(alpha: 0.25),
+            borderColor: c.accent,
+            borderWidth: 2,
+            dataEntries: [
+              for (final m in metrics)
+                RadarEntry(value: insight.avgEffects[m] ?? 0),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddDoseButton extends StatelessWidget {
+  const _AddDoseButton({required this.strain});
+
+  final Strain strain;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: SizedBox(
+        width: double.infinity,
+        height: 56,
+        child: ElevatedButton(
+          onPressed: () {
+            Navigator.pop(context);
+            showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+              builder: (_) => AddDosageForm(preselectedStrainId: strain.id),
+            );
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Color(strain.color),
+            foregroundColor: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+          child: const Text(
+            'Add Dose',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ),
+    );
+  }
+}
