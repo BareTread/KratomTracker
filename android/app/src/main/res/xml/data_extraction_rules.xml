@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Backup / data-transfer rules for Herbal Tracker+.
+
+  This is a personal, health-adjacent log. We do NOT want its data silently
+  synced to Google cloud backup or transferred to a new device via the
+  device-to-device migration flow. `android:allowBackup="false"` already
+  disables backup; these rules are the belt-and-suspenders layer for Android
+  12+ (API 31+), excluding every backup domain from both cloud-backup and
+  device-transfer.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>

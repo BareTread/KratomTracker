@@ -1,245 +1,139 @@
-name: Build APK on PR
-
- 
+name: Build & verify
 
 on:
-
-  pull_request:
-
-    branches: [ main, master ]
-
   push:
-
-    branches: [ claude/improve-app-features-011CUoibZq4DEDjVc3jjcQpD ]
-
+    branches: [main, v2-overhaul]
+    tags: ['v*']
+  pull_request:
   workflow_dispatch:
 
- 
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-
   build:
-
-    name: Build Android APK
-
+    name: Analyze, test & build APK
     runs-on: ubuntu-latest
-
- 
+    timeout-minutes: 30
 
     steps:
-
       - name: Checkout code
-
         uses: actions/checkout@v4
 
- 
-
-      - name: Setup Java
-
+      - name: Setup Java 21
         uses: actions/setup-java@v4
-
         with:
-
           distribution: 'temurin'
+          java-version: '21'
 
-          java-version: '17'
-
- 
-
-      - name: Setup Flutter
-
+      - name: Setup Flutter (stable)
         uses: subosito/flutter-action@v2
-
         with:
-
           channel: 'stable'
-
           cache: true
 
- 
-
       - name: Flutter doctor
-
         run: flutter doctor -v
 
- 
-
-      - name: Get dependencies
-
+      - name: Pub get
         run: flutter pub get
 
- 
+      - name: Analyze
+        # --fatal-infos is the goal; the codebase currently has info-level
+        # hits in lib/screens and lib/widgets (owned by other packages and
+        # being edited concurrently), so we gate on --fatal-warnings for now.
+        run: flutter analyze --fatal-warnings
 
-      - name: Build Debug APK
+      - name: Test
+        run: flutter test
 
-        run: flutter build apk --debug
+      - name: Read pubspec version
+        id: ver
+        run: |
+          version=$(awk -F'[:+]' '/^version:/{gsub(/ /,"",$2); print $2}' pubspec.yaml)
+          code=$(awk -F'[:+]' '/^version:/{gsub(/ /,"",$3); print $3}' pubspec.yaml)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Detected version=${version} code=${code}"
 
- 
+      # ---------------------------------------------------------------- signing
+      - name: Decode release keystore
+        id: key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "have_key=false" >> "$GITHUB_OUTPUT"
+            echo "No KEYSTORE_BASE64 secret — will produce a debug-key-signed fallback artifact."
+            exit 0
+          fi
+          keystore="$RUNNER_TEMP/kratomtracker-plus.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$keystore"
+          props="$RUNNER_TEMP/key.properties"
+          {
+            echo "keystore=$keystore"
+            echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}"
+            echo "keyPassword=${{ secrets.KEY_PASSWORD }}"
+            echo "keyAlias=${{ secrets.KEY_ALIAS }}"
+          } > "$props"
+          echo "properties=$props" >> "$GITHUB_OUTPUT"
+          echo "have_key=true" >> "$GITHUB_OUTPUT"
 
-      - name: Build Release APK
-
+      - name: Build release APK (signed)
+        if: steps.key.outputs.have_key == 'true'
+        env:
+          KRATOM_KEYSTORE_PROPERTIES: ${{ steps.key.outputs.properties }}
         run: flutter build apk --release
 
- 
-
-      - name: Build Split APKs (per ABI)
-
-        run: flutter build apk --release --split-per-abi
-
- 
-
-      - name: Rename APKs with version info
-
+      - name: Build APK (unsigned, debug-key fallback)
+        if: steps.key.outputs.have_key != 'true'
         run: |
-
+          echo "::warning::No signing secrets present — building a debug-key-signed artifact, NOT a real release."
+          flutter build apk --debug
+          # Rename so nobody mistakes it for a release build.
           cd build/app/outputs/flutter-apk
+          mv app-debug.apk "kratom-tracker-v${{ steps.ver.outputs.version }}-unsigned-debugkey.apk"
 
-          VERSION=$(grep "version:" ../../../../pubspec.yaml | sed 's/version: //' | tr -d ' ')
+      - name: Stage release artifact name
+        if: steps.key.outputs.have_key == 'true'
+        run: |
+          cd build/app/outputs/flutter-apk
+          cp app-release.apk "kratom-tracker-v${{ steps.ver.outputs.version }}-release.apk"
 
-          mv app-release.apk kratom-tracker-v${VERSION}-release.apk || true
+      - name: Cleanup keystore material
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/kratomtracker-plus.jks" "$RUNNER_TEMP/key.properties" 2>/dev/null || true
 
-          mv app-debug.apk kratom-tracker-v${VERSION}-debug.apk || true
-
-          ls -lh *.apk
-
- 
-
-      - name: Upload Release APK
-
+      # --------------------------------------------------------------- artifacts
+      - name: Upload signed release APK
+        if: steps.key.outputs.have_key == 'true'
         uses: actions/upload-artifact@v4
-
         with:
+          name: kratom-tracker-v${{ steps.ver.outputs.version }}-release-apk
+          path: build/app/outputs/flutter-apk/kratom-tracker-v${{ steps.ver.outputs.version }}-release.apk
+          retention-days: 30
+          if-no-files-found: error
 
-          name: kratom-tracker-release-apk
-
-          path: build/app/outputs/flutter-apk/*-release.apk
-
-          retention-days: 14
-
- 
-
-      - name: Upload Debug APK
-
+      - name: Upload unsigned-debugkey APK
+        if: steps.key.outputs.have_key != 'true'
         uses: actions/upload-artifact@v4
-
         with:
-
-          name: kratom-tracker-debug-apk
-
-          path: build/app/outputs/flutter-apk/*-debug.apk
-
+          name: kratom-tracker-v${{ steps.ver.outputs.version }}-unsigned-debugkey-apk
+          path: |
+            build/app/outputs/flutter-apk/kratom-tracker-v${{ steps.ver.outputs.version }}-unsigned-debugkey.apk
+            build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 14
+          if-no-files-found: warn
 
- 
-
-      - name: Upload Split APKs
-
-        uses: actions/upload-artifact@v4
-
+      # --------------------------------------------------------------- releases
+      - name: Attach APK to GitHub Release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && steps.key.outputs.have_key == 'true'
+        uses: softprops/action-gh-release@v2
         with:
-
-          name: kratom-tracker-split-apks
-
-          path: build/app/outputs/flutter-apk/app-*-release.apk
-
-          retention-days: 14
-
- 
-
-      - name: Comment PR with download links
-
-        if: github.event_name == 'pull_request'
-
-        uses: actions/github-script@v7
-
-        with:
-
-          script: |
-
-            const fs = require('fs');
-
-            const runId = context.runId;
-
-            const repo = context.repo;
-
- 
-
-            const comment = `## 📱 APK Build Complete!
-
- 
-
-            Your KratomTracker **BETA** APKs are ready for testing:
-
- 
-
-            ### 📥 Download APKs:
-
-            - [**Release APK (Recommended)**](https://github.com/${repo.owner}/${repo.repo}/actions/runs/${runId})
-
-            - [Debug APK (Faster install)](https://github.com/${repo.owner}/${repo.repo}/actions/runs/${runId})
-
-            - [Split APKs (Smaller size)](https://github.com/${repo.owner}/${repo.repo}/actions/runs/${runId})
-
- 
-
-            ### ✅ Beta Build Features:
-
-            - **Installs as separate app** (won't replace your production version)
-
-            - App name: "Herbal Tracker Beta"
-
-            - Package: org.kratomtracker.app.beta
-
-            - Version: 1.1.0-beta
-
- 
-
-            ### 📋 Testing Checklist:
-
-            - [ ] Notifications (Enable in Manage, set reminders)
-
-            - [ ] CSV Export (Try all 4 formats)
-
-            - [ ] PDF Report (Generate with date range)
-
-            - [ ] Daily Limit (Set low limit, add dosage)
-
-            - [ ] Advanced Analytics (Check Stats tab)
-
-            - [ ] Tags (Add dosage with tags)
-
-            - [ ] Duplicate Detection (Add same strain twice within 30 min)
-
- 
-
-            ### 📱 Installation:
-
-            1. Click the link above
-
-            2. Scroll to "Artifacts" section at the bottom
-
-            3. Download the APK (Release recommended)
-
-            4. Enable "Install from unknown sources" on your Android device
-
-            5. Install and test alongside your existing app!
-
- 
-
-            **Build triggered by**: ${context.actor}
-
-            **Commit**: ${context.sha.substring(0, 7)}`;
-
- 
-
-            github.rest.issues.createComment({
-
-              issue_number: context.issue.number,
-
-              owner: repo.owner,
-
-              repo: repo.repo,
-
-              body: comment
-
-            });
+          files: build/app/outputs/flutter-apk/kratom-tracker-v${{ steps.ver.outputs.version }}-release.apk
+          fail_on_unmatched_files: true
+          generate_release_notes: true

@@ -1,0 +1,21 @@
+# Herbal Tracker+ — release signing configuration.
+#
+# Copy this file to android/key.properties and fill in the values for your
+# release keystore. The real key.properties is gitignored and must NEVER be
+# committed. Never put a keystore (.jks/.keystore) or any password in the repo.
+#
+# In CI, the workflow writes this file from repository secrets instead.
+#
+# Properties (all four required for a release build):
+keystore=kratomtracker-plus.jks
+storePassword=__REPLACE__
+keyPassword=__REPLACE__
+keyAlias=kratomtracker-plus
+#
+# `keystore` may be an absolute path or relative to android/app/. For a
+# keystore kept outside the repo (recommended), use an absolute path, e.g.:
+#   keystore=/home/you/.android-keystores/kratomtracker-plus.jks
+#
+# Alternatively, set the environment variable KRATOM_KEYSTORE_PROPERTIES to the
+# absolute path of a properties file with these four keys, and leave
+# android/key.properties absent.
