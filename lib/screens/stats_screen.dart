@@ -40,9 +40,9 @@ class StatsScreen extends StatefulWidget {
 class _StatsScreenState extends State<StatsScreen> {
   _Range _range = _Range.thirty;
 
-  // Memoised bundle, recomputed only when the data signature or range changes.
+  // Memoised bundle, recomputed only when provider data or the range changes.
   _StatsBundle? _bundle;
-  ({_Range range, int signature})? _bundleKey;
+  ({_Range range, int stamp})? _bundleKey;
 
   @override
   Widget build(BuildContext context) {
@@ -117,21 +117,12 @@ class _StatsScreenState extends State<StatsScreen> {
   }
 
   _StatsBundle _resolveBundle(KratomProvider provider) {
-    final signature = _dataSignature(provider);
-    final key = (range: _range, signature: signature);
+    final key = (range: _range, stamp: provider.lastMutationStamp);
     if (_bundle != null && _bundleKey == key) return _bundle!;
     final bundle = _StatsBundle.compute(provider, _range);
     _bundle = bundle;
     _bundleKey = key;
     return bundle;
-  }
-
-  int _dataSignature(KratomProvider provider) {
-    var hash = provider.dosages.length ^ provider.strains.length;
-    for (final dose in provider.dosages) {
-      hash ^= dose.timestamp.millisecondsSinceEpoch ^ dose.amount.round();
-    }
-    return hash;
   }
 }
 

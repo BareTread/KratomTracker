@@ -17,19 +17,19 @@ Future<void> main() async {
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
-  runApp(_AppBootstrap(prefs: prefs));
+  runApp(AppBootstrap(prefs: prefs));
 }
 
-class _AppBootstrap extends StatefulWidget {
-  const _AppBootstrap({required this.prefs});
+class AppBootstrap extends StatefulWidget {
+  const AppBootstrap({super.key, required this.prefs});
 
   final SharedPreferences prefs;
 
   @override
-  State<_AppBootstrap> createState() => _AppBootstrapState();
+  State<AppBootstrap> createState() => _AppBootstrapState();
 }
 
-class _AppBootstrapState extends State<_AppBootstrap> {
+class _AppBootstrapState extends State<AppBootstrap> {
   late final ThemeProvider _themeProvider = ThemeProvider(widget.prefs);
   late final Future<KratomProvider> _provider =
       KratomProvider.create(widget.prefs);

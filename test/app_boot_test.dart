@@ -1,0 +1,146 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:kratom_tracker_plus/main.dart' as app;
+import 'package:kratom_tracker_plus/screens/home_screen.dart';
+import 'package:kratom_tracker_plus/theme/app_theme.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('real app boots to home with empty preferences', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+
+    await _bootAndExercise(tester);
+  });
+
+  testWidgets('real app boots with a realistic 18-month dataset',
+      (tester) async {
+    SharedPreferences.setMockInitialValues(_realisticDataset());
+
+    await _bootAndExercise(tester);
+  });
+
+  testWidgets('real app recovers from corrupt persisted values',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'strains': 'not json',
+      'dosages': '[{broken',
+      'settings': '{}',
+    });
+
+    await _bootAndExercise(tester);
+    expect(find.text('No doses recorded'), findsOneWidget);
+  });
+
+  for (final themeCase in [
+    (name: 'light', darkMode: false, brightness: Brightness.light),
+    (name: 'dark', darkMode: true, brightness: Brightness.dark),
+  ]) {
+    testWidgets(
+        'real app boots in ${themeCase.name} theme with AppColors registered',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({'darkMode': themeCase.darkMode});
+
+      await _bootAndExercise(tester);
+
+      final context = tester.element(find.byType(HomeScreen));
+      final theme = Theme.of(context);
+      expect(theme.brightness, themeCase.brightness);
+      expect(theme.extension<AppColors>(), isNotNull);
+    });
+  }
+}
+
+Future<void> _bootAndExercise(WidgetTester tester) async {
+  final prefs = await SharedPreferences.getInstance();
+  await tester.pumpWidget(app.AppBootstrap(prefs: prefs));
+
+  expect(find.byType(CircularProgressIndicator), findsOneWidget);
+  expect(tester.takeException(), isNull);
+
+  await tester.pump(const Duration(seconds: 3));
+  expect(find.byType(HomeScreen), findsOneWidget);
+  await tester.pumpAndSettle(
+    const Duration(milliseconds: 100),
+    EnginePhase.sendSemanticsUpdate,
+    const Duration(seconds: 5),
+  );
+
+  expect(find.byType(HomeScreen), findsOneWidget);
+  expect(find.text('Home'), findsOneWidget);
+  expect(find.byType(ErrorWidget), findsNothing);
+  expect(tester.takeException(), isNull);
+
+  await tester.pump(const Duration(seconds: 5));
+  await tester.pumpAndSettle(
+    const Duration(milliseconds: 100),
+    EnginePhase.sendSemanticsUpdate,
+    const Duration(seconds: 5),
+  );
+
+  expect(find.byType(HomeScreen), findsOneWidget);
+  expect(find.byType(ErrorWidget), findsNothing);
+  expect(tester.takeException(), isNull);
+}
+
+Map<String, Object> _realisticDataset() {
+  final now = DateTime.now();
+  final strains = List.generate(
+    4,
+    (index) => {
+      'id': 'strain-$index',
+      'name': 'Seeded Strain $index',
+      'code': 'S$index',
+      'color': [
+        0xFF00ACC1,
+        0xFF4CAF50,
+        0xFFFF9800,
+        0xFF9C27B0,
+      ][index],
+      'icon': 'Leaf',
+    },
+  );
+  final dosages = List.generate(200, (index) {
+    final daysAgo = (index * 547 / 199).round();
+    return {
+      'id': 'dose-$index',
+      'strainId': 'strain-${index % strains.length}',
+      'amount': 1.0 + (index % 8) * 0.5,
+      'timestamp': now
+          .subtract(Duration(days: daysAgo, hours: index % 12))
+          .toIso8601String(),
+      if (index % 11 == 0) 'notes': 'Seeded note $index',
+    };
+  });
+  final effects = [
+    for (var index = 0; index < dosages.length; index += 9)
+      {
+        'id': 'effect-$index',
+        'dosageId': 'dose-$index',
+        'timestamp': (dosages[index]['timestamp'] as String),
+        'mood': 1 + index % 5,
+        'energy': 1 + (index + 1) % 5,
+        'painRelief': 1 + (index + 2) % 5,
+        'focus': 1 + (index + 3) % 5,
+      },
+  ];
+
+  return {
+    'strains': jsonEncode(strains),
+    'dosages': jsonEncode(dosages),
+    'effects': jsonEncode(effects),
+    'settings': jsonEncode({
+      'enableNotifications': false,
+      'dailyLimit': 12.0,
+      'enableToleranceTracking': true,
+      'toleranceBreakInterval': 14,
+      'trackedEffects': ['mood', 'energy', 'painRelief', 'focus'],
+      'measurementUnit': 'g',
+      'performanceMode': false,
+    }),
+    'user_name': 'Seed User',
+  };
+}

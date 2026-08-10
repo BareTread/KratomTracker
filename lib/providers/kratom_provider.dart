@@ -39,6 +39,7 @@ class KratomProvider with ChangeNotifier {
   DateTime _selectedDate = DateTime.now();
   String? _userName;
   bool _isReady = false;
+  int _lastMutationStamp = 0;
   Future<void> _writeChain = Future<void>.value();
   final Map<DateTime, double> _dailyTotalCache = {};
   List<StrainUsage>? _strainUsageCache;
@@ -59,6 +60,7 @@ class KratomProvider with ChangeNotifier {
   UserSettings get settings => _settings;
   String? get userName => _userName;
   DateTime get selectedDate => _selectedDate;
+  int get lastMutationStamp => _lastMutationStamp;
 
   Strain? getStrain(String id) {
     for (final strain in _strains) {
@@ -106,7 +108,7 @@ class KratomProvider with ChangeNotifier {
 
   void setSelectedDate(DateTime date) {
     _selectedDate = startOfDay(date);
-    notifyListeners();
+    _notifyMutation();
   }
 
   Future<void> addStrain(
@@ -129,7 +131,7 @@ class KratomProvider with ChangeNotifier {
     );
     _invalidateComputedData();
     await _save({_strainsKey: _encodeStrains()});
-    notifyListeners();
+    _notifyMutation();
   }
 
   Future<void> updateStrain(
@@ -154,7 +156,7 @@ class KratomProvider with ChangeNotifier {
     );
     _invalidateComputedData();
     await _save({_strainsKey: _encodeStrains()});
-    notifyListeners();
+    _notifyMutation();
   }
 
   Future<void> deleteStrain(String id) async {
@@ -174,7 +176,7 @@ class KratomProvider with ChangeNotifier {
       _dosagesKey: _encodeDosages(),
       _effectsKey: _encodeEffects(),
     });
-    notifyListeners();
+    _notifyMutation();
   }
 
   /// Returns the created dosage so callers can act on it (e.g. offer to log
@@ -196,7 +198,7 @@ class KratomProvider with ChangeNotifier {
     _dosages.add(dosage);
     _invalidateComputedData();
     await _save({_dosagesKey: _encodeDosages()});
-    notifyListeners();
+    _notifyMutation();
     return dosage;
   }
 
@@ -219,7 +221,7 @@ class KratomProvider with ChangeNotifier {
     );
     _invalidateComputedData();
     await _save({_dosagesKey: _encodeDosages()});
-    notifyListeners();
+    _notifyMutation();
   }
 
   Future<void> deleteDosage(String id) async {
@@ -233,7 +235,7 @@ class KratomProvider with ChangeNotifier {
       _dosagesKey: _encodeDosages(),
       _effectsKey: _encodeEffects(),
     });
-    notifyListeners();
+    _notifyMutation();
   }
 
   Future<void> addEffect(Effect e) async {
@@ -243,7 +245,7 @@ class KratomProvider with ChangeNotifier {
     _validateEffect(e);
     _effects.add(e);
     await _save({_effectsKey: _encodeEffects()});
-    notifyListeners();
+    _notifyMutation();
   }
 
   Future<void> updateEffect(Effect e) async {
@@ -252,7 +254,7 @@ class KratomProvider with ChangeNotifier {
     _validateEffect(e);
     _effects[index] = e;
     await _save({_effectsKey: _encodeEffects()});
-    notifyListeners();
+    _notifyMutation();
   }
 
   Future<void> deleteEffect(String id) async {
@@ -261,7 +263,7 @@ class KratomProvider with ChangeNotifier {
     }
     _effects.removeWhere((effect) => effect.id == id);
     await _save({_effectsKey: _encodeEffects()});
-    notifyListeners();
+    _notifyMutation();
   }
 
   Future<void> updateSettings(UserSettings settings) async {
@@ -274,7 +276,7 @@ class KratomProvider with ChangeNotifier {
     }
     _settings = settings;
     await _save({_settingsKey: jsonEncode(_settings.toJson())});
-    notifyListeners();
+    _notifyMutation();
   }
 
   Future<void> updateUserName(String? name) async {
@@ -287,7 +289,7 @@ class KratomProvider with ChangeNotifier {
         await _prefs.setString(_userNameKey, _userName!);
       }
     });
-    notifyListeners();
+    _notifyMutation();
   }
 
   Future<String> exportJson() async {
@@ -356,7 +358,7 @@ class KratomProvider with ChangeNotifier {
       });
     }
 
-    notifyListeners();
+    _notifyMutation();
   }
 
   Future<void> clearAllData() async {
@@ -372,7 +374,7 @@ class KratomProvider with ChangeNotifier {
     _effects = [];
     _settings = settings;
     _invalidateComputedData();
-    notifyListeners();
+    _notifyMutation();
   }
 
   List<Strain> getRecommendedStrains({
@@ -426,7 +428,7 @@ class KratomProvider with ChangeNotifier {
   Future<void> refreshData() async {
     await _writeChain;
     await _loadData();
-    notifyListeners();
+    _notifyMutation();
   }
 
   Future<void> _loadData() async {
@@ -572,6 +574,11 @@ class KratomProvider with ChangeNotifier {
     _dailyTotalCache.clear();
     _strainUsageCache = null;
     _strainUsageCacheDay = null;
+  }
+
+  void _notifyMutation() {
+    _lastMutationStamp++;
+    notifyListeners();
   }
 }
 

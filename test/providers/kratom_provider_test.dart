@@ -39,6 +39,28 @@ void main() {
     expect(provider.dosages, hasLength(1));
   });
 
+  test('mutation stamp increments for mutations, import, clear, and refresh',
+      () async {
+    final provider = await _providerWithFixture();
+    expect(provider.lastMutationStamp, 0);
+
+    provider.setSelectedDate(DateTime(2025, 2, 1));
+    expect(provider.lastMutationStamp, 1);
+
+    await provider.addStrain('Second', 'TWO', 2, 'Plant');
+    expect(provider.lastMutationStamp, 2);
+
+    final payload = _parsePayload(_importJson(includeExistingId: false));
+    await provider.commitImport(payload, mode: ImportMode.replace);
+    expect(provider.lastMutationStamp, 3);
+
+    await provider.clearAllData();
+    expect(provider.lastMutationStamp, 4);
+
+    await provider.refreshData();
+    expect(provider.lastMutationStamp, 5);
+  });
+
   test('replace import replaces existing records', () async {
     final provider = await _providerWithFixture();
     final payload = _parsePayload(_importJson(includeExistingId: false));

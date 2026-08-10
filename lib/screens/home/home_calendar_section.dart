@@ -298,6 +298,7 @@ class HomeCalendarSection extends StatelessWidget {
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 7,
+                      mainAxisExtent: 48,
                     ),
                     itemCount: leading + days,
                     itemBuilder: (_, index) {
