@@ -177,25 +177,27 @@ class KratomProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> addDosage(
+  /// Returns the created dosage so callers can act on it (e.g. offer to log
+  /// its effects) without having to diff the list to find the new id.
+  Future<Dosage> addDosage(
     String strainId,
     double amount,
     DateTime timestamp, {
     String? notes,
   }) async {
     _validateDosage(strainId, amount);
-    _dosages.add(
-      Dosage(
-        id: _uuid.v4(),
-        strainId: strainId,
-        amount: amount,
-        timestamp: timestamp,
-        notes: notes,
-      ),
+    final dosage = Dosage(
+      id: _uuid.v4(),
+      strainId: strainId,
+      amount: amount,
+      timestamp: timestamp,
+      notes: notes,
     );
+    _dosages.add(dosage);
     _invalidateComputedData();
     await _save({_dosagesKey: _encodeDosages()});
     notifyListeners();
+    return dosage;
   }
 
   Future<void> updateDosage({

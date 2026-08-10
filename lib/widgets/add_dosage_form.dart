@@ -434,8 +434,7 @@ class _DosageDetailsFormState extends State<_DosageDetailsForm> {
 
     setState(() => _saving = true);
     try {
-      final beforeIds = provider.dosages.map((d) => d.id).toSet();
-      await provider.addDosage(
+      final saved = await provider.addDosage(
         widget.strainId,
         amount,
         _selectedDateTime,
@@ -443,19 +442,11 @@ class _DosageDetailsFormState extends State<_DosageDetailsForm> {
       );
       await HapticFeedback.lightImpact();
 
-      String? dosageId;
-      for (final dose in provider.dosages) {
-        if (!beforeIds.contains(dose.id)) {
-          dosageId = dose.id;
-          break;
-        }
-      }
-
       if (!mounted) return;
       navigator.pop();
 
-      if (dosageId != null && messenger != null) {
-        final savedId = dosageId;
+      if (messenger != null) {
+        final savedId = saved.id;
         messenger.showSnackBar(
           SnackBar(
             content: const Text('How did it feel?'),
