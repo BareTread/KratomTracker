@@ -1,293 +1,201 @@
+import 'dart:collection';
 import 'dart:convert';
-import 'package:flutter/material.dart';
+
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
-import '../models/strain.dart';
+
+import '../data/backup_codec.dart';
+import '../domain/date_utils.dart';
+import '../domain/strain_usage.dart';
 import '../models/dosage.dart';
 import '../models/effect.dart';
 import '../models/settings.dart';
+import '../models/strain.dart';
+
+enum ImportMode { replace, merge }
 
 class KratomProvider with ChangeNotifier {
-  final SharedPreferences _prefs;
-  final _uuid = const Uuid();
-  late List<Strain> _strains = [];
-  late List<Dosage> _dosages = [];
-  late List<Effect> _effects = [];
-  late UserSettings _settings;
-  DateTime _selectedDate = DateTime.now();
-  String? _userName;
+  KratomProvider._(this._prefs);
 
   static const int currentBackupVersion = 1;
+  static const _strainsKey = 'strains';
+  static const _dosagesKey = 'dosages';
+  static const _effectsKey = 'effects';
+  static const _settingsKey = 'settings';
+  static const _userNameKey = 'user_name';
+  static const _tempPrefix = '_kratom_tracker_tmp_';
 
-  // Add effect categories
-  static const Map<String, List<String>> effectCategories = {
-    'energy': ['Low', 'Moderate', 'High'],
-    'mood': ['Relaxed', 'Balanced', 'Euphoric'],
-    'pain_relief': ['Mild', 'Moderate', 'Strong'],
-    'focus': ['Scattered', 'Clear', 'Sharp'],
-    'duration': ['2-3 hours', '3-4 hours', '4+ hours'],
-  };
+  final SharedPreferences _prefs;
+  final Uuid _uuid = const Uuid();
+  List<Strain> _strains = [];
+  List<Dosage> _dosages = [];
+  List<Effect> _effects = [];
+  UserSettings _settings = const UserSettings(
+    enableNotifications: false,
+    toleranceBreakInterval: 7,
+    trackedEffects: [],
+  );
+  DateTime _selectedDate = DateTime.now();
+  String? _userName;
+  bool _isReady = false;
+  Future<void> _writeChain = Future<void>.value();
+  final Map<DateTime, double> _dailyTotalCache = {};
+  List<StrainUsage>? _strainUsageCache;
+  DateTime? _strainUsageCacheDay;
 
-  // Add recommendation weights
-  final Map<String, double> _recommendationWeights = {
-    'energy': 0.3,
-    'mood': 0.3,
-    'pain_relief': 0.2,
-    'focus': 0.2,
-  };
-
-  bool _isLoading = false;
-  bool get isLoading => _isLoading;
-
-  KratomProvider(this._prefs) {
-    // Initialize settings with defaults
-    _settings = UserSettings(
-      enableNotifications: false,
-      morningReminder: null,
-      eveningReminder: null,
-      dailyLimit: 0.0,
-      enableToleranceTracking: false,
-      toleranceBreakInterval: 7,
-      trackedEffects: const [],
-      darkMode: true,
-      measurementUnit: 'g',
-    );
-    _loadData();
-    _userName = _prefs.getString('user_name');
+  static Future<KratomProvider> create(SharedPreferences prefs) async {
+    final provider = KratomProvider._(prefs);
+    await provider._loadData();
+    provider._isReady = true;
+    return provider;
   }
 
-  List<Strain> get strains => _strains;
-  List<Dosage> get dosages => _dosages;
-  DateTime get selectedDate => _selectedDate;
+  bool get isReady => _isReady;
+  bool get isLoading => !_isReady;
+  List<Strain> get strains => UnmodifiableListView(_strains);
+  List<Dosage> get dosages => UnmodifiableListView(_dosages);
+  List<Effect> get effects => UnmodifiableListView(_effects);
+  UserSettings get settings => _settings;
   String? get userName => _userName;
+  DateTime get selectedDate => _selectedDate;
+
+  Strain? getStrain(String id) {
+    for (final strain in _strains) {
+      if (strain.id == id) return strain;
+    }
+    return null;
+  }
+
+  String strainLabel(String id) => getStrain(id)?.name ?? 'Unknown strain';
 
   List<Dosage> getDosagesForDate(DateTime date) {
-    // Clean the input date
-    final cleanDate = DateTime(date.year, date.month, date.day);
-    
-    return _dosages
-      .where((dosage) {
-        final doseDate = DateTime(
-          dosage.timestamp.year,
-          dosage.timestamp.month,
-          dosage.timestamp.day,
-        );
-        return doseDate.isAtSameMomentAs(cleanDate);
-      })
-      .toList()
+    final result = _dosages
+        .where((dose) => inRangeInclusive(dose.timestamp, date, date))
+        .toList()
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    return result;
   }
 
   List<Dosage> getDosagesForDateRange(DateTime start, DateTime end) {
-    return _dosages.where((dosage) {
-      return dosage.timestamp.isAfter(start) && 
-             dosage.timestamp.isBefore(end.add(const Duration(days: 1)));
-    }).toList();
+    return _dosages
+        .where((dose) => inRangeInclusive(dose.timestamp, start, end))
+        .toList(growable: false);
   }
+
+  double totalForDate(DateTime date) {
+    final day = startOfDay(date);
+    return _dailyTotalCache.putIfAbsent(
+      day,
+      () => getDosagesForDate(day).fold(0, (sum, dose) => sum + dose.amount),
+    );
+  }
+
+  List<StrainUsage> get strainUsage {
+    final today = startOfDay(DateTime.now());
+    if (_strainUsageCache == null || _strainUsageCacheDay != today) {
+      _strainUsageCache = computeStrainUsage(_strains, _dosages);
+      _strainUsageCacheDay = today;
+    }
+    return UnmodifiableListView(_strainUsageCache!);
+  }
+
+  List<Effect> effectsForDosage(String dosageId) => _effects
+      .where((effect) => effect.dosageId == dosageId)
+      .toList(growable: false);
 
   void setSelectedDate(DateTime date) {
-    _selectedDate = DateTime(date.year, date.month, date.day);
+    _selectedDate = startOfDay(date);
     notifyListeners();
   }
 
-  Future<void> addStrain(String name, String code, int color, String icon) async {
-    final strain = Strain(
-      id: _uuid.v4(),
-      name: name,
-      code: code,
-      color: color,
-      icon: icon,
-    );
-    _strains.add(strain);
-    await _saveStrains();
-    notifyListeners();
-  }
-
-  Future<void> addDosage(String strainId, double amount, DateTime timestamp, [String? notes]) async {
-    final dosage = Dosage(
-      id: _uuid.v4(),
-      strainId: strainId,
-      amount: amount,
-      timestamp: timestamp,
-      notes: notes,
-    );
-    _dosages.add(dosage);
-    await _saveDosages();
-    notifyListeners();
-  }
-
-  Future<void> _loadData() async {
-    try {
-      _isLoading = true;
-      notifyListeners();
-      
-      final strainData = _prefs.getString('strains');
-      final dosageData = _prefs.getString('dosages');
-      final effectData = _prefs.getString('effects');
-      final settingsData = _prefs.getString('settings');
-
-      if (strainData != null) {
-        _strains = (jsonDecode(strainData) as List)
-            .map((e) => Strain.fromJson(e))
-            .toList();
-      }
-      if (dosageData != null) {
-        _dosages = (jsonDecode(dosageData) as List)
-            .map((e) => Dosage.fromJson(e))
-            .toList();
-      }
-      if (effectData != null) {
-        _effects = (jsonDecode(effectData) as List)
-            .map((e) => Effect.fromJson(e))
-            .toList();
-      }
-      if (settingsData != null) {
-        _settings = UserSettings.fromJson(jsonDecode(settingsData));
-      }
-    } catch (e) {
-      debugPrint('Error loading data: $e');
-    } finally {
-      _isLoading = false;
-      notifyListeners();
+  Future<void> addStrain(
+    String name,
+    String code,
+    int color,
+    String icon,
+  ) async {
+    if (name.trim().isEmpty || code.trim().isEmpty || icon.trim().isEmpty) {
+      throw ArgumentError('Strain name, code, and icon must not be empty');
     }
-  }
-
-  Future<void> _saveStrains() async {
-    final strainsJson = json.encode(_strains.map((s) => s.toJson()).toList());
-    await _prefs.setString('strains', strainsJson);
-  }
-
-  Future<void> _saveDosages() async {
-    final dosagesJson = json.encode(_dosages.map((d) => d.toJson()).toList());
-    await _prefs.setString('dosages', dosagesJson);
-  }
-
-  Future<void> _saveEffects() async {
-    final effectsJson = json.encode(_effects.map((e) => e.toJson()).toList());
-    await _prefs.setString('effects', effectsJson);
-  }
-
-  Future<void> _saveSettings() async {
-    final settingsJson = jsonEncode(_settings.toJson());
-    await _prefs.setString('settings', settingsJson);
-  }
-
-  Future<void> clearAllData() async {
-    _strains.clear();
-    _dosages.clear();
-    _effects.clear();
-    _settings = UserSettings(); // Reset to defaults
-
-    await Future.wait([
-      _saveStrains(),
-      _saveDosages(),
-      _saveEffects(),
-      _saveSettings(),
-    ]);
-
+    _strains.add(
+      Strain(
+        id: _uuid.v4(),
+        name: name.trim(),
+        code: code.trim(),
+        color: color,
+        icon: icon,
+      ),
+    );
+    _invalidateComputedData();
+    await _save({_strainsKey: _encodeStrains()});
     notifyListeners();
   }
 
-  Future<void> deleteStrain(String strainId) async {
-    _strains.removeWhere((s) => s.id == strainId);
-    // Remove all dosages associated with this strain
-    _dosages.removeWhere((d) => d.strainId == strainId);
-    await _saveStrains();
-    await _saveDosages();
-    notifyListeners();
-  }
-
-  Future<void> updateStrain(String id, {
+  Future<void> updateStrain(
+    String id, {
     String? name,
     String? code,
     int? color,
     String? icon,
   }) async {
-    final index = _strains.indexWhere((s) => s.id == id);
-    if (index != -1) {
-      final strain = _strains[index];
-      _strains[index] = Strain(
-        id: strain.id,
-        name: name ?? strain.name,
-        code: code ?? strain.code,
-        color: color ?? strain.color,
-        icon: icon ?? strain.icon,
-      );
-      await _saveStrains();
-      notifyListeners();
+    final index = _strains.indexWhere((strain) => strain.id == id);
+    if (index < 0) throw ArgumentError.value(id, 'id', 'unknown strain');
+    if (name != null && name.trim().isEmpty ||
+        code != null && code.trim().isEmpty ||
+        icon != null && icon.trim().isEmpty) {
+      throw ArgumentError('Strain name, code, and icon must not be empty');
     }
+    _strains[index] = _strains[index].copyWith(
+      name: name?.trim(),
+      code: code?.trim(),
+      color: color,
+      icon: icon,
+    );
+    _invalidateComputedData();
+    await _save({_strainsKey: _encodeStrains()});
+    notifyListeners();
   }
 
-  // Export data as JSON string
-  Future<String> exportData() async {
-    try {
-      final data = {
-        'version': currentBackupVersion,
-        'timestamp': DateTime.now().toIso8601String(),
-        'strains': _strains.map((s) => s.toJson()).toList(),
-        'dosages': _dosages.map((d) => d.toJson()).toList(),
-        'effects': _effects.map((e) => e.toJson()).toList(),
-        'settings': _settings.toJson(),
-      };
-      
-      return jsonEncode(data);
-    } catch (e) {
-      debugPrint('Error exporting data: $e');
-      rethrow;
+  Future<void> deleteStrain(String id) async {
+    if (!_strains.any((strain) => strain.id == id)) {
+      throw ArgumentError.value(id, 'id', 'unknown strain');
     }
+    final dosageIds = _dosages
+        .where((dose) => dose.strainId == id)
+        .map((dose) => dose.id)
+        .toSet();
+    _strains.removeWhere((strain) => strain.id == id);
+    _dosages.removeWhere((dose) => dose.strainId == id);
+    _effects.removeWhere((effect) => dosageIds.contains(effect.dosageId));
+    _invalidateComputedData();
+    await _save({
+      _strainsKey: _encodeStrains(),
+      _dosagesKey: _encodeDosages(),
+      _effectsKey: _encodeEffects(),
+    });
+    notifyListeners();
   }
 
-  // Import data from JSON string
-  Future<void> importData(String jsonData) async {
-    try {
-      final data = jsonDecode(jsonData);
-      
-      // Version check
-      final version = data['version'] ?? 1;
-      if (version > currentBackupVersion) {
-        throw Exception('Unsupported backup version');
-      }
-
-      // Clear existing data
-      _strains.clear();
-      _dosages.clear();
-      _effects.clear();
-
-      // Import data
-      if (data['strains'] != null) {
-        _strains = (data['strains'] as List)
-            .map((s) => Strain.fromJson(s))
-            .toList();
-      }
-      
-      if (data['dosages'] != null) {
-        _dosages = (data['dosages'] as List)
-            .map((d) => Dosage.fromJson(d))
-            .toList();
-      }
-      
-      if (data['effects'] != null) {
-        _effects = (data['effects'] as List)
-            .map((e) => Effect.fromJson(e))
-            .toList();
-      }
-
-      if (data['settings'] != null) {
-        _settings = UserSettings.fromJson(data['settings']);
-      }
-
-      // Save all imported data
-      await Future.wait([
-        _saveStrains(),
-        _saveDosages(),
-        _saveEffects(),
-        _saveSettings(),
-      ]);
-
-      notifyListeners();
-    } catch (e) {
-      throw Exception('Failed to import data: $e');
-    }
+  Future<void> addDosage(
+    String strainId,
+    double amount,
+    DateTime timestamp, {
+    String? notes,
+  }) async {
+    _validateDosage(strainId, amount);
+    _dosages.add(
+      Dosage(
+        id: _uuid.v4(),
+        strainId: strainId,
+        amount: amount,
+        timestamp: timestamp,
+        notes: notes,
+      ),
+    );
+    _invalidateComputedData();
+    await _save({_dosagesKey: _encodeDosages()});
+    notifyListeners();
   }
 
   Future<void> updateDosage({
@@ -297,29 +205,171 @@ class KratomProvider with ChangeNotifier {
     required DateTime timestamp,
     String? notes,
   }) async {
-    final index = _dosages.indexWhere((d) => d.id == id);
-    if (index != -1) {
-      _dosages[index] = Dosage(
-        id: id,
-        strainId: strainId,
-        amount: amount,
-        timestamp: timestamp,
-        notes: notes,
-      );
-      await _saveDosages();
-      notifyListeners();
-    }
-  }
-
-  Future<void> deleteDosage(String id) async {
-    _dosages.removeWhere((d) => d.id == id);
-    await _saveDosages();
+    final index = _dosages.indexWhere((dose) => dose.id == id);
+    if (index < 0) throw ArgumentError.value(id, 'id', 'unknown dosage');
+    _validateDosage(strainId, amount);
+    _dosages[index] = Dosage(
+      id: id,
+      strainId: strainId,
+      amount: amount,
+      timestamp: timestamp,
+      notes: notes,
+    );
+    _invalidateComputedData();
+    await _save({_dosagesKey: _encodeDosages()});
     notifyListeners();
   }
 
-  Future<void> addEffect(Effect effect) async {
-    _effects.add(effect);
-    await _saveEffects();
+  Future<void> deleteDosage(String id) async {
+    if (!_dosages.any((dose) => dose.id == id)) {
+      throw ArgumentError.value(id, 'id', 'unknown dosage');
+    }
+    _dosages.removeWhere((dose) => dose.id == id);
+    _effects.removeWhere((effect) => effect.dosageId == id);
+    _invalidateComputedData();
+    await _save({
+      _dosagesKey: _encodeDosages(),
+      _effectsKey: _encodeEffects(),
+    });
+    notifyListeners();
+  }
+
+  Future<void> addEffect(Effect e) async {
+    if (_effects.any((effect) => effect.id == e.id)) {
+      throw ArgumentError.value(e.id, 'e.id', 'duplicate effect');
+    }
+    _validateEffect(e);
+    _effects.add(e);
+    await _save({_effectsKey: _encodeEffects()});
+    notifyListeners();
+  }
+
+  Future<void> updateEffect(Effect e) async {
+    final index = _effects.indexWhere((effect) => effect.id == e.id);
+    if (index < 0) throw ArgumentError.value(e.id, 'e.id', 'unknown effect');
+    _validateEffect(e);
+    _effects[index] = e;
+    await _save({_effectsKey: _encodeEffects()});
+    notifyListeners();
+  }
+
+  Future<void> deleteEffect(String id) async {
+    if (!_effects.any((effect) => effect.id == id)) {
+      throw ArgumentError.value(id, 'id', 'unknown effect');
+    }
+    _effects.removeWhere((effect) => effect.id == id);
+    await _save({_effectsKey: _encodeEffects()});
+    notifyListeners();
+  }
+
+  Future<void> updateSettings(UserSettings settings) async {
+    if (!settings.dailyLimit.isFinite || settings.dailyLimit < 0) {
+      throw ArgumentError.value(
+        settings.dailyLimit,
+        'settings.dailyLimit',
+        'must be finite and non-negative',
+      );
+    }
+    _settings = settings;
+    await _save({_settingsKey: jsonEncode(_settings.toJson())});
+    notifyListeners();
+  }
+
+  Future<void> updateUserName(String? name) async {
+    final normalized = name?.trim();
+    _userName = normalized == null || normalized.isEmpty ? null : normalized;
+    await _enqueueWrite(() async {
+      if (_userName == null) {
+        await _prefs.remove(_userNameKey);
+      } else {
+        await _prefs.setString(_userNameKey, _userName!);
+      }
+    });
+    notifyListeners();
+  }
+
+  Future<String> exportJson() async {
+    return jsonEncode({
+      'version': currentBackupVersion,
+      'timestamp': DateTime.now().toIso8601String(),
+      'strains': _strains.map((strain) => strain.toJson()).toList(),
+      'dosages': _dosages.map((dose) => dose.toJson()).toList(),
+      'effects': _effects.map((effect) => effect.toJson()).toList(),
+      'settings': _settings.toJson(),
+      if (_userName != null) 'userName': _userName,
+    });
+  }
+
+  Future<BackupSummary> previewImport(String jsonText) async {
+    final result = parseBackup(jsonText);
+    return switch (result) {
+      BackupOk(:final summary) => summary,
+      BackupError(:final message, :final details) =>
+        throw FormatException([message, ...details].join('\n')),
+    };
+  }
+
+  Future<void> commitImport(
+    BackupPayload p, {
+    required ImportMode mode,
+  }) async {
+    _validatePayload(p);
+
+    final nextStrains = mode == ImportMode.replace
+        ? List<Strain>.of(p.strains)
+        : _mergeById(_strains, p.strains, (strain) => strain.id);
+    final nextDosages = mode == ImportMode.replace
+        ? List<Dosage>.of(p.dosages)
+        : _mergeById(_dosages, p.dosages, (dose) => dose.id);
+    final nextEffects = mode == ImportMode.replace
+        ? List<Effect>.of(p.effects)
+        : _mergeById(_effects, p.effects, (effect) => effect.id);
+    final nextSettings =
+        mode == ImportMode.merge ? _settings : p.settings ?? _settings;
+    final nextUserName =
+        mode == ImportMode.merge ? _userName : p.userName ?? _userName;
+
+    final previousUserName = _userName;
+    _strains = nextStrains;
+    _dosages = nextDosages;
+    _effects = nextEffects;
+    _settings = nextSettings;
+    _userName = nextUserName;
+    _invalidateComputedData();
+
+    final values = {
+      _strainsKey: jsonEncode(nextStrains.map((e) => e.toJson()).toList()),
+      _dosagesKey: jsonEncode(nextDosages.map((e) => e.toJson()).toList()),
+      _effectsKey: jsonEncode(nextEffects.map((e) => e.toJson()).toList()),
+      _settingsKey: jsonEncode(nextSettings.toJson()),
+    };
+    await _save(values);
+    if (nextUserName != previousUserName) {
+      await _enqueueWrite(() async {
+        if (nextUserName == null) {
+          await _prefs.remove(_userNameKey);
+        } else {
+          await _prefs.setString(_userNameKey, nextUserName);
+        }
+      });
+    }
+
+    notifyListeners();
+  }
+
+  Future<void> clearAllData() async {
+    final settings = const UserSettings();
+    await _save({
+      _strainsKey: '[]',
+      _dosagesKey: '[]',
+      _effectsKey: '[]',
+      _settingsKey: jsonEncode(settings.toJson()),
+    });
+    _strains = [];
+    _dosages = [];
+    _effects = [];
+    _settings = settings;
+    _invalidateComputedData();
     notifyListeners();
   }
 
@@ -327,213 +377,210 @@ class KratomProvider with ChangeNotifier {
     required Map<String, int> desiredEffects,
     int limit = 3,
   }) {
-    // Calculate strain scores based on past effects
-    Map<String, double> strainScores = {};
-    
-    for (var strain in _strains) {
-      double score = 0;
-      var strainEffects = _effects
-          .where((e) => 
-              _dosages.firstWhere((d) => d.id == e.dosageId).strainId == strain.id)
-          .toList();
+    if (limit < 0) throw ArgumentError.value(limit, 'limit');
+    const weights = {
+      EffectMetric.energy: 0.3,
+      EffectMetric.mood: 0.3,
+      EffectMetric.painRelief: 0.2,
+      EffectMetric.focus: 0.2,
+      EffectMetric.anxiety: 0.25,
+    };
+    final dosageById = {for (final dose in _dosages) dose.id: dose};
+    final scores = <String, double>{};
 
+    for (final strain in _strains) {
+      final strainEffects = _effects.where((effect) {
+        final dose = dosageById[effect.dosageId];
+        return dose != null && dose.strainId == strain.id;
+      }).toList(growable: false);
       if (strainEffects.isEmpty) continue;
 
-      // Calculate average effect scores for this strain
-      Map<String, double> avgEffects = {};
-      for (var category in effectCategories.keys) {
-        var categoryEffects = strainEffects
-            .map((e) => e.toJson()[category])
+      var score = 0.0;
+      for (final desired in desiredEffects.entries) {
+        final normalizedKey =
+            desired.key == 'pain_relief' ? 'painRelief' : desired.key;
+        final metric = EffectMetric.values
+            .where((candidate) => candidate.key == normalizedKey)
+            .firstOrNull;
+        if (metric == null) continue;
+        final values = strainEffects
+            .map(metric.valueOf)
             .whereType<int>()
-            .toList();
-        if (categoryEffects.isNotEmpty) {
-          avgEffects[category] = categoryEffects.reduce((a, b) => a + b) / 
-              categoryEffects.length;
-        }
+            .toList(growable: false);
+        if (values.isEmpty) continue;
+        final average = values.reduce((a, b) => a + b) / values.length;
+        score += (5 - (average - desired.value).abs()) * weights[metric]!;
       }
-
-      // Compare with desired effects
-      for (var entry in desiredEffects.entries) {
-        if (avgEffects.containsKey(entry.key)) {
-          double difference = (avgEffects[entry.key]! - entry.value).abs();
-          score += (5 - difference) * (_recommendationWeights[entry.key] ?? 0.25);
-        }
-      }
-
-      strainScores[strain.id] = score;
+      scores[strain.id] = score;
     }
 
-    // Sort strains by score and return top recommendations
-    return _strains
-        .where((s) => strainScores.containsKey(s.id))
+    final sorted = _strains
+        .where((strain) => scores.containsKey(strain.id))
         .toList()
-        ..sort((a, b) => strainScores[b.id]!.compareTo(strainScores[a.id]!))
-        ..take(limit);
-  }
-
-  Map<String, dynamic> getStrainAnalytics(String strainId) {
-    var strainDosages = _dosages.where((d) => d.strainId == strainId).toList();
-    var strainEffects = _effects
-        .where((e) => strainDosages.any((d) => d.id == e.dosageId))
-        .toList();
-
-    // Calculate average effects
-    Map<String, double> avgEffects = {};
-    for (var category in effectCategories.keys) {
-      var categoryEffects = strainEffects
-          .map((e) => e.toJson()[category])
-          .whereType<int>()
-          .toList();
-      if (categoryEffects.isNotEmpty) {
-        avgEffects[category] = categoryEffects.reduce((a, b) => a + b) / 
-            categoryEffects.length;
-      }
-    }
-
-    // Calculate optimal dosage range
-    var amounts = strainDosages.map((d) => d.amount).toList();
-    var optimalRange = amounts.isEmpty ? null : {
-      'min': amounts.reduce((a, b) => a < b ? a : b),
-      'max': amounts.reduce((a, b) => a > b ? a : b),
-      'avg': amounts.reduce((a, b) => a + b) / amounts.length,
-    };
-
-    return {
-      'averageEffects': avgEffects,
-      'optimalDosage': optimalRange,
-      'totalUses': strainDosages.length,
-      'effectivenessScore': avgEffects.isEmpty ? 0 : 
-          avgEffects.values.reduce((a, b) => a + b) / avgEffects.length,
-    };
-  }
-
-  // Add validation method
-  bool validateBackup(String jsonData) {
-    try {
-      final data = jsonDecode(jsonData);
-      return data['version'] != null &&
-             data['timestamp'] != null &&
-             data['strains'] != null &&
-             data['dosages'] != null &&
-             data['effects'] != null &&
-             data['settings'] != null;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  // Add method to get backup info
-  Map<String, dynamic> getBackupInfo(String jsonData) {
-    final data = jsonDecode(jsonData);
-    return {
-      'timestamp': DateTime.parse(data['timestamp']),
-      'strainCount': (data['strains'] as List).length,
-      'dosageCount': (data['dosages'] as List).length,
-      'effectCount': (data['effects'] as List).length,
-    };
-  }
-
-  // Add memory optimization
-  static const int _maxCacheSize = 100;
-  
-  // Implement LRU cache
-  final Map<String, MapEntry<DateTime, Strain>> _strainCache = {};
-  
-  Strain getStrain(String strainId) {
-    // Clean old cache entries if needed
-    if (_strainCache.length > _maxCacheSize) {
-      final sortedEntries = _strainCache.entries.toList()
-        ..sort((a, b) => a.value.key.compareTo(b.value.key));
-      for (var i = 0; i < _maxCacheSize / 2; i++) {
-        _strainCache.remove(sortedEntries[i].key);
-      }
-    }
-
-    // Update or add cache entry
-    if (_strainCache.containsKey(strainId)) {
-      final strain = _strainCache[strainId]!.value;
-      _strainCache[strainId] = MapEntry(DateTime.now(), strain);
-      return strain;
-    }
-
-    final strain = _strains.firstWhere(
-      (s) => s.id == strainId,
-      orElse: () => throw Exception('Strain not found'),
-    );
-    _strainCache[strainId] = MapEntry(DateTime.now(), strain);
-    return strain;
-  }
-
-  // Add settings getter and update method
-  UserSettings get settings => _settings;
-
-  Future<void> updateSettings({
-    bool? darkMode,
-    bool? enableNotifications,
-    TimeOfDay? morningReminder,
-    TimeOfDay? eveningReminder,
-    double? dailyLimit,
-    bool? enableToleranceTracking,
-    int? toleranceBreakInterval,
-    List<String>? trackedEffects,
-    String? measurementUnit,
-  }) async {
-    _settings = UserSettings(
-      darkMode: darkMode ?? _settings.darkMode,
-      enableNotifications: enableNotifications ?? _settings.enableNotifications,
-      morningReminder: morningReminder ?? _settings.morningReminder,
-      eveningReminder: eveningReminder ?? _settings.eveningReminder,
-      dailyLimit: dailyLimit ?? _settings.dailyLimit,
-      enableToleranceTracking: enableToleranceTracking ?? _settings.enableToleranceTracking,
-      toleranceBreakInterval: toleranceBreakInterval ?? _settings.toleranceBreakInterval,
-      trackedEffects: trackedEffects ?? _settings.trackedEffects,
-      measurementUnit: measurementUnit ?? _settings.measurementUnit,
-    );
-    await _saveSettings();
-    notifyListeners();
-  }
-
-  // Add backup methods
-  Future<Map<String, dynamic>> createBackup() async {
-    return {
-      'version': currentBackupVersion,
-      'timestamp': DateTime.now().toIso8601String(),
-      'strains': _strains.map((s) => s.toJson()).toList(),
-      'dosages': _dosages.map((d) => d.toJson()).toList(),
-      'effects': _effects.map((e) => e.toJson()).toList(),
-      'settings': _settings.toJson(),
-    };
-  }
-
-  Future<void> restoreBackup(String jsonData) async {
-    final data = jsonDecode(jsonData);
-    _strains = (data['strains'] as List).map((e) => Strain.fromJson(e)).toList();
-    _dosages = (data['dosages'] as List).map((e) => Dosage.fromJson(e)).toList();
-    _effects = (data['effects'] as List).map((e) => Effect.fromJson(e)).toList();
-    _settings = UserSettings.fromJson(data['settings']);
-    
-    await Future.wait([
-      _saveStrains(),
-      _saveDosages(),
-      _saveEffects(),
-      _saveSettings(),
-    ]);
-    
-    notifyListeners();
-  }
-
-  Future<void> updateUserName(String? name) async {
-    _userName = name;
-    notifyListeners();
-    // Save to SharedPreferences
-    if (name != null) {
-      await _prefs.setString('user_name', name);
-    } else {
-      await _prefs.remove('user_name');
-    }
+      ..sort((a, b) => scores[b.id]!.compareTo(scores[a.id]!));
+    return sorted.take(limit).toList();
   }
 
   Future<void> refreshData() async {
+    await _writeChain;
     await _loadData();
+    notifyListeners();
   }
-} 
+
+  Future<void> _loadData() async {
+    _strains = _decodeList(_readStored(_strainsKey), Strain.fromJson);
+    _dosages = _decodeList(_readStored(_dosagesKey), Dosage.fromJson);
+    _effects = _decodeList(_readStored(_effectsKey), Effect.fromJson);
+    final settingsJson = _readStored(_settingsKey);
+    if (settingsJson != null) {
+      try {
+        final decoded = jsonDecode(settingsJson);
+        if (decoded is Map) {
+          _settings = UserSettings.fromJson(
+            decoded.map((key, value) => MapEntry(key.toString(), value)),
+          );
+        }
+      } catch (error) {
+        debugPrint('Could not load settings: $error');
+      }
+    }
+    _userName = _prefs.getString(_userNameKey);
+    _invalidateComputedData();
+  }
+
+  String? _readStored(String key) =>
+      _prefs.getString('$_tempPrefix$key') ?? _prefs.getString(key);
+
+  List<T> _decodeList<T>(
+    String? encoded,
+    T Function(Map<String, dynamic>) decode,
+  ) {
+    if (encoded == null) return [];
+    try {
+      final raw = jsonDecode(encoded);
+      if (raw is! List) return [];
+      final result = <T>[];
+      for (final item in raw) {
+        if (item is Map) {
+          try {
+            result.add(
+              decode(item.map((key, value) => MapEntry(key.toString(), value))),
+            );
+          } catch (error) {
+            debugPrint('Skipped malformed stored record: $error');
+          }
+        }
+      }
+      return result;
+    } catch (error) {
+      debugPrint('Could not load stored list: $error');
+      return [];
+    }
+  }
+
+  Future<void> _save(Map<String, String> values) {
+    final snapshot = Map<String, String>.of(values);
+    return _enqueueWrite(() async {
+      for (final entry in snapshot.entries) {
+        await _prefs.setString('$_tempPrefix${entry.key}', entry.value);
+      }
+      for (final entry in snapshot.entries) {
+        await _prefs.setString(entry.key, entry.value);
+      }
+      for (final key in snapshot.keys) {
+        await _prefs.remove('$_tempPrefix$key');
+      }
+    });
+  }
+
+  Future<void> _enqueueWrite(Future<void> Function() action) {
+    final operation = _writeChain.then((_) => action());
+    _writeChain = operation.catchError((Object _) {});
+    return operation;
+  }
+
+  String _encodeStrains() =>
+      jsonEncode(_strains.map((strain) => strain.toJson()).toList());
+  String _encodeDosages() =>
+      jsonEncode(_dosages.map((dose) => dose.toJson()).toList());
+  String _encodeEffects() =>
+      jsonEncode(_effects.map((effect) => effect.toJson()).toList());
+
+  void _validateDosage(String strainId, double amount) {
+    if (!_strains.any((strain) => strain.id == strainId)) {
+      throw ArgumentError.value(strainId, 'strainId', 'unknown strain');
+    }
+    if (!amount.isFinite || amount <= 0 || amount > 1000) {
+      throw ArgumentError.value(
+        amount,
+        'amount',
+        'must be finite, greater than zero, and at most 1000',
+      );
+    }
+  }
+
+  void _validateEffect(Effect effect) {
+    if (!_dosages.any((dose) => dose.id == effect.dosageId)) {
+      throw ArgumentError.value(effect.dosageId, 'effect.dosageId');
+    }
+    final ratings = [
+      effect.mood,
+      effect.energy,
+      effect.painRelief,
+      effect.anxiety,
+      effect.focus,
+    ];
+    if (ratings.whereType<int>().any((value) => value < 1 || value > 5)) {
+      throw ArgumentError('Effect ratings must be between 1 and 5');
+    }
+    if (effect.duration != null && effect.duration!.isNegative) {
+      throw ArgumentError.value(effect.duration, 'effect.duration');
+    }
+  }
+
+  void _validatePayload(BackupPayload payload) {
+    final strainIds = <String>{};
+    for (final strain in payload.strains) {
+      if (strain.id.isEmpty || !strainIds.add(strain.id)) {
+        throw ArgumentError('Imported strains must have unique, non-empty IDs');
+      }
+    }
+    final dosageIds = <String>{};
+    for (final dose in payload.dosages) {
+      if (dose.id.isEmpty ||
+          !dosageIds.add(dose.id) ||
+          !dose.amount.isFinite ||
+          dose.amount <= 0 ||
+          dose.amount > 1000 ||
+          payload.strains.isNotEmpty && !strainIds.contains(dose.strainId)) {
+        throw ArgumentError('Imported dosage data is invalid');
+      }
+    }
+    final effectIds = <String>{};
+    for (final effect in payload.effects) {
+      if (effect.id.isEmpty ||
+          !effectIds.add(effect.id) ||
+          !dosageIds.contains(effect.dosageId)) {
+        throw ArgumentError('Imported effect data is invalid');
+      }
+    }
+  }
+
+  void _invalidateComputedData() {
+    _dailyTotalCache.clear();
+    _strainUsageCache = null;
+    _strainUsageCacheDay = null;
+  }
+}
+
+List<T> _mergeById<T>(
+  List<T> existing,
+  List<T> incoming,
+  String Function(T) idOf,
+) {
+  final existingIds = existing.map(idOf).toSet();
+  return [
+    ...existing,
+    ...incoming.where((item) => existingIds.add(idOf(item))),
+  ];
+}

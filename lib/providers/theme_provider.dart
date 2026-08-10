@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../theme/app_theme.dart';
+
 class ThemeProvider with ChangeNotifier {
-  final SharedPreferences _prefs;
   static const String _darkModeKey = 'darkMode';
 
+  final SharedPreferences _prefs;
   bool _isDarkMode;
 
-  ThemeProvider(this._prefs) : _isDarkMode = _prefs.getBool(_darkModeKey) ?? true;
+  ThemeProvider(this._prefs)
+      : _isDarkMode = _prefs.getBool(_darkModeKey) ?? true;
 
   bool get isDarkMode => _isDarkMode;
-
-  ThemeData get theme => _isDarkMode ? _darkTheme : _lightTheme;
+  ThemeData get theme => _isDarkMode ? darkTheme : lightTheme;
 
   Future<void> toggleTheme() async {
     _isDarkMode = !_isDarkMode;
@@ -19,48 +21,44 @@ class ThemeProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // Dark theme definition
-  static final _darkTheme = ThemeData(
+  static final ThemeData darkTheme = ThemeData(
     brightness: Brightness.dark,
-    scaffoldBackgroundColor: Colors.black,
-    colorScheme: ColorScheme.dark(
-      primary: Colors.teal[300]!,
-      secondary: Colors.purple[300]!,
-      surface: Colors.grey[900]!,
-      surfaceTint: Colors.black,
-      onSurface: Colors.white,
+    scaffoldBackgroundColor: const Color(0xFF090B0C),
+    extensions: const [AppColors.dark],
+    colorScheme: const ColorScheme.dark(
+      primary: Color(0xFF00ACC1),
+      secondary: Color(0xFF80CBC4),
+      surface: Color(0xFF171A1D),
+      surfaceTint: Colors.transparent,
+      onSurface: Color(0xFFF5F7F8),
     ),
     cardTheme: CardThemeData(
-      color: Colors.grey[900],
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      color: AppColors.dark.surfaceRaised,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     ),
-    bottomNavigationBarTheme: BottomNavigationBarThemeData(
-      backgroundColor: Colors.black,
-      selectedItemColor: Colors.teal[300],
-      unselectedItemColor: Colors.grey,
+    bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+      backgroundColor: Color(0xFF090B0C),
+      selectedItemColor: Color(0xFF00ACC1),
+      unselectedItemColor: Color(0xFF7B878E),
     ),
-    appBarTheme: AppBarTheme(
-      backgroundColor: Colors.grey[900],
+    appBarTheme: const AppBarTheme(
+      backgroundColor: Color(0xFF171A1D),
       elevation: 0,
-      foregroundColor: Colors.white,
+      foregroundColor: Color(0xFFF5F7F8),
     ),
     dialogTheme: DialogThemeData(
-      backgroundColor: Colors.grey[900],
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      backgroundColor: AppColors.dark.surfaceRaised,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     ),
-    bottomSheetTheme: BottomSheetThemeData(
-      backgroundColor: Colors.grey[900],
-      shape: const RoundedRectangleBorder(
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: Color(0xFF171A1D),
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: Colors.grey[850],
+      fillColor: AppColors.dark.surfaceSunken,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,
@@ -71,46 +69,41 @@ class ThemeProvider with ChangeNotifier {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.teal[300]!),
+        borderSide: const BorderSide(color: Color(0xFF00ACC1)),
       ),
     ),
   );
 
-  // Light theme definition
-  static final _lightTheme = ThemeData(
+  static final ThemeData lightTheme = ThemeData(
     brightness: Brightness.light,
-    scaffoldBackgroundColor: Colors.grey[100],
-    colorScheme: ColorScheme.light(
-      primary: Colors.teal[400]!,
-      secondary: Colors.purple[400]!,
-      surface: Colors.white,
-      surfaceTint: Colors.grey[100]!,
-      onSurface: Colors.black,
+    scaffoldBackgroundColor: const Color(0xFFF7FAFA),
+    extensions: const [AppColors.light],
+    colorScheme: const ColorScheme.light(
+      primary: Color(0xFF00ACC1),
+      secondary: Color(0xFF00796B),
+      surface: Color(0xFFFFFFFF),
+      surfaceTint: Colors.transparent,
+      onSurface: Color(0xFF172125),
     ),
     cardTheme: CardThemeData(
-      color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      color: AppColors.light.surfaceRaised,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       elevation: 2,
     ),
-    bottomNavigationBarTheme: BottomNavigationBarThemeData(
+    bottomNavigationBarTheme: const BottomNavigationBarThemeData(
       backgroundColor: Colors.white,
-      selectedItemColor: Colors.teal[400],
-      unselectedItemColor: Colors.grey[600],
+      selectedItemColor: Color(0xFF00ACC1),
+      unselectedItemColor: Color(0xFF7B898F),
       elevation: 8,
     ),
-    appBarTheme: AppBarTheme(
+    appBarTheme: const AppBarTheme(
       backgroundColor: Colors.white,
       elevation: 0,
-      foregroundColor: Colors.black,
-      iconTheme: IconThemeData(color: Colors.grey[800]),
+      foregroundColor: Color(0xFF172125),
     ),
     dialogTheme: DialogThemeData(
-      backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      backgroundColor: AppColors.light.surfaceRaised,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     ),
     bottomSheetTheme: const BottomSheetThemeData(
       backgroundColor: Colors.white,
@@ -120,25 +113,25 @@ class ThemeProvider with ChangeNotifier {
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: Colors.grey[100],
+      fillColor: AppColors.light.surfaceSunken,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey[300]!),
+        borderSide: const BorderSide(color: Color(0xFFD7E0E3)),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey[300]!),
+        borderSide: const BorderSide(color: Color(0xFFD7E0E3)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.teal[400]!),
+        borderSide: const BorderSide(color: Color(0xFF00ACC1)),
       ),
     ),
-    textTheme: TextTheme(
-      bodyLarge: TextStyle(color: Colors.grey[900]),
-      bodyMedium: TextStyle(color: Colors.grey[800]),
-      titleLarge: TextStyle(color: Colors.grey[900]),
-      titleMedium: TextStyle(color: Colors.grey[800]),
+    textTheme: const TextTheme(
+      bodyLarge: TextStyle(color: Color(0xFF172125)),
+      bodyMedium: TextStyle(color: Color(0xFF526168)),
+      titleLarge: TextStyle(color: Color(0xFF172125)),
+      titleMedium: TextStyle(color: Color(0xFF526168)),
     ),
   );
-} 
+}

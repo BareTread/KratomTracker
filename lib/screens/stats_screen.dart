@@ -522,7 +522,7 @@ class _StatsScreenState extends State<StatsScreen> {
             if (mostUsedStrainId != null) ...[
               _buildInsightRow(
                 'Most Used Strain',
-                provider.getStrain(mostUsedStrainId).name,
+                provider.strainLabel(mostUsedStrainId),
                 subtitle: '$mostUsedCount doses in 30 days',
                 icon: Icons.star_outline,
               ),

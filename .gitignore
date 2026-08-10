@@ -64,3 +64,6 @@ pubspec.lock
 *.key
 *.p12
 *.pfx
+
+# orchestration scratch
+.pi-worker/

@@ -711,6 +711,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     Strain? strain;
     try {
       strain = provider.getStrain(lastDose.strainId);
+      if (strain == null) return const SizedBox.shrink();
     } catch (e) {
       return const SizedBox.shrink();
     }
@@ -784,7 +785,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       return (
         timestamp: dosage.timestamp,
         amount: dosage.amount,
-        color: Color(strain.color),
+        color: Color(strain?.color ?? 0xFF757575),
         height: dosageHeights[dosage.id] ?? 0.0,
       );
     }).toList();
@@ -869,7 +870,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           return _buildDailyTimelineCard(dosages, provider);
         }
         final dosage = dosages[index - 3];
-        final strain = provider.getStrain(dosage.strainId);
+        final strain = provider.getStrain(dosage.strainId) ??
+            const Strain(
+              id: '',
+              name: 'Unknown strain',
+              code: '?',
+              color: 0xFF757575,
+              icon: 'Leaf',
+            );
         final timeStr = DateFormat('h:mm a').format(dosage.timestamp);
         
         // Get time period

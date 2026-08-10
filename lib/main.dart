@@ -1,37 +1,74 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'providers/kratom_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/home_screen.dart';
-import 'screens/strains_screen.dart';
-import 'screens/stats_screen.dart';
 import 'screens/manage_screen.dart';
-import 'package:flutter/services.dart';
+import 'screens/stats_screen.dart';
+import 'screens/strains_screen.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
-  
-  // Force portrait mode
-  SystemChrome.setPreferredOrientations([
+  await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
-  ]).then((_) {
-    runApp(
-      MultiProvider(
-        providers: [
-          ChangeNotifierProvider(
-            create: (_) => KratomProvider(prefs),
-          ),
-          ChangeNotifierProvider(
-            create: (_) => ThemeProvider(prefs),
-          ),
-        ],
-        child: const MyApp(),
+  ]);
+  runApp(_AppBootstrap(prefs: prefs));
+}
+
+class _AppBootstrap extends StatefulWidget {
+  const _AppBootstrap({required this.prefs});
+
+  final SharedPreferences prefs;
+
+  @override
+  State<_AppBootstrap> createState() => _AppBootstrapState();
+}
+
+class _AppBootstrapState extends State<_AppBootstrap> {
+  late final ThemeProvider _themeProvider = ThemeProvider(widget.prefs);
+  late final Future<KratomProvider> _provider =
+      KratomProvider.create(widget.prefs);
+
+  @override
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider.value(
+      value: _themeProvider,
+      child: FutureBuilder<KratomProvider>(
+        future: _provider,
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return Consumer<ThemeProvider>(
+              builder: (context, theme, child) => MaterialApp(
+                title: 'Kratom Tracker',
+                theme: theme.theme,
+                home: const _LoadingScreen(),
+              ),
+            );
+          }
+          return ChangeNotifierProvider.value(
+            value: snapshot.requireData,
+            child: const MyApp(),
+          );
+        },
       ),
     );
-  });
+  }
+}
+
+class _LoadingScreen extends StatelessWidget {
+  const _LoadingScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(child: CircularProgressIndicator()),
+    );
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -39,12 +76,14 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ThemeProvider>(
-      builder: (context, themeProvider, child) {
+    return Consumer2<ThemeProvider, KratomProvider>(
+      builder: (context, themeProvider, kratomProvider, child) {
         return MaterialApp(
           title: 'Kratom Tracker',
           theme: themeProvider.theme,
-          home: const MainScreen(),
+          home: kratomProvider.isReady
+              ? const MainScreen()
+              : const _LoadingScreen(),
         );
       },
     );
@@ -69,9 +108,7 @@ class _MainScreenState extends State<MainScreen> {
   ];
 
   void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
+    setState(() => _selectedIndex = index);
   }
 
   @override
@@ -91,10 +128,7 @@ class _MainScreenState extends State<MainScreen> {
           selectedItemColor: Theme.of(context).colorScheme.primary,
           unselectedItemColor: Colors.grey,
           items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home),
-              label: 'Home',
-            ),
+            BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
             BottomNavigationBarItem(
               icon: Icon(Icons.local_florist),
               label: 'Strains',

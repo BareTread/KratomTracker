@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/kratom_provider.dart';
 import '../models/dosage.dart';
+import '../models/strain.dart';
 import 'package:intl/intl.dart';
 
 class ReportScreen extends StatelessWidget {
@@ -123,7 +124,14 @@ class ReportScreen extends StatelessWidget {
   }
 
   Widget _buildDosageCard(BuildContext context, Dosage dosage, KratomProvider provider) {
-    final strain = provider.getStrain(dosage.strainId);
+    final strain = provider.getStrain(dosage.strainId) ??
+        const Strain(
+          id: '',
+          name: 'Unknown strain',
+          code: '?',
+          color: 0xFF757575,
+          icon: 'Leaf',
+        );
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
@@ -219,7 +227,14 @@ class ReportScreen extends StatelessWidget {
   }
 
   void _showDosageDetails(BuildContext context, Dosage dosage, KratomProvider provider) {
-    final strain = provider.getStrain(dosage.strainId);
+    final strain = provider.getStrain(dosage.strainId) ??
+        const Strain(
+          id: '',
+          name: 'Unknown strain',
+          code: '?',
+          color: 0xFF757575,
+          icon: 'Leaf',
+        );
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     showModalBottomSheet(

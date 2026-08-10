@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../data/backup_codec.dart';
 import '../providers/kratom_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
@@ -37,8 +38,7 @@ class _ManageScreenState extends State<ManageScreen> {
     await _showAsyncDialog(
       context,
       () async {
-        final backupData = await provider.createBackup();
-        final backupJson = jsonEncode(backupData);
+        final backupJson = await provider.exportJson();
         
         final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
         final filename = 'kratom_tracker_backup_$timestamp.json';
@@ -59,27 +59,51 @@ class _ManageScreenState extends State<ManageScreen> {
   }
 
   Future<void> _restoreBackup(BuildContext context, KratomProvider provider) async {
-    await _showAsyncDialog(
-      context,
-      () async {
-        final result = await FilePicker.platform.pickFiles(
-          type: FileType.custom,
-          allowedExtensions: ['json'],
-        );
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+      if (result == null || !context.mounted) return;
 
-        if (result != null) {
-          final file = File(result.files.single.path!);
-          final jsonData = await file.readAsString();
-          
-          if (provider.validateBackup(jsonData)) {
-            await provider.restoreBackup(jsonData);
-          } else {
-            throw Exception('Invalid backup file');
-          }
+      final file = File(result.files.single.path!);
+      final jsonData = await file.readAsString();
+      final summary = await provider.previewImport(jsonData);
+      if (!context.mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Replace current data?'),
+          content: Text(
+            'Import ${summary.strainCount} strains and '
+            '${summary.dosageCount} doses. This replaces current data.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Import'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !context.mounted) return;
+
+      final parsed = parseBackup(jsonData);
+      if (parsed case BackupOk(:final payload)) {
+        await provider.commitImport(payload, mode: ImportMode.replace);
+        if (context.mounted) {
+          _showSuccessDialog(context, 'Backup restored successfully');
         }
-      },
-      'Backup restored successfully',
-    );
+      } else {
+        throw const FormatException('Invalid backup file');
+      }
+    } catch (e) {
+      if (context.mounted) _showErrorDialog(context, e.toString());
+    }
   }
 
   Future<void> _showClearDataDialog(BuildContext context, KratomProvider provider) async {

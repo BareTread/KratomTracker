@@ -1,7 +1,8 @@
+import 'dart:collection';
+
 import 'package:flutter/material.dart';
 
-// Define available strain icons
-final Map<String, IconData> strainIcons = {
+const Map<String, IconData> strainIcons = {
   'Leaf': Icons.eco_outlined,
   'Plant': Icons.local_florist_outlined,
   'Natural': Icons.grass_outlined,
@@ -14,16 +15,10 @@ final Map<String, IconData> strainIcons = {
   'Yard': Icons.yard_outlined,
 };
 
-// Define icon options for forms
-final List<Map<String, dynamic>> iconOptions = [
-  {'name': 'Leaf', 'icon': Icons.eco_outlined},
-  {'name': 'Plant', 'icon': Icons.local_florist_outlined},
-  {'name': 'Natural', 'icon': Icons.grass_outlined},
-  {'name': 'Organic', 'icon': Icons.spa_outlined},
-  {'name': 'Flower', 'icon': Icons.local_florist},
-  {'name': 'Herb', 'icon': Icons.eco},
-  {'name': 'Forest', 'icon': Icons.forest_outlined},
-  {'name': 'Nature', 'icon': Icons.nature_outlined},
-  {'name': 'Park', 'icon': Icons.park_outlined},
-  {'name': 'Yard', 'icon': Icons.yard_outlined},
-]; 
+// CROSS-PACKAGE REQUEST: Form owners should build their pickers from
+// strainIcons so add/edit flows persist the same icon name-to-glyph mapping.
+final List<Map<String, Object>> iconOptions = UnmodifiableListView(
+  strainIcons.entries
+      .map((entry) => {'name': entry.key, 'icon': entry.value})
+      .toList(growable: false),
+);
