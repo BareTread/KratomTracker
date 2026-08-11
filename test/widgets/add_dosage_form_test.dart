@@ -152,6 +152,145 @@ void main() {
     });
   });
 
+  group('strain search', () {
+    // Seeds four strains with a deterministic frozen order:
+    //   CEDR, CINN (both never used, tie broken by code ascending),
+    //   then BASL (used 4d ago), then ALOE (used 1d ago).
+    Future<KratomProvider> searchSeed() async {
+      final now = DateTime.now();
+      SharedPreferences.setMockInitialValues({
+        'strains': jsonEncode([
+          {
+            'id': 's-a',
+            'name': 'Aloe Vera',
+            'code': 'ALOE',
+            'color': 0xFF00ACC1,
+            'icon': 'Leaf',
+          },
+          {
+            'id': 's-b',
+            'name': 'Basil Fresh',
+            'code': 'BASL',
+            'color': 0xFF4CAF50,
+            'icon': 'Plant',
+          },
+          {
+            'id': 's-c',
+            'name': 'Cedar Wood',
+            'code': 'CEDR',
+            'color': 0xFFFF9800,
+            'icon': 'Forest',
+          },
+          {
+            'id': 's-d',
+            'name': 'Cinnamon Bark',
+            'code': 'CINN',
+            'color': 0xFFE91E63,
+            'icon': 'Leaf',
+          },
+        ]),
+        'dosages': jsonEncode([
+          {
+            'id': 'd1',
+            'strainId': 's-a',
+            'amount': 2.0,
+            'timestamp':
+                now.subtract(const Duration(days: 1)).toIso8601String(),
+          },
+          {
+            'id': 'd2',
+            'strainId': 's-b',
+            'amount': 2.0,
+            'timestamp':
+                now.subtract(const Duration(days: 4)).toIso8601String(),
+          },
+        ]),
+        'effects': '[]',
+      });
+      return KratomProvider.create(await SharedPreferences.getInstance());
+    }
+
+    Finder codeFinder(List<String> codes) => find.byWidgetPredicate(
+          (widget) =>
+              widget is Text &&
+              codes.contains(widget.data) &&
+              widget.style?.fontWeight == FontWeight.w600,
+        );
+
+    List<String> visibleCodes(WidgetTester tester, List<String> all) {
+      final finder = codeFinder(all);
+      return tester
+          .widgetList<Text>(finder)
+          .map((t) => t.data!)
+          .toList();
+    }
+
+    testWidgets('filters by code substring (case-insensitive)',
+        (tester) async {
+      final provider = await searchSeed();
+      await _pumpForm(tester, provider);
+
+      await tester.enterText(find.byType(TextField), 'cin');
+      await tester.pumpAndSettle();
+
+      expect(visibleCodes(tester, ['ALOE', 'BASL', 'CEDR', 'CINN']),
+          ['CINN'],);
+    });
+
+    testWidgets('filters by full name substring', (tester) async {
+      final provider = await searchSeed();
+      await _pumpForm(tester, provider);
+
+      await tester.enterText(find.byType(TextField), 'basil');
+      await tester.pumpAndSettle();
+
+      expect(visibleCodes(tester, ['ALOE', 'BASL', 'CEDR', 'CINN']),
+          ['BASL'],);
+    });
+
+    testWidgets('preserves frozen relative order of surviving strains',
+        (tester) async {
+      final provider = await searchSeed();
+      await _pumpForm(tester, provider);
+
+      // 'ba' matches CINN ("Cinnamon Bark") and BASL ("BASL"/"Basil Fresh").
+      // Frozen order is CINN before BASL.
+      await tester.enterText(find.byType(TextField), 'ba');
+      await tester.pumpAndSettle();
+
+      expect(visibleCodes(tester, ['ALOE', 'BASL', 'CEDR', 'CINN']),
+          ['CINN', 'BASL'],);
+    });
+
+    testWidgets('empty query shows the full list in frozen order',
+        (tester) async {
+      final provider = await searchSeed();
+      await _pumpForm(tester, provider);
+
+      // Type then clear via the suffix button — full list must return
+      // in frozen order.
+      await tester.enterText(find.byType(TextField), 'cin');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+
+      expect(visibleCodes(tester, ['ALOE', 'BASL', 'CEDR', 'CINN']),
+          ['CEDR', 'CINN', 'BASL', 'ALOE'],);
+    });
+
+    testWidgets('shows an empty state when nothing matches', (tester) async {
+      final provider = await searchSeed();
+      await _pumpForm(tester, provider);
+
+      await tester.enterText(find.byType(TextField), 'zzz');
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('No strains match'), findsOneWidget);
+      expect(visibleCodes(tester, ['ALOE', 'BASL', 'CEDR', 'CINN']), isEmpty);
+    });
+  });
+
   group('validateDoseAmount / parseDoseAmount', () {
     test('accepts comma decimal separator', () {
       expect(parseDoseAmount('1,5'), 1.5);

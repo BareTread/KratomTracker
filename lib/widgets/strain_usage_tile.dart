@@ -47,9 +47,9 @@ class StrainUsageTile extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(12),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 56),
+            constraints: const BoxConstraints(minHeight: 52),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -57,8 +57,8 @@ class StrainUsageTile extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(
-                        width: 44,
-                        height: 44,
+                        width: 40,
+                        height: 40,
                         decoration: BoxDecoration(
                           color: strainColor.withValues(alpha: 0.18),
                           borderRadius: BorderRadius.circular(10),
@@ -66,7 +66,7 @@ class StrainUsageTile extends StatelessWidget {
                         child: Icon(
                           strainIcons[strain.icon] ?? Icons.local_florist,
                           color: strainColor,
-                          size: 22,
+                          size: 20,
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -134,7 +134,7 @@ class StrainUsageTile extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   _FreshnessBar(
                     daysSinceLastUse: usage.daysSinceLastUse,
                     neverUsed: usage.lastUsed == null,
@@ -158,7 +158,7 @@ class StrainUsageTile extends StatelessWidget {
     if (usage.dosesLastUsedDay > 1) {
       return '$when · ${usage.dosesLastUsedDay} doses that day · ${grams}g';
     }
-    return '$when · ${grams}g';
+    return '$when · 1 dose · ${grams}g';
   }
 
   static String _whenLabel(double daysSince) {

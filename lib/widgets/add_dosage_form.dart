@@ -5,8 +5,8 @@ import 'package:provider/provider.dart';
 
 import '../providers/kratom_provider.dart';
 import '../theme/app_theme.dart';
+import '../domain/strain_usage.dart';
 import '../widgets/add_strain_form.dart';
-import 'effect_log_sheet.dart';
 import 'strain_usage_tile.dart';
 
 class AddDosageForm extends StatefulWidget {
@@ -176,7 +176,9 @@ class _AddDosageFormState extends State<AddDosageForm> {
 }
 
 // Step 1: Strain Selection — order is provider.strainUsage (frozen).
-class _StrainSelectionView extends StatelessWidget {
+// Search filters by code and name (case-insensitive substring) but never
+// reorders: the surviving items keep their frozen relative order.
+class _StrainSelectionView extends StatefulWidget {
   final ValueChanged<String> onStrainSelected;
 
   const _StrainSelectionView({
@@ -185,11 +187,35 @@ class _StrainSelectionView extends StatelessWidget {
   });
 
   @override
+  State<_StrainSelectionView> createState() => _StrainSelectionViewState();
+}
+
+class _StrainSelectionViewState extends State<_StrainSelectionView> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<StrainUsage> _filtered(List<StrainUsage> usage) {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return usage;
+    return usage.where((u) {
+      return u.strain.code.toLowerCase().contains(q) ||
+          u.strain.name.toLowerCase().contains(q);
+    }).toList(growable: false);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final c = context.c;
     return Consumer<KratomProvider>(
       builder: (context, provider, child) {
         final usage = provider.strainUsage;
+        final filtered = _filtered(usage);
         final todayDoses = provider.getDosagesForDate(DateTime.now());
         final todayTotal = provider.totalForDate(DateTime.now());
         final todaySummary =
@@ -208,87 +234,143 @@ class _StrainSelectionView extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: c.accent.withValues(alpha: 0.12),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.local_pharmacy_outlined,
-                        color: c.accent,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
                     Text(
                       'Select Strain',
                       style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
                         color: c.textPrimary,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
                     Text(
-                      'Least recently used first — rotate to keep effects fresh',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: c.textSecondary,
-                      ),
+                      'Least recently used first · $todaySummary',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, color: c.textTertiary),
                     ),
-                    const SizedBox(height: 12),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: c.surfaceSunken,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: c.hairline),
-                      ),
-                      child: Text(
-                        todaySummary,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: c.textSecondary,
-                        ),
-                      ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Bar fills as a strain rests — full at 2 weeks',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, color: c.textTertiary),
+                    ),
+                    const SizedBox(height: 10),
+                    _SearchField(
+                      controller: _searchController,
+                      onChanged: (value) => setState(() => _query = value),
+                      hintText: 'Search strains',
                     ),
                   ],
                 ),
               ),
               Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  itemCount: usage.length,
-                  itemBuilder: (context, index) {
-                    final item = usage[index];
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: _StaggeredEntrance(
-                        index: index,
-                        child: StrainUsageTile(
-                          usage: item,
-                          onTap: () => onStrainSelected(item.strain.id),
-                        ),
+                child: filtered.isEmpty
+                    ? _emptySearchState(c)
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        itemCount: filtered.length,
+                        itemBuilder: (context, index) {
+                          final item = filtered[index];
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: _StaggeredEntrance(
+                              index: index,
+                              child: StrainUsageTile(
+                                usage: item,
+                                onTap: () =>
+                                    widget.onStrainSelected(item.strain.id),
+                              ),
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
               ),
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _emptySearchState(AppColors c) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          'No strains match "${_query.trim()}"',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 14, color: c.textSecondary),
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchField extends StatelessWidget {
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final String hintText;
+
+  const _SearchField({
+    required this.controller,
+    required this.onChanged,
+    required this.hintText,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return TextField(
+      controller: controller,
+      onChanged: onChanged,
+      autofocus: false,
+      textInputAction: TextInputAction.search,
+      style: TextStyle(fontSize: 14, color: c.textPrimary),
+      decoration: InputDecoration(
+        isDense: true,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        hintText: hintText,
+        hintStyle: TextStyle(fontSize: 14, color: c.textTertiary),
+        prefixIcon: Icon(Icons.search, size: 18, color: c.textTertiary),
+        prefixIconConstraints:
+            const BoxConstraints(minWidth: 36, minHeight: 36),
+        suffixIcon: ValueListenableBuilder<TextEditingValue>(
+          valueListenable: controller,
+          builder: (context, value, _) {
+            if (value.text.isEmpty) return const SizedBox.shrink();
+            return IconButton(
+              icon: Icon(Icons.close, size: 16, color: c.textTertiary),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              onPressed: () {
+                controller.clear();
+                onChanged('');
+              },
+            );
+          },
+        ),
+        filled: true,
+        fillColor: c.surfaceSunken,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: c.hairline),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: c.hairline),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: c.accent, width: 1.5),
+        ),
+      ),
     );
   }
 }
@@ -429,12 +511,11 @@ class _DosageDetailsFormState extends State<_DosageDetailsForm> {
     final notes = notesRaw.isEmpty ? null : notesRaw;
 
     final provider = context.read<KratomProvider>();
-    final messenger = ScaffoldMessenger.maybeOf(context);
     final navigator = Navigator.of(context);
 
     setState(() => _saving = true);
     try {
-      final saved = await provider.addDosage(
+      await provider.addDosage(
         widget.strainId,
         amount,
         _selectedDateTime,
@@ -444,23 +525,6 @@ class _DosageDetailsFormState extends State<_DosageDetailsForm> {
 
       if (!mounted) return;
       navigator.pop();
-
-      if (messenger != null) {
-        final savedId = saved.id;
-        messenger.showSnackBar(
-          SnackBar(
-            content: const Text('How did it feel?'),
-            behavior: SnackBarBehavior.floating,
-            action: SnackBarAction(
-              label: 'Log',
-              onPressed: () {
-                final sheetContext = messenger.context;
-                EffectLogSheet.show(sheetContext, dosageId: savedId);
-              },
-            ),
-          ),
-        );
-      }
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
