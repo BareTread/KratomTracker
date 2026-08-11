@@ -424,9 +424,8 @@ String _trendSummary(_StatsBundle bundle, List<DateTime> days) {
   final peakRolling = bundle.rolling.reduce(
     (a, b) => a.value >= b.value ? a : b,
   );
-  return 'Highest day: ${DateFormat('MMM d').format(maxDay)} at '
-      '${maxGrams.toStringAsFixed(1)}g. '
-      'Peak 7-day rolling average: '
+  return 'Peak day: ${DateFormat('MMM d').format(maxDay)} at '
+      '${maxGrams.toStringAsFixed(1)}g; 7-day avg peaked at '
       '${peakRolling.value.toStringAsFixed(1)}g/day ending '
       '${DateFormat('MMM d').format(peakRolling.day)}.';
 }
@@ -454,17 +453,37 @@ class _DailyTrendChart extends StatelessWidget {
       rollingSpots.fold<double>(0, (m, s) => math.max(m, s.y)),
     );
     final topY = maxY <= 0 ? 1.0 : maxY * 1.15;
+    final interval = topY / 4;
 
     return LineChart(
       LineChartData(
         gridData: FlGridData(
           show: true,
           drawVerticalLine: false,
-          horizontalInterval: topY / 4,
+          horizontalInterval: interval,
           getDrawingHorizontalLine: (v) =>
               FlLine(color: c.hairline, strokeWidth: 1),
         ),
-        titlesData: const FlTitlesData(show: false),
+        titlesData: FlTitlesData(
+          show: true,
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              interval: interval,
+              reservedSize: 34,
+              getTitlesWidget: (value, meta) => Text(
+                _formatGrams(value),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      fontSize: 9,
+                      color: c.textTertiary,
+                    ),
+              ),
+            ),
+          ),
+        ),
         borderData: FlBorderData(show: false),
         minX: 0,
         maxX: (n - 1).toDouble(),
@@ -474,13 +493,14 @@ class _DailyTrendChart extends StatelessWidget {
           LineChartBarData(
             spots: dailySpots,
             isCurved: false,
-            color: c.accent.withValues(alpha: 0.9),
-            barWidth: 2,
+            color: c.accent.withValues(alpha: 0.45),
+            barWidth: 1,
             isStrokeCapRound: true,
             dotData: const FlDotData(show: false),
+            dashArray: [3, 3],
             belowBarData: BarAreaData(
               show: true,
-              color: c.accent.withValues(alpha: 0.15),
+              color: c.accent.withValues(alpha: 0.08),
             ),
           ),
           LineChartBarData(
@@ -488,7 +508,7 @@ class _DailyTrendChart extends StatelessWidget {
             isCurved: true,
             curveSmoothness: 0.3,
             color: c.caution,
-            barWidth: 2.5,
+            barWidth: 3,
             isStrokeCapRound: true,
             dotData: const FlDotData(show: false),
           ),
@@ -510,7 +530,6 @@ class _RhythmSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.c;
     final stats = bundle.current;
     final hasData = stats.totalDoses > 0;
     final peakHour = stats.peakHour;
@@ -551,15 +570,6 @@ class _RhythmSection extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'You usually dose around '
-                  '${peakHour != null ? DateFormat('h a').format(DateTime(2024, 1, 1, peakHour)) : '—'}, '
-                  'with about ${gap != null ? _formatDuration(gap) : '—'} between doses on average.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: c.textSecondary,
-                      ),
-                ),
               ],
             )
           : const _EmptyState(
@@ -584,7 +594,26 @@ class _HourHistogramChart extends StatelessWidget {
     return BarChart(
       BarChartData(
         gridData: const FlGridData(show: false),
-        titlesData: const FlTitlesData(show: false),
+        titlesData: FlTitlesData(
+          show: true,
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              interval: 6,
+              reservedSize: 18,
+              getTitlesWidget: (value, meta) => Text(
+                _hourLabel(value.round()),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      fontSize: 9,
+                      color: c.textTertiary,
+                    ),
+              ),
+            ),
+          ),
+        ),
         borderData: FlBorderData(show: false),
         maxY: topY * 1.1,
         barGroups: [
@@ -646,8 +675,8 @@ class _RotationHeatmapSection extends StatelessWidget {
                 const SizedBox(height: 12),
                 Semantics(
                   container: true,
-                  label: 'Rotation heatmap with ${strains.length} strains '
-                      'across ${days.length} days.',
+                  label: 'Rotation heatmap with ${_plural(strains.length, 'strain')} '
+                      'across ${_plural(days.length, 'day')}.',
                   child: _RotationHeatmap(
                     bundle: bundle,
                     strains: strains,
@@ -682,9 +711,9 @@ String _heatmapSummary(
   final share = bundle.current.totalGrams > 0
       ? (topGrams / bundle.current.totalGrams * 100).toStringAsFixed(0)
       : '0';
-  return '${strains.length} strains used across ${days.length} days. '
-      'Most used: ${top.code} (${top.name}) at '
-      '${topGrams.toStringAsFixed(1)}g — $share% of the range.';
+  return '${_plural(strains.length, 'strain')} across '
+      '${_plural(days.length, 'day')}; most used ${top.code} at '
+      '${topGrams.toStringAsFixed(1)}g ($share%).';
 }
 
 class _RotationHeatmap extends StatelessWidget {
@@ -751,11 +780,18 @@ class _RotationHeatmap extends StatelessWidget {
         children: [
           SizedBox(
             width: _labelWidth,
+            height: _cellSize,
             child: Text(
               strain.code,
               overflow: TextOverflow.ellipsis,
+              maxLines: 1,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Color(strain.color),
+                    fontSize: 10,
+                    height: 1.0,
+                    color: legibleStrainColor(
+                      Color(strain.color),
+                      Theme.of(context).brightness,
+                    ),
                     fontWeight: FontWeight.w600,
                   ),
             ),
@@ -804,7 +840,6 @@ class _RestDaysSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.c;
     final stats = bundle.current;
     final totalDays = stats.activeDays + stats.restDays;
 
@@ -833,24 +868,13 @@ class _RestDaysSection extends StatelessWidget {
                     ),
                     _Fact(
                       label: 'Current streak',
-                      value: '${stats.currentStreakDays} day(s)',
+                      value: _plural(stats.currentStreakDays, 'day'),
                     ),
                     _Fact(
                       label: 'Longest rest streak',
-                      value: '${stats.longestRestStreak} day(s)',
+                      value: _plural(stats.longestRestStreak, 'day'),
                     ),
                   ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'You dosed on ${stats.activeDays} of $totalDays days in this '
-                      'range and took ${stats.restDays} day(s) off. '
-                      'Your current run of consecutive dosing days is '
-                      '${stats.currentStreakDays}; the longest stretch of '
-                      'zero-dose days was ${stats.longestRestStreak} day(s).',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: c.textSecondary,
-                      ),
                 ),
               ],
             ),
@@ -999,6 +1023,20 @@ class _EmptyState extends StatelessWidget {
       ),
     );
   }
+}
+
+String _plural(int n, String unit) => n == 1 ? '1 $unit' : '$n ${unit}s';
+
+String _hourLabel(int hour) {
+  final h = hour % 24;
+  final am = h < 12;
+  final display = h % 12 == 0 ? 12 : h % 12;
+  return '$display${am ? 'a' : 'p'}';
+}
+
+String _formatGrams(double v) {
+  if (v == v.roundToDouble()) return '${v.round()}g';
+  return '${v.toStringAsFixed(1)}g';
 }
 
 String _formatDuration(Duration d) {

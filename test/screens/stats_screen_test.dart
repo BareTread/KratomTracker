@@ -22,6 +22,29 @@ Future<KratomProvider> _provider() async {
 }
 
 void main() {
+  testWidgets('rest-day counts pluralise for 0, 1 and many', (tester) async {
+    final provider = await _provider();
+    await provider.addStrain('Maeng Da', 'MD', 0xFF00ACC1, 'Leaf');
+    final strainId = provider.strains.first.id;
+
+    // Empty 30d range: current streak 0, longest rest streak 30.
+    await tester.pumpWidget(_harness(provider));
+    await tester.pumpAndSettle();
+    expect(find.text('0 days'), findsOneWidget);
+    expect(find.text('30 days'), findsOneWidget);
+
+    // A single dose today: currentStreak = 1, longestRest = 29.
+    final now = DateTime.now();
+    await provider.addDosage(
+      strainId,
+      2.5,
+      DateTime(now.year, now.month, now.day, 8),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('1 day'), findsOneWidget);
+    expect(find.text('29 days'), findsOneWidget);
+  });
+
   testWidgets('builds with zero data and shows empty states, no NaN',
       (tester) async {
     final provider = await _provider();
