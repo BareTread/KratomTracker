@@ -16,10 +16,10 @@ class VineGeometry {
   static const double petiole = 10;
 
   /// Stem is painted as three solid strokes back-to-front.
-  static const double auraWidth = 13;
+  static const double auraWidth = 8;
   static const double coreWidth = 2.4;
   static const double hairlineWidth = 0.8;
-  static const double auraOpacity = 0.12;
+  static const double auraOpacity = 0.07;
   static const double coreOpacity = 0.62;
   static const double hairlineOpacity = 0.22;
 

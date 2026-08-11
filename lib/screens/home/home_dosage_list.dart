@@ -91,8 +91,8 @@ class HomeDosageList extends StatelessWidget {
     }
 
     return ListView.builder(
-      // Bottom pad clears the day-total / Add Dose bar.
-      padding: const EdgeInsets.only(top: 4, bottom: 100),
+      // Bottom pad clears the circular FAB floating above the nav.
+      padding: const EdgeInsets.only(top: 4, bottom: 88),
       itemCount: 1 + items.length,
       itemBuilder: (context, index) {
         if (index == 0) return header;
@@ -244,9 +244,9 @@ class _DoseRow extends StatelessWidget {
     );
     final effect =
         context.read<KratomProvider>().effectsForDosage(dosage.id).firstOrNull;
-    final showAffordance = effect != null ||
-        DateTime.now().difference(dosage.timestamp) >=
-            _EffectAffordance.threshold;
+    // Only show the effects sub-line when something is logged. The empty
+    // "Log how it felt" placeholder was a nag repeated down the column;
+    // logging stays reachable via the row's tap / long-press actions.
 
     final hour = DateFormat('h:mm').format(dosage.timestamp);
     final ampm = DateFormat('a').format(dosage.timestamp).toUpperCase();
@@ -370,7 +370,7 @@ class _DoseRow extends StatelessWidget {
                           fontFeatures: _tabular,
                         ),
                       ),
-                      if (showAffordance) ...[
+                      if (effect != null) ...[
                         const SizedBox(height: 3),
                         _EffectAffordance(dosage: dosage, effect: effect),
                       ],
@@ -419,16 +419,6 @@ class _GapRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final fromOff = VineGeometry.offsetFor(fromIndex);
     final toOff = VineGeometry.offsetFor(toIndex);
-    final label = _gapLabel(gap);
-
-    // Live gap (last dose → NOW) gets accent rules and a heavier weight.
-    final ruleColor = toNow
-        ? context.c.accent.withValues(alpha: 0.22)
-        : context.c.hairline;
-    final labelWeight = toNow ? FontWeight.w600 : FontWeight.w500; // ~520 / ~450
-    final labelColor = toNow
-        ? context.c.textSecondary
-        : context.c.textTertiary;
 
     final stem = toNow
         ? _LiveGapStem(
@@ -446,6 +436,42 @@ class _GapRow extends StatelessWidget {
             ),
           );
 
+    // Live gap (last dose → NOW): dashed stem only — the status line above
+    // already carries the elapsed figure, so the label would be a duplicate.
+    // Inter-dose gaps keep their elapsed labels with flanking hairlines.
+    final Widget? labelOverlay = toNow
+        ? null
+        : ColoredBox(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _GapRule(color: context.c.hairline),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Text(
+                        _gapLabel(gap),
+                        style: TextStyle(
+                          color: context.c.textTertiary,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w500,
+                          height: 1.1,
+                          letterSpacing: 0.42, // ~0.04em at 10.5px
+                          fontFeatures: _tabular,
+                        ),
+                      ),
+                    ),
+                    _GapRule(color: context.c.hairline),
+                  ],
+                ),
+              ),
+            ),
+          );
+
     return SizedBox(
       height: _gapStrip,
       child: Row(
@@ -458,40 +484,7 @@ class _GapRow extends StatelessWidget {
               alignment: Alignment.center,
               children: [
                 Positioned.fill(child: stem),
-                // Gap label with flanking hairlines. FittedBox.scaleDown keeps
-                // long labels ("13h 0m") inside the 72px vine band without
-                // clipping the stem underneath.
-                ColoredBox(
-                  color: Theme.of(context).scaffoldBackgroundColor,
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 2),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _GapRule(color: ruleColor),
-                          Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 4),
-                            child: Text(
-                              label,
-                              style: TextStyle(
-                                color: labelColor,
-                                fontSize: 10.5,
-                                fontWeight: labelWeight,
-                                height: 1.1,
-                                letterSpacing: 0.42, // ~0.04em at 10.5px
-                                fontFeatures: _tabular,
-                              ),
-                            ),
-                          ),
-                          _GapRule(color: ruleColor),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
+                if (labelOverlay != null) labelOverlay,
               ],
             ),
           ),
@@ -775,8 +768,8 @@ class _LiveNowStemState extends State<_LiveNowStem>
 
 // ── Effect affordance ─────────────────────────────────────────────────────
 
-/// Quiet text under the amount. Shown once a dose is ≥45 min old or already
-/// logged — never forces a third line into every row.
+/// Effects summary under the amount. Only built when an effect is already
+/// logged — the empty placeholder was removed; logging stays on the row.
 class _EffectAffordance extends StatelessWidget {
   const _EffectAffordance({
     required this.dosage,
@@ -784,33 +777,18 @@ class _EffectAffordance extends StatelessWidget {
   });
 
   final Dosage dosage;
-  final Effect? effect;
-
-  static const threshold = Duration(minutes: 45);
+  final Effect effect;
 
   @override
   Widget build(BuildContext context) {
-    if (effect != null) {
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => EffectLogSheet.show(
-          context,
-          dosageId: dosage.id,
-          existing: effect,
-        ),
-        child: _EffectSummary(effect: effect!),
-      );
-    }
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => EffectLogSheet.show(context, dosageId: dosage.id),
-      child: Text(
-        'Log how it felt',
-        style: TextStyle(
-          color: context.c.textTertiary,
-          fontSize: 11,
-        ),
+      onTap: () => EffectLogSheet.show(
+        context,
+        dosageId: dosage.id,
+        existing: effect,
       ),
+      child: _EffectSummary(effect: effect),
     );
   }
 }

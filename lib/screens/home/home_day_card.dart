@@ -64,8 +64,10 @@ class HomeDayCard extends StatelessWidget {
   }
 }
 
-/// One greyscale line: `4h 21m since last dose · 66.3g today` on today, or
-/// the day's totals on a past day. The elapsed figure is the only weight.
+/// One greyscale line — the single summary for the day:
+/// today → `3h 16m since last dose · 49.4g · 3 doses`
+/// past  → `49.4g · 3 doses`
+/// The elapsed figure is the only weight.
 class _QuietStatusLine extends StatelessWidget {
   const _QuietStatusLine({
     super.key,
@@ -117,6 +119,7 @@ class _QuietStatusLine extends StatelessWidget {
       final elapsed = DateTime.now().difference(last.timestamp);
       final total =
           dayDoses.fold<double>(0, (sum, dose) => sum + dose.amount);
+      final count = dayDoses.length;
       return [
         TextSpan(
           text: _elapsedText(elapsed),
@@ -127,7 +130,10 @@ class _QuietStatusLine extends StatelessWidget {
         ),
         const TextSpan(text: ' since last dose'),
         if (dayDoses.isNotEmpty)
-          TextSpan(text: ' · ${_formatAmount(total)}g today'),
+          TextSpan(
+            text:
+                ' · ${_formatAmount(total)}g · $count ${count == 1 ? 'dose' : 'doses'}',
+          ),
       ];
     }
 
@@ -145,7 +151,7 @@ class _QuietStatusLine extends StatelessWidget {
         ),
       ),
       TextSpan(
-        text: ' across $count ${count == 1 ? 'dose' : 'doses'}',
+        text: ' · $count ${count == 1 ? 'dose' : 'doses'}',
       ),
     ];
   }

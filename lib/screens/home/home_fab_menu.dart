@@ -3,9 +3,8 @@ import 'package:flutter/services.dart';
 
 import '../../theme/app_theme.dart';
 
-/// Add Dose pill for the home bottom bar. A tap fires Add Dose; a long-press
-/// expands two labelled actions (Add Dose / Add Strain) above it. Replaces the
-/// floating FAB so it no longer covers the last vine row.
+/// Circular cyan FAB for the home screen. A tap fires Add Dose; a long-press
+/// expands two labelled actions (Add Dose / Add Strain) above it.
 class HomeFabMenu extends StatefulWidget {
   const HomeFabMenu({
     super.key,
@@ -102,7 +101,7 @@ class HomeFabMenuState extends State<HomeFabMenu>
           ),
           const SizedBox(height: 12),
         ],
-        _AddDosePill(
+        _CircularFab(
           key: const Key('home-fab'),
           open: _open,
           reduced: reduced,
@@ -114,9 +113,9 @@ class HomeFabMenuState extends State<HomeFabMenu>
   }
 }
 
-/// Labelled cyan pill — the primary "Add Dose" control on the bottom bar.
-class _AddDosePill extends StatelessWidget {
-  const _AddDosePill({
+/// Plain circular cyan FAB — roughly 56px with a single `+` glyph.
+class _CircularFab extends StatelessWidget {
+  const _CircularFab({
     super.key,
     required this.open,
     required this.reduced,
@@ -129,6 +128,8 @@ class _AddDosePill extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
 
+  static const double _size = 56;
+
   @override
   Widget build(BuildContext context) {
     final accent = context.c.accent;
@@ -138,10 +139,12 @@ class _AddDosePill extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         onLongPress: onLongPress,
-        borderRadius: BorderRadius.circular(22),
+        customBorder: const CircleBorder(),
         child: Ink(
+          width: _size,
+          height: _size,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(22),
+            shape: BoxShape.circle,
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
@@ -158,32 +161,14 @@ class _AddDosePill extends StatelessWidget {
               ),
             ],
           ),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 48, minWidth: 120),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AnimatedRotation(
-                    turns: open ? 0.125 : 0,
-                    duration: reduced ? Duration.zero : AppMotion.fast,
-                    child: Icon(
-                      open ? Icons.close : Icons.add,
-                      size: 20,
-                      color: context.c.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    open ? 'Close' : 'Add Dose',
-                    style: TextStyle(
-                      color: context.c.textPrimary,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
+          child: Center(
+            child: AnimatedRotation(
+              turns: open ? 0.125 : 0,
+              duration: reduced ? Duration.zero : AppMotion.fast,
+              child: Icon(
+                open ? Icons.close : Icons.add,
+                size: 28,
+                color: context.c.textPrimary,
               ),
             ),
           ),
@@ -193,7 +178,7 @@ class _AddDosePill extends StatelessWidget {
   }
 }
 
-/// Expanded menu pill shown above the Add Dose control on long-press.
+/// Expanded menu pill shown above the FAB on long-press.
 class _MenuPill extends StatelessWidget {
   const _MenuPill({
     super.key,

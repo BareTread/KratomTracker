@@ -21,13 +21,13 @@ void main() {
 
     await _pumpCard(tester, provider, focusedDay: DateUtils.dateOnly(now));
 
-    // Quiet line: "<elapsed> since last dose · 2g today"
+    // Quiet line: "<elapsed> since last dose · 2g · 1 dose"
     expect(
       find.textContaining('since last dose', findRichText: true),
       findsOneWidget,
     );
     expect(
-      find.textContaining('2g today', findRichText: true),
+      find.textContaining('2g · 1 dose', findRichText: true),
       findsOneWidget,
     );
   });
@@ -47,11 +47,7 @@ void main() {
 
     // Past-day quiet line is the day's total and dose count.
     expect(
-      find.textContaining('5g', findRichText: true),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining('across 2 doses', findRichText: true),
+      find.textContaining('5g · 2 doses', findRichText: true),
       findsOneWidget,
     );
     // Elapsed "since last dose" must not appear for a past day.

@@ -27,7 +27,7 @@ void main() {
     expect(find.byKey(const Key('home-empty-add-dose')), findsNothing);
   });
 
-  testWidgets('Add Dose pill opens the add-dose sheet', (tester) async {
+  testWidgets('Add Dose FAB opens the add-dose sheet', (tester) async {
     final provider = await _provider();
     await _pumpHome(tester, provider);
 

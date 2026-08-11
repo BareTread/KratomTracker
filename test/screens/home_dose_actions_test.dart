@@ -61,8 +61,8 @@ void main() {
     });
   });
 
-  group('effect affordance 45-minute threshold', () {
-    testWidgets('a dose under 45 minutes old shows no affordance',
+  group('effect affordance', () {
+    testWidgets('doses without logged effects show no effects sub-line',
         (tester) async {
       final now = DateTime.now();
       final provider = await _provider(
@@ -73,11 +73,11 @@ void main() {
       );
       await _pumpList(tester, provider, doseIds: ['recent', 'older']);
 
-      // Only the 90-minute-old dose is eligible; the 20-minute one is not.
-      expect(find.text('Log how it felt'), findsOneWidget);
+      // Placeholder removed; nothing is printed until an effect is logged.
+      expect(find.text('Log how it felt'), findsNothing);
     });
 
-    testWidgets('a dose with a logged effect shows the summary, not the prompt',
+    testWidgets('a dose with a logged effect shows the summary',
         (tester) async {
       final now = DateTime.now();
       final ts = now.subtract(const Duration(minutes: 90));
