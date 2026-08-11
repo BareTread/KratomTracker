@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kratom_tracker_plus/providers/kratom_provider.dart';
 import 'package:kratom_tracker_plus/providers/theme_provider.dart';
@@ -46,9 +47,13 @@ void main() {
 
     await _pumpHome(tester, provider, tall: true);
 
-    final earlyY = tester.getCenter(find.text('early')).dy;
-    final middleY = tester.getCenter(find.text('middle')).dy;
-    final lateY = tester.getCenter(find.text('late')).dy;
+    // Rows no longer render notes; identify them by their time labels.
+    // Format expectations with DateFormat so intl's exact spacing matches.
+    String at(int hour) =>
+        DateFormat.jm().format(DateTime(now.year, now.month, now.day, hour));
+    final earlyY = tester.getCenter(find.text(at(7))).dy;
+    final middleY = tester.getCenter(find.text(at(13))).dy;
+    final lateY = tester.getCenter(find.text(at(20))).dy;
     expect(earlyY, lessThan(middleY));
     expect(middleY, lessThan(lateY));
   });
