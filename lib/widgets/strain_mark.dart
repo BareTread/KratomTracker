@@ -229,3 +229,115 @@ class LeafMarkPainter extends CustomPainter {
   bool shouldRepaint(covariant LeafMarkPainter old) =>
       old.shape != shape || old.color != color;
 }
+
+/// Renders a [LeafShape] as a widget, drawn in [color] at [size].
+///
+/// This is the single shared mark widget every strain surface renders
+/// through — both strain forms, the strains screen, the picker tiles, and
+/// the strain detail view. Marks are drawn in the strain's own colour; for
+/// marks used as foreground on a dark surface where the raw colour would
+/// vanish, callers can pass [legibleStrainColor] from `app_theme.dart`.
+class StrainMark extends StatelessWidget {
+  const StrainMark({
+    super.key,
+    required this.shape,
+    required this.color,
+    this.size = 24,
+  });
+
+  final LeafShape shape;
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(
+        painter: LeafMarkPainter(shape: shape, color: color),
+      ),
+    );
+  }
+}
+
+/// The parts of a strain that decide whether a (colour, shape) pair is
+/// already taken. Kept as a record so [markCollision] stays independent of
+/// the `Strain` model and avoids an import cycle.
+typedef StrainMarkRef = ({
+  String id,
+  String name,
+  int color,
+  String icon,
+  String code,
+});
+
+/// Maps a stored icon string to a [LeafShape].
+///
+/// Accepts both the new [LeafShape.name] values ("single", "sprout", ...) and
+/// the legacy Material icon names the app used to write. Anything
+/// unrecognised — including whatever the original app wrote that isn't in the
+/// legacy table — falls back to a shape derived deterministically from
+/// [code], so a 30-strain library doesn't collapse onto one shape. The same
+/// code always yields the same shape.
+LeafShape resolveLeafShape(String stored, String code) {
+  final key = stored.trim().toLowerCase();
+  for (final shape in LeafShape.values) {
+    if (shape.name == key) return shape;
+  }
+  const legacy = <String, LeafShape>{
+    'leaf': LeafShape.single,
+    'herb': LeafShape.single,
+    'natural': LeafShape.sprout,
+    'yard': LeafShape.sprout,
+    'organic': LeafShape.trefoil,
+    'plant': LeafShape.broad,
+    'flower': LeafShape.broad,
+    'nature': LeafShape.broad,
+    'park': LeafShape.furl,
+    'forest': LeafShape.vine,
+  };
+  final mapped = legacy[key];
+  if (mapped != null) return mapped;
+  return LeafShape.values[_stableHash(code) % LeafShape.values.length];
+}
+
+/// A stable, run-to-run identical string hash. `String.hashCode` is not
+/// guaranteed stable across isolates, which would break the contract that the
+/// same code always maps to the same shape.
+int _stableHash(String s) {
+  var h = 0;
+  for (final c in s.codeUnits) {
+    h = (h * 31 + c) & 0x7FFFFFFF;
+  }
+  return h;
+}
+
+/// Checks [shape] at [color] against [strains].
+///
+/// Returns the id and name of the strain that already owns the pair (if any)
+/// and the set of shapes already taken for [color] by strains other than
+/// [excludeId]. Used by the strain forms to warn — not block — before saving
+/// a duplicate mark.
+({String? ownerId, String? ownerName, Set<LeafShape> takenForColor})
+    markCollision(
+  Iterable<StrainMarkRef> strains,
+  int color,
+  LeafShape shape, {
+  String? excludeId,
+}) {
+  final taken = <LeafShape>{};
+  String? ownerId;
+  String? ownerName;
+  for (final s in strains) {
+    if (s.id == excludeId) continue;
+    if (s.color != color) continue;
+    final sShape = resolveLeafShape(s.icon, s.code);
+    taken.add(sShape);
+    if (sShape == shape) {
+      ownerId = s.id;
+      ownerName = s.name;
+    }
+  }
+  return (ownerId: ownerId, ownerName: ownerName, takenForColor: taken);
+}

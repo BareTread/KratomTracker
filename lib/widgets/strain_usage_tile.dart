@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../constants/icons.dart';
 import '../domain/strain_usage.dart';
 import '../theme/app_theme.dart';
+import 'strain_mark.dart';
 
 /// One row in the smart strain picker. Renders a [StrainUsage] without
 /// re-sorting or filtering — callers iterate `provider.strainUsage` as-is.
@@ -75,10 +75,12 @@ class StrainUsageTile extends StatelessWidget {
                           color: strainColor.withValues(alpha: 0.18),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Icon(
-                          strainIcons[strain.icon] ?? Icons.local_florist,
-                          color: strainColor,
-                          size: 20,
+                        child: Center(
+                          child: StrainMark(
+                            shape: resolveLeafShape(strain.icon, strain.code),
+                            color: strainColor,
+                            size: 22,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),

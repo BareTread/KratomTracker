@@ -1,4 +1,5 @@
 import '_coerce.dart';
+import '../widgets/strain_mark.dart';
 
 class Strain {
   final String id;
@@ -49,6 +50,7 @@ class Strain {
       };
 
   factory Strain.fromJson(Map<String, dynamic> json) {
+    final code = asString(json['code']);
     // Absent or null → true, so legacy payloads stay fully in stock. A
     // present-but-garbage value also falls back to true rather than silently
     // marking a strain out of stock.
@@ -56,9 +58,14 @@ class Strain {
     return Strain(
       id: asString(json['id']),
       name: asString(json['name']),
-      code: asString(json['code']),
+      code: code,
       color: asInt(json['color']),
-      icon: asString(json['icon'], fallback: 'Leaf'),
+      // Normalise to a LeafShape.name on read: legacy Material icon names map
+      // to their shape, and anything unrecognised falls back to a shape
+      // derived deterministically from the strain's code. A missing field is
+      // covered by the same deterministic fallback rather than a fixed
+      // default, so a 30-strain library doesn't collapse onto one shape.
+      icon: resolveLeafShape(asString(json['icon']), code).name,
       inStock: stockRaw == null ? true : asBool(stockRaw, fallback: true),
     );
   }

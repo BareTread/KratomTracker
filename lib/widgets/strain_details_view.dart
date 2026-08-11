@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../constants/icons.dart';
 import '../domain/analytics_service.dart';
 import '../models/effect.dart';
 import '../models/strain.dart';
@@ -11,6 +10,7 @@ import '../providers/kratom_provider.dart';
 import '../theme/app_theme.dart';
 import '../widgets/add_dosage_form.dart';
 import '../widgets/edit_strain_form.dart';
+import '../widgets/strain_mark.dart';
 
 class StrainDetailsView extends StatelessWidget {
   final Strain strain;
@@ -101,10 +101,12 @@ class _Header extends StatelessWidget {
                 width: 1,
               ),
             ),
-            child: Icon(
-              strainIcons[strain.icon] ?? Icons.local_florist,
-              color: Color(strain.color),
-              size: 26,
+            child: Center(
+              child: StrainMark(
+                shape: resolveLeafShape(strain.icon, strain.code),
+                color: Color(strain.color),
+                size: 28,
+              ),
             ),
           ),
           const SizedBox(width: 16),

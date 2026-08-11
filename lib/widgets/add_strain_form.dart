@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/kratom_provider.dart';
+import '../theme/app_theme.dart';
+import 'leaf_shape_picker.dart';
+import 'strain_mark.dart';
 
 class AddStrainForm extends StatefulWidget {
   const AddStrainForm({super.key});
@@ -13,7 +16,7 @@ class _AddStrainFormState extends State<AddStrainForm> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _codeController = TextEditingController();
-  int _selectedIcon = 0;
+  LeafShape _selectedShape = LeafShape.single;
 
   // Updated color palette with more distinct shades
   final Map<String, List<_ColorOption>> _strainTypes = {
@@ -91,93 +94,56 @@ class _AddStrainFormState extends State<AddStrainForm> {
   _ColorOption? _selectedColor;
   bool _inStock = true;
 
-  final List<_IconOption> _icons = [
-    _IconOption(
-      icon: Icons.local_florist_outlined,
-      name: 'Plant',
-    ),
-    _IconOption(
-      icon: Icons.eco_outlined,
-      name: 'Leaf',
-    ),
-    _IconOption(
-      icon: Icons.grass_outlined,
-      name: 'Natural',
-    ),
-    _IconOption(
-      icon: Icons.spa_outlined,
-      name: 'Organic',
-    ),
-    _IconOption(
-      icon: Icons.forest_outlined,
-      name: 'Forest',
-    ),
-    _IconOption(
-      icon: Icons.nature_outlined,
-      name: 'Nature',
-    ),
-    _IconOption(
-      icon: Icons.park_outlined,
-      name: 'Park',
-    ),
-    _IconOption(
-      icon: Icons.yard_outlined,
-      name: 'Yard',
-    ),
-  ];
-
   @override
   void initState() {
     super.initState();
     _selectedColor = _strainTypes[_selectedType]![0];
   }
 
-  // Add smooth color transition animation
-  Widget _buildIconOption(BuildContext context, _IconOption icon, int index) {
-    final isSelected = _selectedIcon == index;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeInOut,
-      child: GestureDetector(
-        onTap: () => setState(() => _selectedIcon = index),
-        child: Container(
-          width: 80,
-          height: 80,
-          decoration: BoxDecoration(
-            color: isSelected
-                ? _selectedColor!.color.withOpacity(0.2)
-                : Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isSelected
-                  ? _selectedColor!.color
-                  : Colors.transparent,
-              width: 2,
+  Widget _buildMarkSection(BuildContext context) {
+    final c = context.c;
+    final strains = Provider.of<KratomProvider>(context, listen: false).strains;
+    final colorValue = _selectedColor!.color.value;
+    final collision = markCollision(
+      strains
+          .map(
+            (s) => (
+              id: s.id,
+              name: s.name,
+              color: s.color,
+              icon: s.icon,
+              code: s.code,
             ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon.icon,
-                color: isSelected
-                    ? _selectedColor!.color
-                    : Theme.of(context).iconTheme.color,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                icon.name,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isSelected
-                      ? _selectedColor!.color
-                      : null,
-                ),
-              ),
-            ],
-          ),
+          )
+          .toList(growable: false),
+      colorValue,
+      _selectedShape,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Mark',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
         ),
-      ),
+        const SizedBox(height: 12),
+        LeafShapePicker(
+          selectedShape: _selectedShape,
+          color: _selectedColor!.color,
+          takenShapes: collision.takenForColor,
+          onChanged: (shape) => setState(() => _selectedShape = shape),
+        ),
+        if (collision.ownerName != null) ...[
+          const SizedBox(height: 10),
+          Text(
+            'This colour and mark are already used by '
+            '${collision.ownerName}. Pick a free mark, or keep it if you mean '
+            'to share them.',
+            style: TextStyle(fontSize: 13, color: c.caution),
+          ),
+        ],
+      ],
     );
   }
 
@@ -324,25 +290,7 @@ class _AddStrainFormState extends State<AddStrainForm> {
                   },
                 ),
                 const SizedBox(height: 24),
-                const Text(
-                  'Icon',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  height: 80,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: _icons.length,
-                    itemBuilder: (context, index) {
-                      final icon = _icons[index];
-                      return _buildIconOption(context, icon, index);
-                    },
-                  ),
-                ),
+                _buildMarkSection(context),
                 const SizedBox(height: 24),
                 const Text(
                   'Color',
@@ -394,12 +342,13 @@ class _AddStrainFormState extends State<AddStrainForm> {
                   child: ElevatedButton(
                     onPressed: () {
                       if (_formKey.currentState!.validate()) {
-                        final provider = Provider.of<KratomProvider>(context, listen: false);
+                        final provider =
+                            Provider.of<KratomProvider>(context, listen: false);
                         provider.addStrain(
                           _nameController.text,
                           _codeController.text,
                           _selectedColor!.color.value,
-                          _icons[_selectedIcon].name,
+                          _selectedShape.name,
                           inStock: _inStock,
                         );
                         Navigator.pop(context);
@@ -449,13 +398,3 @@ class _ColorOption {
     required this.intensity,
   });
 }
-
-class _IconOption {
-  final IconData icon;
-  final String name;
-
-  const _IconOption({
-    required this.icon,
-    required this.name,
-  });
-} 

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kratom_tracker_plus/data/backup_codec.dart';
+import 'package:kratom_tracker_plus/widgets/strain_mark.dart';
 
 /// End-to-end guard for the ONE migration that actually matters: moving 18
 /// months of real history out of the original `org.kratomtracker.app` build
@@ -145,5 +146,67 @@ void main() {
     final truncated = legacyExport();
     final result = parseBackup(truncated.substring(0, truncated.length ~/ 2));
     expect(result, isA<BackupError>());
+  });
+
+  group('icon migration to LeafShape', () {
+    test('legacy icon names map to their documented shape', () {
+      final ok = parseBackup(legacyExport()) as BackupOk;
+      final byId = {for (final s in ok.payload.strains) s.id: s};
+      // 'leaf' -> single, 'flower' -> broad (case-insensitive legacy map).
+      expect(byId['s-green']!.icon, 'single');
+      expect(byId['s-red']!.icon, 'broad');
+    });
+
+    test('a new canonical name round-trips unchanged', () {
+      final source = jsonDecode(legacyExport()) as Map<String, dynamic>;
+      final strains =
+          (source['strains'] as List).cast<Map<String, dynamic>>();
+      strains[0]['icon'] = 'vine';
+      strains[1]['icon'] = 'furl';
+
+      final ok = parseBackup(jsonEncode(source)) as BackupOk;
+      final byId = {for (final s in ok.payload.strains) s.id: s};
+      expect(byId['s-green']!.icon, 'vine');
+      expect(byId['s-red']!.icon, 'furl');
+    });
+
+    test('an unknown icon value falls back deterministically from the code', () {
+      final source = jsonDecode(legacyExport()) as Map<String, dynamic>;
+      final strains =
+          (source['strains'] as List).cast<Map<String, dynamic>>();
+      strains[0]['icon'] = 'something-the-original-app-wrote';
+
+      final first = (parseBackup(jsonEncode(source)) as BackupOk)
+          .payload
+          .strains
+          .singleWhere((s) => s.id == 's-green');
+      final second = (parseBackup(jsonEncode(source)) as BackupOk)
+          .payload
+          .strains
+          .singleWhere((s) => s.id == 's-green');
+      expect(first.icon, second.icon, reason: 'same code -> same shape');
+      expect(
+        LeafShape.values.map((s) => s.name).contains(first.icon),
+        isTrue,
+      );
+    });
+
+    test('a missing icon field falls back deterministically from the code', () {
+      final source = jsonDecode(legacyExport()) as Map<String, dynamic>;
+      final strains =
+          (source['strains'] as List).cast<Map<String, dynamic>>();
+      strains[0].remove('icon');
+
+      final first = (parseBackup(jsonEncode(source)) as BackupOk)
+          .payload
+          .strains
+          .singleWhere((s) => s.id == 's-green');
+      final second = (parseBackup(jsonEncode(source)) as BackupOk)
+          .payload
+          .strains
+          .singleWhere((s) => s.id == 's-green');
+      expect(first.icon, second.icon);
+      expect(first.icon, isNotEmpty);
+    });
   });
 }

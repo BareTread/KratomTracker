@@ -5,7 +5,7 @@ import '../widgets/add_strain_form.dart';
 import '../widgets/edit_strain_form.dart';
 import '../models/strain.dart';
 import '../widgets/strain_details_view.dart';
-import '../constants/icons.dart';
+import '../widgets/strain_mark.dart';
 import '../theme/app_theme.dart';
 import 'dart:ui';  // For ImageFilter
 
@@ -153,10 +153,12 @@ class StrainsScreen extends StatelessWidget {
                     color: Color(strain.color).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(
-                    strainIcons[strain.icon] ?? Icons.local_florist,
-                    color: Color(strain.color),
-                    size: 20,
+                  child: Center(
+                    child: StrainMark(
+                      shape: resolveLeafShape(strain.icon, strain.code),
+                      color: Color(strain.color),
+                      size: 22,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),

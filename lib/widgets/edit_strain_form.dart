@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/kratom_provider.dart';
 import '../models/strain.dart';
+import '../theme/app_theme.dart';
+import 'leaf_shape_picker.dart';
+import 'strain_mark.dart';
 
 class EditStrainForm extends StatefulWidget {
   final Strain strain;
@@ -21,7 +24,7 @@ class _EditStrainFormState extends State<EditStrainForm> {
   late final TextEditingController _codeController;
   late String _selectedType;
   late _ColorOption _selectedColor;
-  late _IconOption _selectedIcon;
+  late LeafShape _selectedShape;
   late bool _inStock;
 
   // Define color options similar to AddStrainForm
@@ -96,32 +99,12 @@ class _EditStrainFormState extends State<EditStrainForm> {
     ],
   };
 
-  // Define icon options matching AddStrainForm and constants
-  final List<_IconOption> _icons = [
-    _IconOption(
-      icon: Icons.local_florist_outlined,
-      name: 'Leaf',
-    ),
-    _IconOption(
-      icon: Icons.eco_outlined,
-      name: 'Natural',
-    ),
-    _IconOption(
-      icon: Icons.grass_outlined,
-      name: 'Plant',
-    ),
-    _IconOption(
-      icon: Icons.spa_outlined,
-      name: 'Organic',
-    ),
-  ];
-
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.strain.name);
     _codeController = TextEditingController(text: widget.strain.code);
-    
+
     // Initialize selected type and color based on current strain color
     final currentColor = Color(widget.strain.color);
     String foundType = 'Green'; // Default
@@ -141,79 +124,57 @@ class _EditStrainFormState extends State<EditStrainForm> {
     _selectedType = foundType;
     _selectedColor = foundColor;
 
-    // Initialize icon selection
-    _selectedIcon = _icons.firstWhere(
-      (icon) => icon.name == widget.strain.icon,
-      orElse: () => _icons[0], // Default to first icon if not found
-    );
+    // Initialize mark selection from the stored icon. The stored value is
+    // already a LeafShape.name after the read migration, but resolve handles
+    // any legacy value too.
+    _selectedShape = resolveLeafShape(widget.strain.icon, widget.strain.code);
     _inStock = widget.strain.inStock;
   }
 
-  // Rest of the form remains the same, but update the icon selection UI:
-  Widget _buildIconSelection() {
+  Widget _buildMarkSection(BuildContext context) {
+    final c = context.c;
+    final strains = Provider.of<KratomProvider>(context, listen: false).strains;
+    final colorValue = _selectedColor.color.value;
+    final collision = markCollision(
+      strains
+          .map(
+            (s) => (
+              id: s.id,
+              name: s.name,
+              color: s.color,
+              icon: s.icon,
+              code: s.code,
+            ),
+          )
+          .toList(growable: false),
+      colorValue,
+      _selectedShape,
+      excludeId: widget.strain.id,
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Icon',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
-          ),
+          'Mark',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
         ),
         const SizedBox(height: 12),
-        SizedBox(
-          height: 80,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: _icons.length,
-            itemBuilder: (context, index) {
-              final icon = _icons[index];
-              final isSelected = _selectedIcon == icon;
-              return GestureDetector(
-                onTap: () => setState(() => _selectedIcon = icon),
-                child: Container(
-                  width: 80,
-                  height: 80,
-                  margin: const EdgeInsets.only(right: 8),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? _selectedColor.color.withOpacity(0.2)
-                        : Theme.of(context).colorScheme.surface,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isSelected
-                          ? _selectedColor.color
-                          : Colors.transparent,
-                      width: 2,
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        icon.icon,
-                        color: isSelected
-                            ? _selectedColor.color
-                            : Theme.of(context).iconTheme.color,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        icon.name,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isSelected
-                              ? _selectedColor.color
-                              : null,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
+        LeafShapePicker(
+          selectedShape: _selectedShape,
+          color: _selectedColor.color,
+          takenShapes: collision.takenForColor,
+          onChanged: (shape) => setState(() => _selectedShape = shape),
         ),
+        if (collision.ownerName != null) ...[
+          const SizedBox(height: 10),
+          Text(
+            'This colour and mark are already used by '
+            '${collision.ownerName}. Pick a free mark, or keep it if you mean '
+            'to share them.',
+            style: TextStyle(fontSize: 13, color: c.caution),
+          ),
+        ],
       ],
     );
   }
@@ -288,7 +249,7 @@ class _EditStrainFormState extends State<EditStrainForm> {
               ),
             ),
             const SizedBox(height: 16),
-            _buildIconSelection(),
+            _buildMarkSection(context),
             const SizedBox(height: 16),
             SwitchListTile(
               value: _inStock,
@@ -310,13 +271,14 @@ class _EditStrainFormState extends State<EditStrainForm> {
                 ElevatedButton(
                   onPressed: () {
                     if (_formKey.currentState!.validate()) {
-                      final provider = Provider.of<KratomProvider>(context, listen: false);
+                      final provider =
+                          Provider.of<KratomProvider>(context, listen: false);
                       provider.updateStrain(
                         widget.strain.id,
                         name: _nameController.text,
                         code: _codeController.text,
                         color: _selectedColor.color.value,
-                        icon: _selectedIcon.name,
+                        icon: _selectedShape.name,
                         inStock: _inStock,
                       );
                       Navigator.pop(context);
@@ -393,13 +355,3 @@ class _ColorOption {
     required this.intensity,
   });
 }
-
-class _IconOption {
-  final String name;
-  final IconData icon;
-
-  const _IconOption({
-    required this.name,
-    required this.icon,
-  });
-} 

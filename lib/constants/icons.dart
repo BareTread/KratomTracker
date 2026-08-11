@@ -1,7 +1,12 @@
-import 'dart:collection';
-
 import 'package:flutter/material.dart';
 
+/// Legacy Material icon name → glyph map.
+///
+/// Retained only for `lib/screens/home/home_dosage_list.dart`, which another
+/// worker is redesigning concurrently. Everything else now renders through
+/// `StrainMark` / `LeafMarkPainter` and stores a `LeafShape.name`. The home
+/// dose rows will be rewired to the shared mark widget after both branches
+/// merge — see the CROSS-PACKAGE REQUEST in the adopting task's report.
 const Map<String, IconData> strainIcons = {
   'Leaf': Icons.eco_outlined,
   'Plant': Icons.local_florist_outlined,
@@ -14,11 +19,3 @@ const Map<String, IconData> strainIcons = {
   'Park': Icons.park_outlined,
   'Yard': Icons.yard_outlined,
 };
-
-// CROSS-PACKAGE REQUEST: Form owners should build their pickers from
-// strainIcons so add/edit flows persist the same icon name-to-glyph mapping.
-final List<Map<String, Object>> iconOptions = UnmodifiableListView(
-  strainIcons.entries
-      .map((entry) => {'name': entry.key, 'icon': entry.value})
-      .toList(growable: false),
-);
