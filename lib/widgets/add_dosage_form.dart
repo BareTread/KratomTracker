@@ -26,9 +26,14 @@ class _AddDosageFormState extends State<AddDosageForm> {
   late String? _selectedStrainId;
   bool _forward = true;
 
+  /// Wall-clock moment the Add Dose flow opened. Frozen for the whole sheet
+  /// lifetime so a delayed save still records the intent time, not save time.
+  late final DateTime _openedAt;
+
   @override
   void initState() {
     super.initState();
+    _openedAt = DateTime.now();
     _selectedStrainId = widget.preselectedStrainId;
     if (_selectedStrainId != null) {
       _strainSelected = true;
@@ -85,6 +90,7 @@ class _AddDosageFormState extends State<AddDosageForm> {
             ? _DosageDetailsForm(
                 key: const ValueKey('details'),
                 strainId: _selectedStrainId!,
+                openedAt: _openedAt,
                 onBack: () {
                   setState(() {
                     _forward = false;
@@ -176,9 +182,9 @@ class _AddDosageFormState extends State<AddDosageForm> {
 }
 
 // Step 1: Strain Selection — order is provider.strainUsage (frozen).
-// Search filters by code and name (case-insensitive substring) but never
-// reorders: the surviving items keep their frozen relative order.
-class _StrainSelectionView extends StatefulWidget {
+// Stock partition is applied after the frozen ranking; relative order inside
+// each group is preserved.
+class _StrainSelectionView extends StatelessWidget {
   final ValueChanged<String> onStrainSelected;
 
   const _StrainSelectionView({
@@ -187,41 +193,11 @@ class _StrainSelectionView extends StatefulWidget {
   });
 
   @override
-  State<_StrainSelectionView> createState() => _StrainSelectionViewState();
-}
-
-class _StrainSelectionViewState extends State<_StrainSelectionView> {
-  final _searchController = TextEditingController();
-  String _query = '';
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  List<StrainUsage> _filtered(List<StrainUsage> usage) {
-    final q = _query.trim().toLowerCase();
-    if (q.isEmpty) return usage;
-    return usage.where((u) {
-      return u.strain.code.toLowerCase().contains(q) ||
-          u.strain.name.toLowerCase().contains(q);
-    }).toList(growable: false);
-  }
-
-  @override
   Widget build(BuildContext context) {
     final c = context.c;
     return Consumer<KratomProvider>(
       builder: (context, provider, child) {
         final usage = provider.strainUsage;
-        final filtered = _filtered(usage);
-        final todayDoses = provider.getDosagesForDate(DateTime.now());
-        final todayTotal = provider.totalForDate(DateTime.now());
-        final todaySummary =
-            'Today: ${todayDoses.length} '
-            '${todayDoses.length == 1 ? 'dose' : 'doses'} · '
-            '${_formatGrams(todayTotal)}g';
 
         return Container(
           decoration: BoxDecoration(
@@ -234,43 +210,18 @@ class _StrainSelectionViewState extends State<_StrainSelectionView> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'Select Strain',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: c.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Least recently used first · $todaySummary',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12, color: c.textTertiary),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Bar fills as a strain rests — full at 2 weeks',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12, color: c.textTertiary),
-                    ),
-                    const SizedBox(height: 10),
-                    _SearchField(
-                      controller: _searchController,
-                      onChanged: (value) => setState(() => _query = value),
-                      hintText: 'Search strains',
-                    ),
-                  ],
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
+                child: Text(
+                  'Select Strain',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: c.textPrimary,
+                  ),
                 ),
               ),
               Expanded(
-                child: _buildList(c, provider, filtered),
+                child: _buildList(c, provider, usage),
               ),
             ],
           ),
@@ -282,22 +233,15 @@ class _StrainSelectionViewState extends State<_StrainSelectionView> {
   Widget _buildList(
     AppColors c,
     KratomProvider provider,
-    List<StrainUsage> filtered,
+    List<StrainUsage> usage,
   ) {
-    if (filtered.isEmpty) return _emptySearchState(c);
-
     // Stock is a partition applied AFTER the frozen ranking: in-stock strains
-    // keep their relative order, then out-of-stock ones keep theirs. Search
-    // filters but never reorders, so an out-of-stock match stays in the
-    // out-of-stock group.
-    final inStockItems = filtered
-        .where((u) => u.strain.inStock)
-        .toList(growable: false);
-    final outOfStockItems = filtered
-        .where((u) => !u.strain.inStock)
-        .toList(growable: false);
+    // keep their relative order, then out-of-stock ones keep theirs.
+    final inStockItems =
+        usage.where((u) => u.strain.inStock).toList(growable: false);
+    final outOfStockItems =
+        usage.where((u) => !u.strain.inStock).toList(growable: false);
     final hasOutOfStock = outOfStockItems.isNotEmpty;
-    final queryActive = _query.trim().isNotEmpty;
 
     if (!hasOutOfStock) {
       // Day-one state: every strain in stock — no divider, no header, no
@@ -308,13 +252,12 @@ class _StrainSelectionViewState extends State<_StrainSelectionView> {
         itemBuilder: (context, index) {
           final item = inStockItems[index];
           return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.only(bottom: 6),
             child: _StaggeredEntrance(
               index: index,
-              enabled: !queryActive,
               child: StrainUsageTile(
                 usage: item,
-                onTap: () => widget.onStrainSelected(item.strain.id),
+                onTap: () => onStrainSelected(item.strain.id),
               ),
             ),
           );
@@ -322,8 +265,7 @@ class _StrainSelectionViewState extends State<_StrainSelectionView> {
       );
     }
 
-    final totalCount =
-        inStockItems.length + 1 + outOfStockItems.length;
+    final totalCount = inStockItems.length + 1 + outOfStockItems.length;
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       itemCount: totalCount,
@@ -331,34 +273,32 @@ class _StrainSelectionViewState extends State<_StrainSelectionView> {
         if (index < inStockItems.length) {
           final item = inStockItems[index];
           return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.only(bottom: 6),
             child: _StaggeredEntrance(
               index: index,
-              enabled: !queryActive,
               child: StrainUsageTile(
                 usage: item,
-                onTap: () => widget.onStrainSelected(item.strain.id),
+                onTap: () => onStrainSelected(item.strain.id),
               ),
             ),
           );
         }
         if (index == inStockItems.length) {
-          return Padding(
-            padding: const EdgeInsets.only(top: 4, bottom: 8),
+          return const Padding(
+            padding: EdgeInsets.only(top: 4, bottom: 8),
             child: _StockDivider(),
           );
         }
         final outIndex = index - inStockItems.length - 1;
         final item = outOfStockItems[outIndex];
         return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.only(bottom: 6),
           child: _StaggeredEntrance(
             index: index,
-            enabled: !queryActive,
             child: StrainUsageTile(
               usage: item,
               inStock: false,
-              onTap: () => widget.onStrainSelected(item.strain.id),
+              onTap: () => onStrainSelected(item.strain.id),
               onToggleStock: () => provider.setStrainInStock(
                 item.strain.id,
                 inStock: true,
@@ -369,98 +309,20 @@ class _StrainSelectionViewState extends State<_StrainSelectionView> {
       },
     );
   }
-
-  Widget _emptySearchState(AppColors c) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text(
-          'No strains match "${_query.trim()}"',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 14, color: c.textSecondary),
-        ),
-      ),
-    );
-  }
-}
-
-class _SearchField extends StatelessWidget {
-  final TextEditingController controller;
-  final ValueChanged<String> onChanged;
-  final String hintText;
-
-  const _SearchField({
-    required this.controller,
-    required this.onChanged,
-    required this.hintText,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.c;
-    return TextField(
-      controller: controller,
-      onChanged: onChanged,
-      autofocus: false,
-      textInputAction: TextInputAction.search,
-      style: TextStyle(fontSize: 14, color: c.textPrimary),
-      decoration: InputDecoration(
-        isDense: true,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        hintText: hintText,
-        hintStyle: TextStyle(fontSize: 14, color: c.textTertiary),
-        prefixIcon: Icon(Icons.search, size: 18, color: c.textTertiary),
-        prefixIconConstraints:
-            const BoxConstraints(minWidth: 36, minHeight: 36),
-        suffixIcon: ValueListenableBuilder<TextEditingValue>(
-          valueListenable: controller,
-          builder: (context, value, _) {
-            if (value.text.isEmpty) return const SizedBox.shrink();
-            return IconButton(
-              icon: Icon(Icons.close, size: 16, color: c.textTertiary),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-              onPressed: () {
-                controller.clear();
-                onChanged('');
-              },
-            );
-          },
-        ),
-        filled: true,
-        fillColor: c.surfaceSunken,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: c.hairline),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: c.hairline),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: c.accent, width: 1.5),
-        ),
-      ),
-    );
-  }
 }
 
 class _StaggeredEntrance extends StatelessWidget {
   final int index;
   final Widget child;
-  final bool enabled;
 
   const _StaggeredEntrance({
     required this.index,
     required this.child,
-    this.enabled = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (!enabled || AppMotion.reduced(context)) return child;
+    if (AppMotion.reduced(context)) return child;
 
     final staggerMs = (index * 20).clamp(0, 200);
     final totalMs = AppMotion.normal.inMilliseconds + staggerMs;
@@ -485,6 +347,8 @@ class _StaggeredEntrance extends StatelessWidget {
 }
 
 class _StockDivider extends StatelessWidget {
+  const _StockDivider();
+
   @override
   Widget build(BuildContext context) {
     final c = context.c;
@@ -514,11 +378,13 @@ class _StockDivider extends StatelessWidget {
 
 class _DosageDetailsForm extends StatefulWidget {
   final String strainId;
+  final DateTime openedAt;
   final VoidCallback onBack;
 
   const _DosageDetailsForm({
     super.key,
     required this.strainId,
+    required this.openedAt,
     required this.onBack,
   });
 
@@ -536,30 +402,68 @@ class _DosageDetailsFormState extends State<_DosageDetailsForm> {
   @override
   void initState() {
     super.initState();
-    _selectedDateTime = _seedDateTime(
-      Provider.of<KratomProvider>(context, listen: false).selectedDate,
-    );
+    final provider = Provider.of<KratomProvider>(context, listen: false);
+    _selectedDateTime = _seedDateTime(provider.selectedDate, widget.openedAt);
+    _prefillAmount(provider);
   }
 
-  /// Seed from the calendar's selected day, keeping wall-clock time-of-day.
-  /// If the selected day is today, use now exactly.
-  static DateTime _seedDateTime(DateTime selectedDate) {
-    final now = DateTime.now();
+  /// Seed from the calendar's selected day, keeping the frozen open-time
+  /// time-of-day. If the selected day is today, use openedAt exactly.
+  static DateTime _seedDateTime(DateTime selectedDate, DateTime openedAt) {
     final selectedDay = DateTime(
       selectedDate.year,
       selectedDate.month,
       selectedDate.day,
     );
-    final today = DateTime(now.year, now.month, now.day);
-    if (selectedDay == today) return now;
+    final openDay = DateTime(openedAt.year, openedAt.month, openedAt.day);
+    if (selectedDay == openDay) return openedAt;
     return DateTime(
       selectedDay.year,
       selectedDay.month,
       selectedDay.day,
-      now.hour,
-      now.minute,
-      now.second,
+      openedAt.hour,
+      openedAt.minute,
+      openedAt.second,
+      openedAt.millisecond,
     );
+  }
+
+  /// Prefill amount with the strain's usual dose (30-day average), falling
+  /// back to the most recent dose for that strain if the average is zero.
+  void _prefillAmount(KratomProvider provider) {
+    StrainUsage? usage;
+    for (final u in provider.strainUsage) {
+      if (u.strain.id == widget.strainId) {
+        usage = u;
+        break;
+      }
+    }
+
+    double? usual;
+    if (usage != null && usage.avgDoseSize > 0) {
+      usual = usage.avgDoseSize;
+    } else {
+      // Most recent dose for this strain, if any.
+      final doses = provider.dosages
+          .where((d) => d.strainId == widget.strainId)
+          .toList(growable: false);
+      if (doses.isNotEmpty) {
+        doses.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        usual = doses.first.amount;
+      }
+    }
+
+    if (usual != null && usual > 0) {
+      _amountController.text = _formatAmount(usual);
+    }
+  }
+
+  static String _formatAmount(double amount) {
+    if (amount == amount.roundToDouble()) {
+      return amount.toStringAsFixed(0);
+    }
+    final one = amount.toStringAsFixed(1);
+    return one.endsWith('.0') ? one.substring(0, one.length - 2) : one;
   }
 
   Future<void> _selectDate(BuildContext context) async {
@@ -600,6 +504,20 @@ class _DosageDetailsFormState extends State<_DosageDetailsForm> {
         );
       });
     }
+  }
+
+  void _snapToNow() {
+    final now = DateTime.now();
+    setState(() {
+      _selectedDateTime = DateTime(
+        _selectedDateTime.year,
+        _selectedDateTime.month,
+        _selectedDateTime.day,
+        now.hour,
+        now.minute,
+        now.second,
+      );
+    });
   }
 
   Future<void> _submit() async {
@@ -679,7 +597,8 @@ class _DosageDetailsFormState extends State<_DosageDetailsForm> {
                   controller: _amountController,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
-                  decoration: _inputDecoration(context, label: 'Amount', suffix: 'g'),
+                  decoration:
+                      _inputDecoration(context, label: 'Amount', suffix: 'g'),
                   validator: validateDoseAmount,
                 ),
                 const SizedBox(height: 16),
@@ -693,7 +612,7 @@ class _DosageDetailsFormState extends State<_DosageDetailsForm> {
                         onPressed: () => _selectDate(context),
                       ),
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: _buildDateTimeButton(
                         icon: Icons.access_time,
@@ -702,6 +621,8 @@ class _DosageDetailsFormState extends State<_DosageDetailsForm> {
                         onPressed: () => _selectTime(context),
                       ),
                     ),
+                    const SizedBox(width: 8),
+                    _NowPill(onTap: _snapToNow),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -758,7 +679,7 @@ class _DosageDetailsFormState extends State<_DosageDetailsForm> {
         borderRadius: BorderRadius.circular(12),
         child: Container(
           padding: const EdgeInsets.symmetric(
-            horizontal: 16,
+            horizontal: 12,
             vertical: 12,
           ),
           decoration: BoxDecoration(
@@ -767,12 +688,13 @@ class _DosageDetailsFormState extends State<_DosageDetailsForm> {
           ),
           child: Row(
             children: [
-              Icon(icon, size: 20, color: c.textSecondary),
-              const SizedBox(width: 8),
+              Icon(icon, size: 18, color: c.textSecondary),
+              const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   label,
-                  style: TextStyle(fontSize: 16, color: c.textPrimary),
+                  style: TextStyle(fontSize: 14, color: c.textPrimary),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -818,6 +740,46 @@ class _DosageDetailsFormState extends State<_DosageDetailsForm> {
   }
 }
 
+/// Small cyan "Now" pill mirroring the home calendar's "Today" control.
+class _NowPill extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _NowPill({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Set time to now',
+      child: Material(
+        key: const Key('add-dose-now-pill'),
+        color: context.c.accent.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 44, minWidth: 52),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Center(
+                child: Text(
+                  'Now',
+                  style: TextStyle(
+                    color: context.c.accent,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Shared amount parsing: trim, accept `,` or `.` as decimal separator.
 double? parseDoseAmount(String? raw) {
   if (raw == null) return null;
@@ -845,12 +807,4 @@ String? validateDoseAmount(String? value) {
     return 'Amount seems too high (max 100g)';
   }
   return null;
-}
-
-String _formatGrams(double grams) {
-  if (grams == grams.roundToDouble()) {
-    return grams.toStringAsFixed(0);
-  }
-  final one = grams.toStringAsFixed(1);
-  return one.endsWith('.0') ? one.substring(0, one.length - 2) : one;
 }

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 import 'package:kratom_tracker_plus/providers/kratom_provider.dart';
 import 'package:kratom_tracker_plus/providers/theme_provider.dart';
 import 'package:kratom_tracker_plus/widgets/add_dosage_form.dart';
@@ -150,87 +151,128 @@ void main() {
       final texts = tester.widgetList<Text>(codeFinder).map((t) => t.data!).toList();
       expect(texts, expectedOrder);
     });
-  });
 
-  group('strain search', () {
-    Finder codeFinder(List<String> codes) => find.byWidgetPredicate(
-          (widget) =>
-              widget is Text &&
-              codes.contains(widget.data) &&
-              widget.style?.fontWeight == FontWeight.w600,
-        );
-
-    List<String> visibleCodes(WidgetTester tester, List<String> all) {
-      final finder = codeFinder(all);
-      return tester
-          .widgetList<Text>(finder)
-          .map((t) => t.data!)
-          .toList();
-    }
-
-    testWidgets('filters by code substring (case-insensitive)',
+    testWidgets('header is a single title with no search or captions',
         (tester) async {
-      final provider = await searchSeed();
+      final provider = await _seededProvider();
       await _pumpForm(tester, provider);
 
-      await tester.enterText(find.byType(TextField), 'cin');
-      await tester.pumpAndSettle();
-
-      expect(visibleCodes(tester, ['ALOE', 'BASL', 'CEDR', 'CINN']),
-          ['CINN'],);
+      expect(find.text('Select Strain'), findsOneWidget);
+      expect(find.textContaining('Least recently used'), findsNothing);
+      expect(find.textContaining('Bar fills'), findsNothing);
+      expect(find.text('Search strains'), findsNothing);
+      // No free-text search field on the picker step.
+      expect(find.byType(TextField), findsNothing);
     });
 
-    testWidgets('filters by full name substring', (tester) async {
-      final provider = await searchSeed();
-      await _pumpForm(tester, provider);
-
-      await tester.enterText(find.byType(TextField), 'basil');
-      await tester.pumpAndSettle();
-
-      expect(visibleCodes(tester, ['ALOE', 'BASL', 'CEDR', 'CINN']),
-          ['BASL'],);
-    });
-
-    testWidgets('preserves frozen relative order of surviving strains',
+    testWidgets('amount is prefilled from the strain usual dose',
         (tester) async {
-      final provider = await searchSeed();
+      final now = DateTime.now();
+      SharedPreferences.setMockInitialValues({
+        'strains': jsonEncode([
+          {
+            'id': 's-alpha',
+            'name': 'Alpha Strain',
+            'code': 'ALPHA',
+            'color': 0xFF00ACC1,
+            'icon': 'Leaf',
+          },
+        ]),
+        'dosages': jsonEncode([
+          {
+            'id': 'd1',
+            'strainId': 's-alpha',
+            'amount': 3.5,
+            'timestamp':
+                now.subtract(const Duration(days: 2)).toIso8601String(),
+          },
+          {
+            'id': 'd2',
+            'strainId': 's-alpha',
+            'amount': 4.5,
+            'timestamp':
+                now.subtract(const Duration(days: 5)).toIso8601String(),
+          },
+        ]),
+        'effects': '[]',
+      });
+      final provider =
+          await KratomProvider.create(await SharedPreferences.getInstance());
       await _pumpForm(tester, provider);
 
-      // 'ba' matches CINN ("Cinnamon Bark") and BASL ("BASL"/"Basil Fresh").
-      // Frozen order is CINN before BASL.
-      await tester.enterText(find.byType(TextField), 'ba');
+      await tester.tap(find.text('ALPHA'));
       await tester.pumpAndSettle();
 
-      expect(visibleCodes(tester, ['ALOE', 'BASL', 'CEDR', 'CINN']),
-          ['CINN', 'BASL'],);
+      final amountField = tester.widget<TextFormField>(
+        find.widgetWithText(TextFormField, 'Amount'),
+      );
+      // avg of 3.5 and 4.5 = 4.0
+      expect(amountField.controller?.text, '4');
     });
 
-    testWidgets('empty query shows the full list in frozen order',
+    testWidgets('saved time freezes at sheet open, not save time',
         (tester) async {
-      final provider = await searchSeed();
+      final provider = await _seededProvider();
+      final openMoment = DateTime.now();
       await _pumpForm(tester, provider);
 
-      // Type then clear via the suffix button — full list must return
-      // in frozen order.
-      await tester.enterText(find.byType(TextField), 'cin');
+      // Read the frozen time shown on the details step before saving.
+      await tester.tap(find.text('ALPHA'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.close));
+      final frozenLabel = DateFormat('h:mm a').format(openMoment);
+      expect(find.text(frozenLabel), findsOneWidget);
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Amount'),
+        '2.0',
+      );
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Add Dose'));
       await tester.pumpAndSettle();
 
-      expect(visibleCodes(tester, ['ALOE', 'BASL', 'CEDR', 'CINN']),
-          ['CEDR', 'CINN', 'BASL', 'ALOE'],);
+      expect(provider.dosages, hasLength(1));
+      final dose = provider.dosages.single;
+      // Saved time should be near openMoment (captured at sheet open).
+      final delta = dose.timestamp.difference(openMoment).inSeconds.abs();
+      expect(
+        delta,
+        lessThan(5),
+        reason:
+            'expected frozen open time (~$openMoment) but got ${dose.timestamp}',
+      );
     });
 
-    testWidgets('shows an empty state when nothing matches', (tester) async {
-      final provider = await searchSeed();
+    testWidgets('Now pill snaps the time field to the current time',
+        (tester) async {
+      final provider = await _seededProvider();
+      // Seed a past selected day so the frozen open-time-of-day is painted
+      // onto a non-today date. After tapping Now the time-of-day should jump
+      // to wall-clock now (date stays on the selected day).
+      final past = DateTime(2024, 6, 15, 8, 0);
+      provider.setSelectedDate(past);
       await _pumpForm(tester, provider);
 
-      await tester.enterText(find.byType(TextField), 'zzz');
+      await tester.tap(find.text('ALPHA'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('No strains match'), findsOneWidget);
-      expect(visibleCodes(tester, ['ALOE', 'BASL', 'CEDR', 'CINN']), isEmpty);
+      // Confirm the time is still the frozen open time-of-day on the past day.
+      expect(find.text('Jun 15, 2024'), findsOneWidget);
+
+      final beforeNow = DateTime.now();
+      await tester.tap(find.byKey(const Key('add-dose-now-pill')));
+      await tester.pump();
+
+      final expectedLabel = DateFormat('h:mm a').format(beforeNow);
+      final altLabel = DateFormat('h:mm a')
+          .format(beforeNow.add(const Duration(minutes: 1)));
+      final labels = [expectedLabel, altLabel];
+      expect(
+        labels.any((l) => find.text(l).evaluate().isNotEmpty),
+        isTrue,
+        reason: 'expected one of $labels after tapping Now',
+      );
+      // Date stays on the selected day; only time-of-day snaps.
+      expect(find.text('Jun 15, 2024'), findsOneWidget);
     });
   });
 
@@ -302,20 +344,6 @@ void main() {
 
       expect(find.byIcon(Icons.arrow_back), findsOneWidget);
       expect(find.widgetWithText(ElevatedButton, 'Add Dose'), findsOneWidget);
-    });
-
-    testWidgets('search keeps an out-of-stock match in the out-of-stock group',
-        (tester) async {
-      final provider = await partitionSeed();
-      await _pumpForm(tester, provider);
-
-      // 'cin' matches CINN only — and CINN is out of stock, so it stays below
-      // the divider.
-      await tester.enterText(find.byType(TextField), 'cin');
-      await tester.pumpAndSettle();
-
-      expect(find.text('Out of stock'), findsOneWidget);
-      expect(visibleCodes(tester, ['CINN']), ['CINN']);
     });
 
     testWidgets('all in stock: no divider, no header, frozen order unchanged',
