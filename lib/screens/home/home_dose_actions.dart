@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/dosage.dart';
@@ -25,6 +26,14 @@ Future<void> showDosageOptions(BuildContext context, Dosage dosage) {
               color: sheetContext.c.hairline,
               borderRadius: BorderRadius.circular(2),
             ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.replay_outlined),
+            title: const Text('Log again now'),
+            subtitle: const Text(
+              'Add the same strain and amount at the current time',
+            ),
+            onTap: () => _logAgain(context, dosage),
           ),
           ListTile(
             leading: const Icon(Icons.edit_outlined),
@@ -87,64 +96,25 @@ Future<void> showDosageOptions(BuildContext context, Dosage dosage) {
   );
 }
 
-Future<void> showNotePopup(
-  BuildContext context,
-  String note,
-  Color strainColor,
-) {
-  return showDialog<void>(
-    context: context,
-    builder: (dialogContext) => Dialog(
-      backgroundColor: Colors.transparent,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 340),
-        decoration: BoxDecoration(
-          color: dialogContext.c.surfaceRaised,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: strainColor.withValues(alpha: 0.3)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Icon(Icons.notes, color: strainColor, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Note',
-                    style: TextStyle(
-                      color: strainColor,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Divider(height: 1, color: dialogContext.c.hairline),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                note,
-                style: TextStyle(
-                  color: dialogContext.c.textPrimary,
-                  fontSize: 15,
-                  height: 1.4,
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: Text('Close', style: TextStyle(color: strainColor)),
-              ),
-            ),
-          ],
-        ),
+Future<void> _logAgain(BuildContext context, Dosage dosage) async {
+  final provider = context.read<KratomProvider>();
+  final strain = provider.getStrain(dosage.strainId);
+  await provider.addDosage(
+    dosage.strainId,
+    dosage.amount,
+    DateTime.now(),
+  );
+  await HapticFeedback.lightImpact();
+  if (!context.mounted) return;
+  Navigator.pop(context);
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+        strain == null
+            ? 'Dose logged'
+            : 'Logged ${dosage.amount}g ${strain.code}',
       ),
+      behavior: SnackBarBehavior.floating,
     ),
   );
 }

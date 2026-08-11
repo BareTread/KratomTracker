@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import 'dart:convert';
 import '../providers/theme_provider.dart';
+import '../widgets/edit_profile_sheet.dart';
 import 'privacy_policy_screen.dart';
 import 'terms_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -34,15 +35,16 @@ class _ManageScreenState extends State<ManageScreen> {
     }
   }
 
-  Future<void> _createBackup(BuildContext context, KratomProvider provider) async {
+  Future<void> _createBackup(
+      BuildContext context, KratomProvider provider) async {
     await _showAsyncDialog(
       context,
       () async {
         final backupJson = await provider.exportJson();
-        
+
         final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
         final filename = 'kratom_tracker_backup_$timestamp.json';
-        
+
         await Share.shareXFiles(
           [
             XFile.fromData(
@@ -58,7 +60,8 @@ class _ManageScreenState extends State<ManageScreen> {
     );
   }
 
-  Future<void> _restoreBackup(BuildContext context, KratomProvider provider) async {
+  Future<void> _restoreBackup(
+      BuildContext context, KratomProvider provider) async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -106,7 +109,8 @@ class _ManageScreenState extends State<ManageScreen> {
     }
   }
 
-  Future<void> _showClearDataDialog(BuildContext context, KratomProvider provider) async {
+  Future<void> _showClearDataDialog(
+      BuildContext context, KratomProvider provider) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -168,9 +172,10 @@ class _ManageScreenState extends State<ManageScreen> {
                   Icons.settings_outlined,
                   Colors.blue,
                 ),
+                _buildProfileCard(context),
                 _buildThemeSettings(context),
                 _buildNotificationSettings(context, provider),
-                
+
                 const SizedBox(height: 24),
                 // Backup & Restore Section
                 _buildSectionHeader(
@@ -179,7 +184,7 @@ class _ManageScreenState extends State<ManageScreen> {
                   Colors.teal,
                 ),
                 _buildBackupCard(context, provider),
-                
+
                 const SizedBox(height: 24),
                 // Data Management Section
                 _buildSectionHeader(
@@ -188,7 +193,7 @@ class _ManageScreenState extends State<ManageScreen> {
                   Colors.purple,
                 ),
                 _buildDataManagementCard(context, provider),
-                
+
                 const SizedBox(height: 24),
                 // About Section
                 _buildSectionHeader(
@@ -227,6 +232,24 @@ class _ManageScreenState extends State<ManageScreen> {
     );
   }
 
+  Widget _buildProfileCard(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: ListTile(
+        leading: const Icon(Icons.person_outline),
+        title: const Text('Profile'),
+        subtitle: const Text('Set the name shown in the app'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => showModalBottomSheet<void>(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (_) => const EditProfileSheet(),
+        ),
+      ),
+    );
+  }
+
   Widget _buildThemeSettings(BuildContext context) {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -252,7 +275,8 @@ class _ManageScreenState extends State<ManageScreen> {
     );
   }
 
-  Widget _buildNotificationSettings(BuildContext context, KratomProvider provider) {
+  Widget _buildNotificationSettings(
+      BuildContext context, KratomProvider provider) {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
@@ -266,7 +290,7 @@ class _ManageScreenState extends State<ManageScreen> {
             ),
             trailing: Switch(
               value: false,
-              onChanged: null,  // Disabled switch
+              onChanged: null, // Disabled switch
             ),
           ),
         ],
@@ -299,7 +323,8 @@ class _ManageScreenState extends State<ManageScreen> {
     );
   }
 
-  Widget _buildDataManagementCard(BuildContext context, KratomProvider provider) {
+  Widget _buildDataManagementCard(
+      BuildContext context, KratomProvider provider) {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
@@ -412,4 +437,4 @@ class _ManageScreenState extends State<ManageScreen> {
       ),
     );
   }
-} 
+}

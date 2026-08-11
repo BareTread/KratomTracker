@@ -7,7 +7,9 @@ import '../../providers/kratom_provider.dart';
 import '../../theme/app_theme.dart';
 
 class HomeDaySummary extends StatelessWidget {
-  const HomeDaySummary({super.key});
+  const HomeDaySummary({super.key, required this.date});
+
+  final DateTime date;
 
   @override
   Widget build(BuildContext context) {
@@ -16,6 +18,12 @@ class HomeDaySummary extends StatelessWidget {
     );
     final provider = context.read<KratomProvider>();
     final dosages = provider.dosages;
+    // "Last dose" and the weekly total are current-moment facts about today.
+    // When the owner scrolls back to a past day they describe a different day
+    // than the timeline below, so hide them to keep one frame of reference.
+    final isToday =
+        DateUtils.dateOnly(date) == DateUtils.dateOnly(DateTime.now());
+    if (!isToday) return const SizedBox.shrink();
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [

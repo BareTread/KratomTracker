@@ -26,158 +26,136 @@ class HomeCalendarSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final today = DateUtils.dateOnly(DateTime.now());
-    return Stack(
-      children: [
-        Container(
-          key: const Key('home-calendar-surface'),
-          margin: const EdgeInsets.fromLTRB(16, 8, 16, 2),
-          decoration: BoxDecoration(
-            color: context.c.surfaceRaised,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: context.c.hairline),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TableCalendar<void>(
-                firstDay: DateTime.utc(2020),
-                lastDay: today,
-                focusedDay: focusedDay.isAfter(today) ? today : focusedDay,
-                currentDay: today,
-                calendarFormat: CalendarFormat.week,
-                availableCalendarFormats: const {CalendarFormat.week: 'Week'},
-                startingDayOfWeek: StartingDayOfWeek.monday,
-                rowHeight: 48,
-                daysOfWeekHeight: 24,
-                headerStyle: HeaderStyle(
-                  formatButtonVisible: false,
-                  titleCentered: true,
-                  leftChevronIcon: Icon(
-                    Icons.chevron_left,
-                    color: context.c.textSecondary,
-                  ),
-                  rightChevronIcon: Icon(
-                    Icons.chevron_right,
-                    color: context.c.textSecondary,
-                  ),
-                  headerPadding: const EdgeInsets.symmetric(vertical: 4),
-                ),
-                calendarStyle: CalendarStyle(
-                  defaultTextStyle: TextStyle(color: context.c.textPrimary),
-                  weekendTextStyle: TextStyle(color: context.c.textPrimary),
-                  outsideTextStyle: TextStyle(color: context.c.textTertiary),
-                  disabledTextStyle: TextStyle(color: context.c.textTertiary),
-                  todayDecoration: BoxDecoration(
-                    color: context.c.accentMuted,
-                    shape: BoxShape.circle,
-                  ),
-                  selectedDecoration: BoxDecoration(
-                    color: context.c.accent,
-                    shape: BoxShape.circle,
-                  ),
-                  selectedTextStyle: TextStyle(color: context.c.textPrimary),
-                ),
-                daysOfWeekStyle: DaysOfWeekStyle(
-                  weekdayStyle: TextStyle(color: context.c.textTertiary),
-                  weekendStyle: TextStyle(color: context.c.textTertiary),
-                ),
-                calendarBuilders: CalendarBuilders<void>(
-                  headerTitleBuilder: (context, day) => Center(
-                    child: InkWell(
-                      onTap: () async {
-                        final picked = await _showMonthPicker(context, day);
-                        if (picked != null) _select(picked);
-                      },
-                      borderRadius: BorderRadius.circular(12),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(minHeight: 48),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              DateFormat.yMMMM().format(day),
-                              style: TextStyle(
-                                color: context.c.textPrimary,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            Icon(
-                              Icons.arrow_drop_down,
-                              color: context.c.accent,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  defaultBuilder: _semanticDay,
-                  todayBuilder: _semanticDay,
-                  selectedBuilder: _semanticDay,
-                  outsideBuilder: (context, day, focused) => _semanticDay(
-                    context,
-                    day,
-                    focused,
-                    enabled: false,
-                  ),
-                  disabledBuilder: (context, day, focused) => _semanticDay(
-                    context,
-                    day,
-                    focused,
-                    enabled: false,
-                  ),
-                ),
-                onDaySelected: (day, _) {
-                  if (!_sameDay(day, focusedDay) && !day.isAfter(today)) {
-                    _select(day);
-                  }
-                },
-                selectedDayPredicate: (day) => _sameDay(focusedDay, day),
+    final onToday = _sameDay(focusedDay, today);
+    return Container(
+      key: const Key('home-calendar-surface'),
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 2),
+      decoration: BoxDecoration(
+        color: context.c.surfaceRaised,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: context.c.hairline),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TableCalendar<void>(
+            firstDay: DateTime.utc(2020),
+            lastDay: today,
+            focusedDay: focusedDay.isAfter(today) ? today : focusedDay,
+            currentDay: today,
+            calendarFormat: CalendarFormat.week,
+            availableCalendarFormats: const {CalendarFormat.week: 'Week'},
+            startingDayOfWeek: StartingDayOfWeek.monday,
+            rowHeight: 48,
+            daysOfWeekHeight: 24,
+            headerStyle: HeaderStyle(
+              formatButtonVisible: false,
+              titleCentered: true,
+              leftChevronIcon: Icon(
+                Icons.chevron_left,
+                color: context.c.textSecondary,
               ),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Text(
-                  _sameDay(focusedDay, today)
-                      ? 'Today, ${DateFormat('d MMM').format(focusedDay)}'
-                      : DateFormat('d MMM').format(focusedDay),
-                  style:
-                      TextStyle(color: context.c.textSecondary, fontSize: 14),
-                ),
+              rightChevronIcon: Icon(
+                Icons.chevron_right,
+                color: context.c.textSecondary,
               ),
-            ],
-          ),
-        ),
-        if (!_sameDay(focusedDay, today))
-          Positioned(
-            top: 0,
-            right: 24,
-            child: Material(
-              color: context.c.accent,
-              borderRadius: BorderRadius.circular(20),
-              child: InkWell(
-                onTap: () => _select(today),
-                borderRadius: BorderRadius.circular(20),
-                child: const SizedBox(
-                  height: 48,
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12),
+              headerPadding: const EdgeInsets.symmetric(vertical: 4),
+            ),
+            calendarStyle: CalendarStyle(
+              defaultTextStyle: TextStyle(color: context.c.textPrimary),
+              weekendTextStyle: TextStyle(color: context.c.textPrimary),
+              outsideTextStyle: TextStyle(color: context.c.textTertiary),
+              disabledTextStyle: TextStyle(color: context.c.textTertiary),
+              todayDecoration: BoxDecoration(
+                color: context.c.accentMuted,
+                shape: BoxShape.circle,
+              ),
+              selectedDecoration: BoxDecoration(
+                color: context.c.accent,
+                shape: BoxShape.circle,
+              ),
+              selectedTextStyle: TextStyle(color: context.c.textPrimary),
+            ),
+            daysOfWeekStyle: DaysOfWeekStyle(
+              weekdayStyle: TextStyle(color: context.c.textTertiary),
+              weekendStyle: TextStyle(color: context.c.textTertiary),
+            ),
+            calendarBuilders: CalendarBuilders<void>(
+              headerTitleBuilder: (context, day) => Center(
+                child: InkWell(
+                  onTap: () async {
+                    final picked = await _showMonthPicker(context, day);
+                    if (picked != null) _select(picked);
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 48),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.today, size: 16),
-                        SizedBox(width: 4),
                         Text(
-                          'Today',
-                          style: TextStyle(fontWeight: FontWeight.w600),
+                          DateFormat.yMMMM().format(day),
+                          style: TextStyle(
+                            color: context.c.textPrimary,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        Icon(
+                          Icons.arrow_drop_down,
+                          color: context.c.accent,
                         ),
                       ],
                     ),
                   ),
                 ),
               ),
+              defaultBuilder: _semanticDay,
+              todayBuilder: _semanticDay,
+              selectedBuilder: _semanticDay,
+              outsideBuilder: (context, day, focused) => _semanticDay(
+                context,
+                day,
+                focused,
+                enabled: false,
+              ),
+              disabledBuilder: (context, day, focused) => _semanticDay(
+                context,
+                day,
+                focused,
+                enabled: false,
+              ),
+            ),
+            onDaySelected: (day, _) {
+              if (!_sameDay(day, focusedDay) && !day.isAfter(today)) {
+                _select(day);
+              }
+            },
+            selectedDayPredicate: (day) => _sameDay(focusedDay, day),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  onToday
+                      ? 'Today, ${DateFormat('d MMM').format(focusedDay)}'
+                      : DateFormat('d MMM').format(focusedDay),
+                  style: TextStyle(
+                    color: context.c.textSecondary,
+                    fontSize: 14,
+                  ),
+                ),
+                if (!onToday) ...[
+                  const SizedBox(width: 8),
+                  _TodayButton(onTap: () => _select(today)),
+                ],
+              ],
             ),
           ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -348,6 +326,48 @@ class HomeCalendarSection extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _TodayButton extends StatelessWidget {
+  const _TodayButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Jump to today',
+      child: Material(
+        color: context.c.surfaceSunken,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 28),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 10),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.today, size: 13),
+                  SizedBox(width: 4),
+                  Text(
+                    'Today',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

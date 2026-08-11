@@ -9,7 +9,6 @@ import '../providers/kratom_provider.dart';
 import '../theme/app_theme.dart';
 import '../widgets/add_dosage_form.dart';
 import '../widgets/add_strain_form.dart';
-import '../widgets/edit_profile_sheet.dart';
 import 'home/home_calendar_section.dart';
 import 'home/home_day_summary.dart';
 import 'home/home_dosage_list.dart';
@@ -94,45 +93,36 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         Scaffold(
           extendBody: true,
-          appBar: AppBar(
-            backgroundColor: context.c.surfaceRaised,
-            elevation: 0,
-            title: _ProfileTitle(
-              onTap: () => showModalBottomSheet<void>(
-                context: context,
-                isScrollControlled: true,
-                backgroundColor: Colors.transparent,
-                builder: (_) => const EditProfileSheet(),
-              ),
-            ),
-          ),
-          body: Column(
-            children: [
-              HomeCalendarSection(
-                focusedDay: _focusedDay,
-                onDaySelected: _selectDay,
-              ),
-              Expanded(
-                child: PageView.builder(
-                  controller: _pageController,
-                  itemCount: _todayPage + 1,
-                  physics: const PageScrollPhysics(
-                    parent: BouncingScrollPhysics(),
-                  ),
-                  onPageChanged: (index) {
-                    final day = _dateForPage(index);
-                    if (_sameDay(day, _focusedDay)) return;
-                    setState(() => _focusedDay = day);
-                    context.read<KratomProvider>().setSelectedDate(day);
-                  },
-                  itemBuilder: (context, index) => _HomeDayPage(
-                    key: ValueKey(_dateForPage(index)),
-                    date: _dateForPage(index),
-                    onAddDose: _openAddDose,
+          body: SafeArea(
+            bottom: false,
+            child: Column(
+              children: [
+                HomeCalendarSection(
+                  focusedDay: _focusedDay,
+                  onDaySelected: _selectDay,
+                ),
+                Expanded(
+                  child: PageView.builder(
+                    controller: _pageController,
+                    itemCount: _todayPage + 1,
+                    physics: const PageScrollPhysics(
+                      parent: BouncingScrollPhysics(),
+                    ),
+                    onPageChanged: (index) {
+                      final day = _dateForPage(index);
+                      if (_sameDay(day, _focusedDay)) return;
+                      setState(() => _focusedDay = day);
+                      context.read<KratomProvider>().setSelectedDate(day);
+                    },
+                    itemBuilder: (context, index) => _HomeDayPage(
+                      key: ValueKey(_dateForPage(index)),
+                      date: _dateForPage(index),
+                      onAddDose: _openAddDose,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         if (_fabOpen)
@@ -158,63 +148,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _ProfileTitle extends StatelessWidget {
-  const _ProfileTitle({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final name = context.select<KratomProvider, String?>((p) => p.userName);
-    final guest = name?.isNotEmpty != true;
-    return InkWell(
-      onTap: onTap,
-      child: Row(
-        children: [
-          CircleAvatar(
-            backgroundColor: context.c.surfaceSunken,
-            child: Icon(Icons.person_outline, color: context.c.textSecondary),
-          ),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text(
-                    guest ? 'Guest' : name!,
-                    style: TextStyle(
-                      color: context.c.textPrimary,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  if (guest) ...[
-                    const SizedBox(width: 4),
-                    Icon(
-                      Icons.edit_outlined,
-                      size: 16,
-                      color: context.c.textSecondary,
-                    ),
-                  ],
-                ],
-              ),
-              if (guest)
-                Text(
-                  'Tap to customize',
-                  style: TextStyle(
-                    color: context.c.textSecondary,
-                    fontSize: 12,
-                  ),
-                ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }
@@ -264,7 +197,7 @@ class _HomeDayPage extends StatelessWidget {
           strainsById: strains,
           header: Column(
             children: [
-              const HomeDaySummary(),
+              HomeDaySummary(date: date),
               HomeTimelineCard(dosages: dosages, strainsById: strains),
             ],
           ),

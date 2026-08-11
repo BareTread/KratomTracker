@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
 import '../../constants/icons.dart';
 import '../../models/dosage.dart';
+import '../../models/effect.dart';
 import '../../models/strain.dart';
+import '../../providers/kratom_provider.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/effect_log_sheet.dart';
 import 'home_dose_actions.dart';
 
 class HomeDosageList extends StatelessWidget {
@@ -99,8 +104,16 @@ class _DoseCard extends StatelessWidget {
     final strainColor =
         strain == null ? context.c.textTertiary : Color(strain!.color);
     final time = DateFormat.jm().format(dosage.timestamp);
+    final brightness = Theme.of(context).brightness;
+    final chipColors = strainChipColors(strainColor, brightness);
+    context.select<KratomProvider, int>(
+      (p) => Object.hashAll(p.effectsForDosage(dosage.id)),
+    );
+    final effect =
+        context.read<KratomProvider>().effectsForDosage(dosage.id).firstOrNull;
     final semantics = '$time, $code, ${dosage.amount} grams'
-        '${gap == null ? '' : ', ${_gapText.substring(1)} since previous dose'}';
+        '${gap == null ? '' : ', ${_gapText.substring(1)} since previous dose'}'
+        '${effect == null ? '' : ', effect logged'}';
     return Semantics(
       button: true,
       label: semantics,
@@ -113,6 +126,10 @@ class _DoseCard extends StatelessWidget {
         ),
         child: InkWell(
           onTap: () => showDosageOptions(context, dosage),
+          onLongPress: () {
+            HapticFeedback.mediumImpact();
+            showDosageOptions(context, dosage);
+          },
           borderRadius: BorderRadius.circular(12),
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 72),
@@ -137,25 +154,13 @@ class _DoseCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Text(
-                              code,
-                              style: TextStyle(
-                                color: context.c.textPrimary,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            if (dosage.notes?.isNotEmpty ?? false) ...[
-                              const SizedBox(width: 8),
-                              Icon(
-                                Icons.note_outlined,
-                                size: 16,
-                                color: context.c.textTertiary,
-                              ),
-                            ],
-                          ],
+                        Text(
+                          code,
+                          style: TextStyle(
+                            color: context.c.textPrimary,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                         const SizedBox(height: 3),
                         Row(
@@ -173,49 +178,49 @@ class _DoseCard extends StatelessWidget {
                             ],
                           ],
                         ),
-                        if (dosage.notes?.isNotEmpty ?? false)
-                          InkWell(
-                            onTap: () => showNotePopup(
-                              context,
-                              dosage.notes!,
-                              strainColor,
-                            ),
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(minHeight: 48),
-                              child: Align(
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  dosage.notes!,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: context.c.textTertiary,
-                                    fontStyle: FontStyle.italic,
-                                  ),
-                                ),
-                              ),
+                        if (dosage.notes?.isNotEmpty ?? false) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            dosage.notes!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: context.c.textTertiary,
+                              fontSize: 12,
                             ),
                           ),
+                        ],
                       ],
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                    decoration: BoxDecoration(
-                      color: strainColor,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      '${dosage.amount}g',
-                      style: TextStyle(
-                        color: strainColor.computeLuminance() > 0.45
-                            ? Colors.black
-                            : Colors.white,
-                        fontWeight: FontWeight.bold,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 7,
+                        ),
+                        decoration: BoxDecoration(
+                          color: chipColors.background,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '${dosage.amount}g',
+                          style: TextStyle(
+                            color: chipColors.foreground,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
-                    ),
+                      _EffectAffordance(
+                        dosage: dosage,
+                        effect: effect,
+                        foreground: chipColors.foreground,
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -223,6 +228,94 @@ class _DoseCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Compact, quiet effect entry point on a dose row. Shows nothing for doses
+/// taken less than 45 minutes ago — there is nothing to report yet.
+class _EffectAffordance extends StatelessWidget {
+  const _EffectAffordance({
+    required this.dosage,
+    required this.effect,
+    required this.foreground,
+  });
+
+  final Dosage dosage;
+  final Effect? effect;
+  final Color foreground;
+
+  static const _threshold = Duration(minutes: 45);
+
+  @override
+  Widget build(BuildContext context) {
+    if (effect != null) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => EffectLogSheet.show(
+            context,
+            dosageId: dosage.id,
+            existing: effect,
+          ),
+          child: _EffectSummary(effect: effect!),
+        ),
+      );
+    }
+    if (DateTime.now().difference(dosage.timestamp) < _threshold) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => EffectLogSheet.show(
+          context,
+          dosageId: dosage.id,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.sentiment_satisfied_alt_outlined,
+              size: 12,
+              color: context.c.textTertiary,
+            ),
+            const SizedBox(width: 3),
+            Text(
+              'Log how it felt',
+              style: TextStyle(
+                color: context.c.textTertiary,
+                fontSize: 11,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EffectSummary extends StatelessWidget {
+  const _EffectSummary({required this.effect});
+
+  final Effect effect;
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = <String>[
+      'E${effect.energy}',
+      'M${effect.mood}',
+      'P${effect.painRelief}',
+    ];
+    if (effect.duration != null) {
+      final hours = effect.duration!.inHours;
+      parts.add(hours >= 1 ? '${hours}h' : '${effect.duration!.inMinutes}m');
+    }
+    return Text(
+      parts.join(' · '),
+      style: TextStyle(color: context.c.textTertiary, fontSize: 11),
     );
   }
 }

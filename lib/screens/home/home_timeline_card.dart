@@ -61,11 +61,11 @@ class HomeTimelineCard extends StatelessWidget {
           ),
         ),
         SizedBox(
-          height: 32,
+          height: 46,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: CustomPaint(
-              size: const Size(double.infinity, 32),
+              size: const Size(double.infinity, 46),
               painter: TimelinePainter(
                 backgroundColor: context.c.surfaceSunken,
                 bandColor: context.c.surfaceRaised,

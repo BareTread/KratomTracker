@@ -30,12 +30,17 @@ class TimelinePainter extends CustomPainter {
     ).createShader(background.outerRect);
     canvas.drawRRect(background, paint);
 
+    // Reserve a label row at the bottom so axis labels sit clear of the ticks.
+    const labelHeight = 14.0;
+    final axisY = size.height - labelHeight;
+    final plotHeight = axisY;
+
     paint.shader = null;
     for (var i = 0; i < 4; i++) {
       if (i.isEven) continue;
       paint.color = bandColor.withValues(alpha: 0.18);
       canvas.drawRect(
-        Rect.fromLTWH(i * size.width / 4, 0, size.width / 4, size.height * 0.8),
+        Rect.fromLTWH(i * size.width / 4, 0, size.width / 4, plotHeight),
         paint,
       );
     }
@@ -43,19 +48,15 @@ class TimelinePainter extends CustomPainter {
     paint.color = dividerColor;
     for (final hour in [6, 12, 18]) {
       final x = hour * size.width / 24;
-      for (double y = 3; y < size.height * 0.8; y += 3) {
+      for (double y = 3; y < axisY; y += 3) {
         canvas.drawCircle(Offset(x, y), 0.5, paint);
       }
     }
 
-    final labelStyle = TextStyle(color: labelColor, fontSize: 10);
-    _paintLabel(canvas, size, '6 AM', 0.25, labelStyle);
-    _paintLabel(canvas, size, '6 PM', 0.75, labelStyle);
-
     for (final dose in dosages) {
       final minute = dose.timestamp.hour * 60 + dose.timestamp.minute;
       final x = minute * size.width / 1440;
-      final startY = size.height * 0.8;
+      final startY = axisY;
       final endY = startY - dose.height * 0.6;
       canvas.drawLine(
         Offset(x, startY),
@@ -76,9 +77,13 @@ class TimelinePainter extends CustomPainter {
 
     paint.color = dividerColor;
     canvas.drawRect(
-      Rect.fromLTWH(0, size.height * 0.8 - 0.5, size.width, 1),
+      Rect.fromLTWH(0, axisY - 0.5, size.width, 1),
       paint,
     );
+
+    final labelStyle = TextStyle(color: labelColor, fontSize: 10);
+    _paintLabel(canvas, size, '6 AM', 0.25, axisY, labelStyle);
+    _paintLabel(canvas, size, '6 PM', 0.75, axisY, labelStyle);
   }
 
   void _paintLabel(
@@ -86,6 +91,7 @@ class TimelinePainter extends CustomPainter {
     Size size,
     String text,
     double position,
+    double axisY,
     TextStyle style,
   ) {
     final painter = TextPainter(
@@ -96,7 +102,7 @@ class TimelinePainter extends CustomPainter {
       canvas,
       Offset(
         size.width * position - painter.width / 2,
-        size.height - painter.height - 2,
+        axisY + 3,
       ),
     );
   }
