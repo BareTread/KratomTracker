@@ -3,13 +3,13 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../../constants/icons.dart';
 import '../../models/dosage.dart';
 import '../../models/effect.dart';
 import '../../models/strain.dart';
 import '../../providers/kratom_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/effect_log_sheet.dart';
+import '../../widgets/strain_mark.dart';
 import 'home_dose_actions.dart';
 
 class HomeDosageList extends StatelessWidget {
@@ -144,10 +144,15 @@ class _DoseCard extends StatelessWidget {
                     color: strainColor.withValues(alpha: 0.18),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(
-                    strainIcons[strain?.icon] ?? Icons.local_florist,
-                    color: strainColor,
-                    size: 22,
+                  child: Center(
+                    child: StrainMark(
+                      shape: resolveLeafShape(
+                        strain?.icon ?? '',
+                        strain?.code ?? '',
+                      ),
+                      color: strainColor,
+                      size: 26,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
