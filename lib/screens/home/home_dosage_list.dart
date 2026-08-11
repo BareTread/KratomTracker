@@ -349,7 +349,11 @@ class _DoseRow extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.only(left: 10, right: 4),
                   child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
+                    // Code and amount share a baseline, so a row carrying an
+                    // effects sub-line still reads as one line across the
+                    // width rather than two blocks at different heights.
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
                     children: [
                       Expanded(
                         child: Column(
@@ -450,23 +454,23 @@ class _GapRow extends StatelessWidget {
             ),
           );
 
-    // Live gap (last dose → NOW): dashed stem only — the status line above
-    // already carries the elapsed figure, so the label would be a duplicate.
-    // Inter-dose gaps keep their elapsed labels with flanking hairlines.
-    final Widget? labelOverlay = toNow
-        ? null
-        : ColoredBox(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _GapRule(color: context.c.hairline),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
+    // The elapsed figure belongs in the time gutter beside the clock times,
+    // not punched through the stem: boxed on the vine it had to shrink to fit
+    // the 72px band and came out an illegible smudge across a broken stem.
+    // The live gap (last dose → NOW) stays unlabelled — the status line above
+    // already carries that figure.
+    return SizedBox(
+      height: gapStrip,
+      child: Row(
+        children: [
+          SizedBox(
+            width: VineGeometry.timeGutter,
+            child: toNow
+                ? null
+                : Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: Align(
+                      alignment: Alignment.centerRight,
                       child: Text(
                         _gapLabel(gap),
                         style: TextStyle(
@@ -479,28 +483,12 @@ class _GapRow extends StatelessWidget {
                         ),
                       ),
                     ),
-                    _GapRule(color: context.c.hairline),
-                  ],
-                ),
-              ),
-            ),
-          );
-
-    return SizedBox(
-      height: gapStrip,
-      child: Row(
-        children: [
-          const SizedBox(width: VineGeometry.timeGutter),
+                  ),
+          ),
           SizedBox(
             width: VineGeometry.vineBand,
             height: gapStrip,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Positioned.fill(child: stem),
-                if (labelOverlay != null) labelOverlay,
-              ],
-            ),
+            child: stem,
           ),
           const Expanded(child: SizedBox.shrink()),
         ],
@@ -514,19 +502,6 @@ class _GapRow extends StatelessWidget {
     if (hours > 0) return '${hours}h ${minutes}m';
     if (minutes > 0) return '${minutes}m';
     return 'now';
-  }
-}
-
-/// 1px hairline flanking a gap label. Spec range is 18–28px; 18 keeps the
-/// craft while FittedBox above can still scale the whole unit if needed.
-class _GapRule extends StatelessWidget {
-  const _GapRule({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(width: 18, height: 1, child: ColoredBox(color: color));
   }
 }
 

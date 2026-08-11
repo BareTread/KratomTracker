@@ -46,14 +46,15 @@ class _StrokePath {
 
 /// Paints a [LeafShape] into any rect.
 ///
-/// Marks are authored on a 24×24 design grid, but each is normalised from its
-/// true ink bounds (path geometry + half stroke) into the destination so
-/// every silhouette fills the frame with equal optical weight — a tall
-/// [LeafShape.lance] and a wide [LeafShape.palmate] read as the same presence.
+/// Marks are authored on a 24×24 design grid and scaled by **one factor
+/// shared by the whole family** — the factor that fits the family's combined
+/// ink bounds into the destination — then centred on each mark's own ink.
 ///
-/// Stroke weights stay optically constant across marks: after the per-mark
-/// fit scale is applied, stroke widths are compensated so a mark that is
-/// scaled up more does not look heavier than its neighbours.
+/// The shared factor is the point. Fitting each mark to its own bounds
+/// inflates every silhouette to the same square: a narrow lance and a broad
+/// oval both come out as the same disc and stop being tellable apart at a
+/// glance, which is the whole job of the mark. One factor keeps narrow marks
+/// narrow and broad marks broad while none of them floats undersized.
 class LeafMarkPainter extends CustomPainter {
   const LeafMarkPainter({required this.shape, required this.color});
 
@@ -63,31 +64,35 @@ class LeafMarkPainter extends CustomPainter {
   /// Design-grid reference size used only to set absolute stroke weight.
   static const _grid = 24.0;
 
-  // Grid-unit stroke weights. At the design reference of 40px the contour
-  // reads ~2.1, the midrib ~2.6, laterals ~1.5 — heavy enough to hold on
-  // near-black without going wiry at 20px.
-  static const _contourW = 2.1;
-  static const _midribW = 2.6;
+  // Grid-unit stroke weights. The contour carries the silhouette, so it is
+  // the heaviest line and the midrib sits under it. A midrib heavier than the
+  // contour turns an upright mark on a vertical timeline into a shape with a
+  // pole driven through it.
+  static const _contourW = 2.3;
+  static const _midribW = 1.8;
   static const _lateralW = 1.5;
 
   /// Inset fraction of the destination short side, applied equally on all
   /// four edges so ink never kisses the box edge.
-  static const _padFrac = 0.08;
+  static const _padFrac = 0.04;
+
+  /// Combined ink bounds of every mark in the family, in grid units. Computed
+  /// once; the shared fit scale comes from this, never from one mark's bounds.
+  static final Rect _familyInk = _inkOf(LeafShape.values.expand(_strokesFor));
+
+  static Rect _inkOf(Iterable<_StrokePath> strokes) {
+    Rect? ink;
+    for (final s in strokes) {
+      final b = s.path.getBounds().inflate(s.weight / 2);
+      ink = ink == null ? b : ink.expandToInclude(b);
+    }
+    return ink ?? const Rect.fromLTWH(0, 0, _grid, _grid);
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
     final strokes = _strokesFor(shape);
     if (strokes.isEmpty) return;
-
-    // True ink bounds in grid space: geometry ∪ half of each stroke weight.
-    var ink = Rect.zero;
-    var first = true;
-    for (final s in strokes) {
-      final b = s.path.getBounds().inflate(s.weight / 2);
-      ink = first ? b : ink.expandToInclude(b);
-      first = false;
-    }
-    if (ink.isEmpty) return;
 
     // Destination rect with a small consistent padding inset.
     final pad = math.min(size.width, size.height) * _padFrac;
@@ -99,29 +104,26 @@ class LeafMarkPainter extends CustomPainter {
     );
     if (dest.isEmpty) return;
 
-    // Uniform scale that fits ink into dest, preserving aspect ratio.
-    final fit = math.min(dest.width / ink.width, dest.height / ink.height);
+    // One scale for the whole family: the largest mark just fits the box and
+    // every other mark keeps its true proportion relative to it.
+    final fit = math.min(
+      dest.width / _familyInk.width,
+      dest.height / _familyInk.height,
+    );
 
-    // Centre the scaled ink box inside dest.
-    final drawnW = ink.width * fit;
-    final drawnH = ink.height * fit;
-    final ox = dest.left + (dest.width - drawnW) / 2 - ink.left * fit;
-    final oy = dest.top + (dest.height - drawnH) / 2 - ink.top * fit;
-
-    // Absolute stroke weight is fixed to the destination short side so every
-    // mark paints with the same optical stroke, independent of its fit scale.
-    // In grid space the design weight is `w`; after canvas.scale(fit) the
-    // on-screen width is w * fit, so we draw with w * (ref/fit) to cancel
-    // the fit and leave w * ref on screen — where ref = shortSide / 24.
-    final ref = math.min(size.width, size.height) / _grid;
-    final strokeComp = ref / fit;
+    // Centred on this mark's own ink, so nothing sits off-axis.
+    final ink = _inkOf(strokes);
+    final ox = dest.center.dx - ink.center.dx * fit;
+    final oy = dest.center.dy - ink.center.dy * fit;
 
     canvas.save();
     canvas.translate(ox, oy);
     canvas.scale(fit);
 
+    // Weights are grid units under the shared scale, so every mark paints at
+    // the same optical stroke without per-mark compensation.
     for (final s in strokes) {
-      canvas.drawPath(s.path, _paint(s.weight * strokeComp));
+      canvas.drawPath(s.path, _paint(s.weight));
     }
 
     canvas.restore();
@@ -136,9 +138,11 @@ class LeafMarkPainter extends CustomPainter {
     ..isAntiAlias = true;
 
   // ── marks ──────────────────────────────────────────────────────────
-  // Paths ported from Family B (Ribbed Stroke) in the mark sheet.
-  // Laterals thinned on marks that cluttered at 40px (oval, capsule, palmate).
-  // Silhouettes are unchanged; only the packing into the frame is new.
+  // Family B (Ribbed Stroke) from the mark sheet, redrawn where a silhouette
+  // failed on the device: blades now come to a point at both ends, lateral
+  // veins run outward *and apex-ward* (drawn downward they turned every mark
+  // into a struck-through symbol), and the three marks that had degenerated
+  // into a gear, a snowflake and a pair of spectacles are leaves again.
 
   static List<_StrokePath> _strokesFor(LeafShape shape) => switch (shape) {
         LeafShape.oval => _oval(),
@@ -156,23 +160,24 @@ class LeafMarkPainter extends CustomPainter {
   static _StrokePath _line(Offset a, Offset b, double w) =>
       _StrokePath(Path()..moveTo(a.dx, a.dy)..lineTo(b.dx, b.dy), w);
 
-  /// Broad kratom-like oval. One pair of laterals (was two — read as a wheel).
+  /// Broad kratom-like blade — apex and base both come to a point, which is
+  /// what separates a leaf from a disc.
   static List<_StrokePath> _oval() => [
         _StrokePath(
           Path()
-            ..moveTo(12, 2.4)
-            ..cubicTo(17.2, 2.4, 20.6, 7, 20.6, 12)
-            ..cubicTo(20.6, 16.4, 17.6, 20.4, 12.8, 21.6)
-            ..lineTo(12, 21.8)
-            ..lineTo(11.2, 21.6)
-            ..cubicTo(6.4, 20.4, 3.4, 16.4, 3.4, 12)
-            ..cubicTo(3.4, 7, 6.8, 2.4, 12, 2.4)
+            ..moveTo(12, 2)
+            ..cubicTo(16.8, 5.2, 19.8, 8.8, 19.8, 12.6)
+            ..cubicTo(19.8, 16.6, 16.4, 20.2, 12, 22.2)
+            ..cubicTo(7.6, 20.2, 4.2, 16.6, 4.2, 12.6)
+            ..cubicTo(4.2, 8.8, 7.2, 5.2, 12, 2)
             ..close(),
           _contourW,
         ),
-        _line(const Offset(12, 5.2), const Offset(12, 19.4), _midribW),
-        _line(const Offset(12, 11), const Offset(8.4, 13), _lateralW),
-        _line(const Offset(12, 11), const Offset(15.6, 13), _lateralW),
+        _line(const Offset(12, 5), const Offset(12, 20.4), _midribW),
+        _line(const Offset(12, 14.6), const Offset(8.4, 11.4), _lateralW),
+        _line(const Offset(12, 14.6), const Offset(15.6, 11.4), _lateralW),
+        _line(const Offset(12, 10.4), const Offset(9.2, 7.6), _lateralW),
+        _line(const Offset(12, 10.4), const Offset(14.8, 7.6), _lateralW),
       ];
 
   /// Long narrow lanceolate — the classic slim leaf. Contour + midrib only.
@@ -207,8 +212,8 @@ class LeafMarkPainter extends CustomPainter {
           _contourW,
         ),
         _line(const Offset(12, 7), const Offset(12, 18.2), _midribW),
-        _line(const Offset(12, 10.2), const Offset(8.8, 12), _lateralW),
-        _line(const Offset(12, 10.2), const Offset(15.2, 12), _lateralW),
+        _line(const Offset(12, 13.8), const Offset(9, 10.8), _lateralW),
+        _line(const Offset(12, 13.8), const Offset(15, 10.8), _lateralW),
       ];
 
   /// Oblique — asymmetric blade, midrib offset.
@@ -227,8 +232,8 @@ class LeafMarkPainter extends CustomPainter {
           _contourW,
         ),
         _line(const Offset(12.6, 4.6), const Offset(10.8, 19.4), _midribW),
-        _line(const Offset(12, 9), const Offset(8.4, 11.4), _lateralW),
-        _line(const Offset(11.6, 12.5), const Offset(14.8, 14.2), _lateralW),
+        _line(const Offset(11.5, 13.6), const Offset(8.4, 10.6), _lateralW),
+        _line(const Offset(11.9, 10.6), const Offset(15.2, 8.4), _lateralW),
       ];
 
   /// Trifoliate — three leaflets on a stem.
@@ -277,31 +282,33 @@ class LeafMarkPainter extends CustomPainter {
         _line(const Offset(16.2, 8.8), const Offset(16.2, 12.6), _lateralW),
       ];
 
-  /// Palmate — five-fingered, maple-ish. Two laterals only (was four).
+  /// Palmate — five lobes, maple-ish. Curved shoulders into shallow sinuses:
+  /// straight edges into deep notches made this a snowflake.
   static List<_StrokePath> _palmate() => [
         _StrokePath(
           Path()
-            ..moveTo(12, 2.6)
-            ..lineTo(14.2, 7.4)
-            ..lineTo(19.4, 6.2)
-            ..lineTo(16.4, 10.8)
-            ..lineTo(20.8, 14.2)
-            ..lineTo(15.4, 14.6)
-            ..lineTo(14.4, 20)
-            ..lineTo(12, 16.6)
-            ..lineTo(9.6, 20)
-            ..lineTo(8.6, 14.6)
-            ..lineTo(3.2, 14.2)
-            ..lineTo(7.6, 10.8)
-            ..lineTo(4.6, 6.2)
-            ..lineTo(9.8, 7.4)
+            ..moveTo(12, 2.4)
+            ..quadraticBezierTo(13.2, 6.2, 14.6, 8)
+            ..quadraticBezierTo(16.6, 6.6, 18.8, 6.2)
+            ..quadraticBezierTo(17.6, 9.2, 16.2, 11.2)
+            ..quadraticBezierTo(18.4, 12.6, 20.2, 14.4)
+            ..quadraticBezierTo(17.2, 14.9, 15, 15.3)
+            ..quadraticBezierTo(14.8, 17.8, 14.2, 20)
+            ..quadraticBezierTo(12.9, 17.8, 12, 16.4)
+            ..quadraticBezierTo(11.1, 17.8, 9.8, 20)
+            ..quadraticBezierTo(9.2, 17.8, 9, 15.3)
+            ..quadraticBezierTo(6.8, 14.9, 3.8, 14.4)
+            ..quadraticBezierTo(5.6, 12.6, 7.8, 11.2)
+            ..quadraticBezierTo(6.4, 9.2, 5.2, 6.2)
+            ..quadraticBezierTo(7.4, 6.6, 9.4, 8)
+            ..quadraticBezierTo(10.8, 6.2, 12, 2.4)
             ..close(),
           _contourW,
         ),
-        _line(const Offset(12, 8), const Offset(12, 15.8), _midribW),
-        // One confident pair into the side lobes.
-        _line(const Offset(12, 10.2), const Offset(8.2, 12.4), _lateralW),
-        _line(const Offset(12, 10.2), const Offset(15.8, 12.4), _lateralW),
+        _line(const Offset(12, 16), const Offset(12, 9.4), _midribW),
+        // One rib into each side lobe, angled toward its tip.
+        _line(const Offset(12, 14.2), const Offset(7.6, 12.4), _lateralW),
+        _line(const Offset(12, 14.2), const Offset(16.4, 12.4), _lateralW),
       ];
 
   /// Capsule / closed bud. One pair of laterals (was two crossing pairs).
@@ -320,98 +327,86 @@ class LeafMarkPainter extends CustomPainter {
         ),
         _line(const Offset(12, 5), const Offset(12, 19), _midribW),
         // Single scale-pair, mid-height.
-        _line(const Offset(12, 10.5), const Offset(8.8, 13.5), _lateralW),
-        _line(const Offset(12, 10.5), const Offset(15.2, 13.5), _lateralW),
+        _line(const Offset(12, 14.4), const Offset(8.8, 11.4), _lateralW),
+        _line(const Offset(12, 14.4), const Offset(15.2, 11.4), _lateralW),
       ];
 
-  /// Paired opposite leaves on a stem.
+  /// Paired opposite leaflets on a stem. Pointed teardrops, not closed loops —
+  /// as loops the pair read as spectacles.
   static List<_StrokePath> _paired() => [
-        // Left leaf.
+        // Left leaflet — tip out at the top-left, base at the stem.
         _StrokePath(
           Path()
-            ..moveTo(3.6, 5)
-            ..cubicTo(3.6, 3.2, 5.4, 2, 7.4, 2.6)
-            ..cubicTo(9.8, 3.2, 11.4, 5.8, 11.4, 8.6)
-            ..cubicTo(11.4, 10.4, 10.5, 11.8, 9, 12.5)
-            ..cubicTo(7.5, 13.2, 5.6, 12.8, 4.5, 11.4)
-            ..cubicTo(3.8, 10.5, 3.6, 7.8, 3.6, 6.4)
+            ..moveTo(11.4, 10.6)
+            ..cubicTo(7.6, 11, 4.2, 8.8, 3.4, 4)
+            ..cubicTo(7.6, 4.6, 10.8, 6.8, 11.4, 10.6)
             ..close(),
           _contourW,
         ),
-        // Right leaf.
+        // Right leaflet — mirrored.
         _StrokePath(
           Path()
-            ..moveTo(20.4, 5)
-            ..cubicTo(20.4, 3.2, 18.6, 2, 16.6, 2.6)
-            ..cubicTo(14.2, 3.2, 12.6, 5.8, 12.6, 8.6)
-            ..cubicTo(12.6, 10.4, 13.5, 11.8, 15, 12.5)
-            ..cubicTo(16.5, 13.2, 18.4, 12.8, 19.5, 11.4)
-            ..cubicTo(20.2, 10.5, 20.4, 7.8, 20.4, 6.4)
+            ..moveTo(12.6, 10.6)
+            ..cubicTo(16.4, 11, 19.8, 8.8, 20.6, 4)
+            ..cubicTo(16.4, 4.6, 13.2, 6.8, 12.6, 10.6)
             ..close(),
           _contourW,
         ),
-        _line(const Offset(12, 11.8), const Offset(12, 21.4), _midribW),
-        _line(const Offset(7.4, 4.6), const Offset(7.4, 10), _lateralW),
-        _line(const Offset(16.6, 4.6), const Offset(16.6, 10), _lateralW),
-        // Bridge between the pair.
-        _line(const Offset(11.4, 9), const Offset(12.6, 9), _lateralW),
+        _line(const Offset(12, 9.8), const Offset(12, 21.6), _midribW),
+        _line(const Offset(10.6, 9.6), const Offset(5.2, 5.4), _lateralW),
+        _line(const Offset(13.4, 9.6), const Offset(18.8, 5.4), _lateralW),
       ];
 
-  /// Toothed / serrate margin. One pair of laterals.
+  /// Toothed — a blade with a serrate margin. The teeth belong on the edges
+  /// of a leaf; ringed all the way round they made a gear.
   static List<_StrokePath> _toothed() => [
         _StrokePath(
           Path()
             ..moveTo(12, 2)
-            ..lineTo(14.2, 4.4)
-            ..lineTo(16.8, 3.4)
-            ..lineTo(16.4, 6.2)
-            ..lineTo(19.2, 7)
-            ..lineTo(17.6, 9.2)
-            ..lineTo(20.2, 11)
-            ..lineTo(17.6, 12.4)
-            ..lineTo(19.6, 14.8)
-            ..lineTo(16.6, 15.4)
-            ..lineTo(17.4, 18.2)
-            ..lineTo(14.4, 17.4)
-            ..lineTo(13.8, 20.4)
-            ..lineTo(12, 18.4)
-            ..lineTo(10.2, 20.4)
-            ..lineTo(9.6, 17.4)
-            ..lineTo(6.6, 18.2)
-            ..lineTo(7.4, 15.4)
-            ..lineTo(4.4, 14.8)
-            ..lineTo(6.4, 12.4)
-            ..lineTo(3.8, 11)
-            ..lineTo(6.4, 9.2)
-            ..lineTo(4.8, 7)
-            ..lineTo(7.6, 6.2)
-            ..lineTo(7.2, 3.4)
-            ..lineTo(9.8, 4.4)
+            ..lineTo(14.6, 5.4)
+            ..lineTo(13.7, 6.4)
+            ..lineTo(16.8, 9)
+            ..lineTo(15.7, 10.2)
+            ..lineTo(18.6, 13.2)
+            ..lineTo(17.3, 14.3)
+            ..lineTo(19.4, 17.4)
+            ..lineTo(12, 22)
+            ..lineTo(4.6, 17.4)
+            ..lineTo(6.7, 14.3)
+            ..lineTo(5.4, 13.2)
+            ..lineTo(8.3, 10.2)
+            ..lineTo(7.2, 9)
+            ..lineTo(10.3, 6.4)
+            ..lineTo(9.4, 5.4)
             ..close(),
           _contourW,
         ),
-        _line(const Offset(12, 5.2), const Offset(12, 17), _midribW),
-        _line(const Offset(12, 8.8), const Offset(9, 10.6), _lateralW),
-        _line(const Offset(12, 8.8), const Offset(15, 10.6), _lateralW),
+        _line(const Offset(12, 4.6), const Offset(12, 20.4), _midribW),
+        _line(const Offset(12, 15.4), const Offset(8, 12.2), _lateralW),
+        _line(const Offset(12, 15.4), const Offset(16, 12.2), _lateralW),
       ];
 
-  /// Spathe — wide base, tapering tip (spatulate).
+  /// Spathe — a furled hood around a spadix, the way an anthurium reads.
+  /// Drawn as a slim ellipse it was indistinguishable from [_lance].
   static List<_StrokePath> _spathe() => [
         _StrokePath(
           Path()
-            ..moveTo(12, 2)
-            ..cubicTo(13.6, 2, 14.8, 4.8, 15.5, 8.2)
-            ..cubicTo(16.4, 12.4, 17.2, 16.4, 15.6, 19.2)
-            ..cubicTo(14.5, 21.2, 13.2, 22.2, 12, 22.4)
-            ..cubicTo(10.8, 22.2, 9.5, 21.2, 8.4, 19.2)
-            ..cubicTo(6.8, 16.4, 7.6, 12.4, 8.5, 8.2)
-            ..cubicTo(9.2, 4.8, 10.4, 2, 12, 2)
+            ..moveTo(12, 2.2)
+            ..cubicTo(17.4, 4.4, 20, 9.6, 18.8, 14.6)
+            ..cubicTo(17.8, 18.8, 14.8, 21.8, 11.4, 22.3)
+            ..cubicTo(8, 21.5, 6, 18.4, 6.2, 14.8)
+            ..cubicTo(6.4, 10.2, 8.6, 5.2, 12, 2.2)
             ..close(),
           _contourW,
         ),
-        _line(const Offset(12, 4.6), const Offset(12, 20), _midribW),
-        _line(const Offset(12, 10), const Offset(9, 13.2), _lateralW),
-        _line(const Offset(12, 10), const Offset(15, 13.2), _lateralW),
+        // Furl: the near edge rolling back over the throat.
+        _StrokePath(
+          Path()
+            ..moveTo(12, 5.4)
+            ..cubicTo(15.2, 8, 16.4, 12.2, 15.1, 16.2),
+          _lateralW,
+        ),
+        _line(const Offset(11.2, 9), const Offset(10.6, 19.2), _midribW),
       ];
 
   @override

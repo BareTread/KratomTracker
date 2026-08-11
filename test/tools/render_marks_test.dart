@@ -21,10 +21,10 @@ const veins = <String, Color>{
 
 void main() {
   test('render leaf mark preview sheet', () async {
-    const tile = 44.0;
+    const tile = 52.0;
     const gap = 10.0;
     const pad = 32.0;
-    const glyph = 26.0;
+    const glyph = 40.0; // the size the timeline actually paints
 
     final cols = LeafShape.values.length;
     final rows = veins.length;
@@ -60,13 +60,14 @@ void main() {
         final x = pad + c * (tile + gap);
         final colour = entry.value;
 
-        // The tile as the app draws it: rounded square, low-alpha strain fill.
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromLTWH(x, y, tile, tile),
-            const Radius.circular(18),
-          ),
-          Paint()..color = colour.withValues(alpha: 0.16),
+        // Timeline context: bare mark on near-black, plus a 1px frame so the
+        // fit inside the box is provable.
+        canvas.drawRect(
+          Rect.fromLTWH(x, y, tile, tile),
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1
+            ..color = const Color(0xFF1B2124),
         );
 
         canvas.save();

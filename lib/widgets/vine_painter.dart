@@ -395,8 +395,10 @@ class VineRowStemPainter extends CustomPainter {
     // Stem x at the row mid — beside the leaf, never through it.
     final stemX = cx + xOffset;
     // Soft horizontal ease toward neighbours (join factor 0.7 matches gaps).
-    final topX = cx + xOffset * (extendUp ? 0.7 : 0.3);
-    final botX = cx + xOffset * (extendDown ? 0.7 : 0.3);
+    // The first and last stubs stay near-vertical (0.95): easing them back
+    // toward the band centre hung a hook off each end of the vine.
+    final topX = cx + xOffset * (extendUp ? 0.7 : 0.95);
+    final botX = cx + xOffset * (extendDown ? 0.7 : 0.95);
 
     final topPath = Path()
       ..moveTo(topX, topY)
