@@ -41,6 +41,9 @@ class VineGeometry {
   static const double liveDashTravel = 36;
   static const Duration livePeriod = Duration(milliseconds: 2800);
 
+  /// Empty-day sprout cycle: the shoot draws itself, buds, holds, fades.
+  static const Duration sproutPeriod = Duration(milliseconds: 3400);
+
   /// Horizontal offset of the continuous stem from the vine-band centre at
   /// node [index]. Always negative (LEFT of the centred leaf) with only a
   /// slow 2–3 px meander — every leaf reads as growing right from the stem.
@@ -576,6 +579,7 @@ class VineNowStemPainter extends CustomPainter {
     this.live = false,
     this.dashOffset = 0,
     this.liveColor,
+    this.sproutPhase,
   });
 
   final double xOffset;
@@ -586,12 +590,21 @@ class VineNowStemPainter extends CustomPainter {
   final double dashOffset;
   final Color? liveColor;
 
+  /// Empty-day sprout cycle position, 0→1. Null draws the shoot fully grown.
+  final double? sproutPhase;
+
   @override
   void paint(Canvas canvas, Size size) {
     final cx = size.width / 2;
     // Tip sits on the stem path (small disc — no leaf to clear).
     final tip = Offset(cx + xOffset, size.height * 0.55);
-    final top = Offset(cx + (hasPrior ? xOffset * 0.7 : 0), hasPrior ? 0 : 8);
+    // With a prior dose the stem enters from the row above. With none, it
+    // still descends — near-vertical with the same slight lean as a real
+    // stem, so an empty day reads as the vine starting rather than as a
+    // stray diagonal cut off from something above.
+    final top = hasPrior
+        ? Offset(cx + xOffset * 0.7, 0)
+        : Offset(cx + xOffset * 0.55, 4);
 
     final path = Path()
       ..moveTo(top.dx, top.dy)
@@ -604,17 +617,48 @@ class VineNowStemPainter extends CustomPainter {
         tip.dy,
       );
 
+    // Sprout choreography: stem draws to the tip, the bud pops open just
+    // before it lands, both hold, then the whole thing fades so the loop
+    // restarts on black instead of cutting.
+    var grown = 1.0;
+    var bud = 1.0;
+    var alpha = 1.0;
+    final phase = sproutPhase;
+    if (phase != null) {
+      grown = Curves.easeOutCubic.transform((phase / 0.50).clamp(0.0, 1.0));
+      bud = Curves.easeOutBack.transform(
+        ((phase - 0.42) / 0.22).clamp(0.0, 1.0),
+      );
+      alpha = 1 - ((phase - 0.90) / 0.10).clamp(0.0, 1.0);
+    }
+
+    final fading = alpha < 1;
+    if (fading) {
+      canvas.saveLayer(
+        Offset.zero & size,
+        Paint()..color = Color.fromRGBO(0, 0, 0, alpha),
+      );
+    }
+
+    var stem = path;
+    if (grown < 1) {
+      final metrics = path.computeMetrics().toList();
+      stem = metrics.isEmpty
+          ? Path()
+          : metrics.first.extractPath(0, metrics.first.length * grown);
+    }
+
     if (live) {
       paintLiveTail(
         canvas,
-        path,
+        stem,
         color: liveColor ?? tipColor,
         dashOffset: dashOffset,
       );
     } else {
       paintVinePath(
         canvas,
-        path,
+        stem,
         gradientStart: top,
         gradientEnd: tip,
         fromColor: fromColor,
@@ -623,24 +667,28 @@ class VineNowStemPainter extends CustomPainter {
     }
 
     // Terminal disc.
-    final discColor = live ? (liveColor ?? tipColor) : tipColor;
-    canvas.drawCircle(
-      tip,
-      5.5,
-      Paint()
-        ..color = discColor
-        ..style = PaintingStyle.fill
-        ..isAntiAlias = true,
-    );
-    canvas.drawCircle(
-      tip,
-      5.5,
-      Paint()
-        ..color = discColor.withValues(alpha: 0.3)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 7
-        ..isAntiAlias = true,
-    );
+    if (bud > 0) {
+      final discColor = live ? (liveColor ?? tipColor) : tipColor;
+      canvas.drawCircle(
+        tip,
+        5.5 * bud,
+        Paint()
+          ..color = discColor
+          ..style = PaintingStyle.fill
+          ..isAntiAlias = true,
+      );
+      canvas.drawCircle(
+        tip,
+        5.5 * bud,
+        Paint()
+          ..color = discColor.withValues(alpha: 0.3)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 7 * bud
+          ..isAntiAlias = true,
+      );
+    }
+
+    if (fading) canvas.restore();
   }
 
   @override
@@ -651,5 +699,6 @@ class VineNowStemPainter extends CustomPainter {
       old.hasPrior != hasPrior ||
       old.live != live ||
       old.dashOffset != dashOffset ||
-      old.liveColor != liveColor;
+      old.liveColor != liveColor ||
+      old.sproutPhase != sproutPhase;
 }

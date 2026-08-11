@@ -1,7 +1,7 @@
 name: kratom_tracker_plus
 description: A comprehensive herbal supplement dosage tracking application (Enhanced)
 publish_to: 'none'
-version: 2.9.0+11
+version: 2.10.0+12
 
 environment:
   sdk: ^3.5.4

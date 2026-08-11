@@ -25,24 +25,38 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _todayPage = 10000;
 
   late final PageController _pageController;
-  late DateTime _focusedDay;
+
+  /// Drives the day card only. Deliberately not setState: rebuilding this
+  /// State rebuilds the PageView subtree, and onPageChanged fires *during*
+  /// the slide — that mid-flight rebuild was the hitch in the transition.
+  late final ValueNotifier<DateTime> _focusedDay;
   final _fabKey = GlobalKey<HomeFabMenuState>();
   bool _fabOpen = false;
 
   @override
   void initState() {
     super.initState();
-    _focusedDay = DateUtils.dateOnly(DateTime.now());
+    _focusedDay = ValueNotifier(DateUtils.dateOnly(DateTime.now()));
     _pageController = PageController(initialPage: _todayPage);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) context.read<KratomProvider>().setSelectedDate(_focusedDay);
+      if (mounted) _commitSelectedDate();
     });
   }
 
   @override
   void dispose() {
     _pageController.dispose();
+    _focusedDay.dispose();
     super.dispose();
+  }
+
+  /// Publish the day to the provider. This notifies every listener in the
+  /// app, so it waits for the slide to settle; nothing on screen needs it
+  /// live (only the add-dose sheet reads `selectedDate`, at open time).
+  void _commitSelectedDate() {
+    final provider = context.read<KratomProvider>();
+    if (_sameDay(provider.selectedDate, _focusedDay.value)) return;
+    provider.setSelectedDate(_focusedDay.value);
   }
 
   DateTime _dateForPage(int index) => DateUtils.dateOnly(DateTime.now())
@@ -53,14 +67,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _selectDay(DateTime day) {
     final cleanDay = DateUtils.dateOnly(day);
-    if (_sameDay(cleanDay, _focusedDay)) return;
+    if (_sameDay(cleanDay, _focusedDay.value)) return;
     final current = _pageController.page?.round() ?? _todayPage;
-    final target = current + cleanDay.difference(_focusedDay).inDays;
+    final target = current + cleanDay.difference(_focusedDay.value).inDays;
     final adjacent = (target - current).abs() == 1;
-    setState(() => _focusedDay = cleanDay);
-    context.read<KratomProvider>().setSelectedDate(cleanDay);
-    if (!_pageController.hasClients) return;
+    _focusedDay.value = cleanDay;
+    if (!_pageController.hasClients) {
+      _commitSelectedDate();
+      return;
+    }
     if (adjacent && !AppMotion.reduced(context)) {
+      // ScrollEndNotification commits the date when the slide settles.
       _pageController.animateToPage(
         target,
         duration: AppMotion.normal,
@@ -68,6 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     } else {
       _pageController.jumpToPage(target);
+      _commitSelectedDate();
     }
   }
 
@@ -96,27 +114,40 @@ class _HomeScreenState extends State<HomeScreen> {
             bottom: false,
             child: Column(
               children: [
-                HomeDayCard(
-                  focusedDay: _focusedDay,
-                  onDaySelected: _selectDay,
+                ValueListenableBuilder<DateTime>(
+                  valueListenable: _focusedDay,
+                  builder: (context, day, _) => HomeDayCard(
+                    focusedDay: day,
+                    onDaySelected: _selectDay,
+                  ),
                 ),
                 Expanded(
-                  child: PageView.builder(
-                    controller: _pageController,
-                    itemCount: _todayPage + 1,
-                    physics: const PageScrollPhysics(
-                      parent: BouncingScrollPhysics(),
-                    ),
-                    onPageChanged: (index) {
-                      final day = _dateForPage(index);
-                      if (_sameDay(day, _focusedDay)) return;
-                      setState(() => _focusedDay = day);
-                      context.read<KratomProvider>().setSelectedDate(day);
+                  child: NotificationListener<ScrollEndNotification>(
+                    onNotification: (_) {
+                      _commitSelectedDate();
+                      return false;
                     },
-                    itemBuilder: (context, index) => _HomeDayPage(
-                      key: ValueKey(_dateForPage(index)),
-                      date: _dateForPage(index),
-                      onAddDose: _openAddDose,
+                    child: PageView.builder(
+                      controller: _pageController,
+                      itemCount: _todayPage + 1,
+                      physics: const PageScrollPhysics(
+                        parent: BouncingScrollPhysics(),
+                      ),
+                      onPageChanged: (index) {
+                        final day = _dateForPage(index);
+                        if (_sameDay(day, _focusedDay.value)) return;
+                        _focusedDay.value = day;
+                      },
+                      // Each day is its own layer, so a slide composites
+                      // cached pictures instead of re-running every vine
+                      // and leaf painter on both pages, every frame.
+                      itemBuilder: (context, index) => RepaintBoundary(
+                        child: _HomeDayPage(
+                          key: ValueKey(_dateForPage(index)),
+                          date: _dateForPage(index),
+                          onAddDose: _openAddDose,
+                        ),
+                      ),
                     ),
                   ),
                 ),

@@ -720,19 +720,31 @@ class _LiveNowStemState extends State<_LiveNowStem>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
+  /// With no dose yet the shoot has nothing to grow *from*, so instead of a
+  /// static stub it sprouts on a loop — the empty day's only motion.
+  bool get _sprouting => !widget.hasPrior;
+
+  Duration get _period =>
+      _sprouting ? VineGeometry.sproutPeriod : VineGeometry.livePeriod;
+
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: VineGeometry.livePeriod,
-    );
+    _controller = AnimationController(vsync: this, duration: _period);
   }
 
   bool _shouldAnimate(BuildContext context) {
     if (!TickerMode.of(context)) return false;
     if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) return false;
     return !AppMotion.reduced(context);
+  }
+
+  @override
+  void didUpdateWidget(_LiveNowStem old) {
+    super.didUpdateWidget(old);
+    if (old.hasPrior == widget.hasPrior) return;
+    _controller.duration = _period;
+    if (_controller.isAnimating) _controller.repeat();
   }
 
   @override
@@ -757,7 +769,7 @@ class _LiveNowStemState extends State<_LiveNowStem>
     final liveColor = context.c.accent;
     final animate = _shouldAnimate(context);
 
-    Widget paint(double dashOffset) => CustomPaint(
+    Widget paint({double dashOffset = 0, double? sprout}) => CustomPaint(
       painter: VineNowStemPainter(
         xOffset: widget.xOffset,
         fromColor: widget.fromColor,
@@ -766,19 +778,24 @@ class _LiveNowStemState extends State<_LiveNowStem>
         live: true,
         dashOffset: dashOffset,
         liveColor: liveColor,
+        sproutPhase: sprout,
       ),
     );
 
+    // Reduced motion gets the shoot fully grown, not mid-sprout.
     if (!animate) {
-      return RepaintBoundary(child: paint(0));
+      return RepaintBoundary(child: paint());
     }
 
     return RepaintBoundary(
       child: AnimatedBuilder(
         animation: _controller,
         builder: (context, _) {
-          final offset = -VineGeometry.liveDashTravel * _controller.value;
-          return paint(offset);
+          final t = _controller.value;
+          return paint(
+            dashOffset: -VineGeometry.liveDashTravel * t,
+            sprout: _sprouting ? t : null,
+          );
         },
       ),
     );
