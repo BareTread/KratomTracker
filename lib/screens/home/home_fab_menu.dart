@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -132,36 +130,55 @@ class _FabButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 64,
-      height: 64,
+    final accent = context.c.accent;
+    final muted = context.c.accentMuted;
+    return Container(
+      width: 60,
+      height: 60,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color.lerp(accent, muted, 0.15)!,
+            Color.lerp(accent, muted, 0.55)!,
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: 0.28),
+            blurRadius: 18,
+            spreadRadius: 0,
+            offset: const Offset(0, 8),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
       child: Material(
-        color: context.c.accent,
-        borderRadius: BorderRadius.circular(20),
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(18),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
           onLongPress: onLongPress,
-          borderRadius: BorderRadius.circular(20),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              ClipOval(
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
-                  child: const SizedBox(width: 64, height: 64),
-                ),
+          borderRadius: BorderRadius.circular(18),
+          splashColor: context.c.textPrimary.withValues(alpha: 0.12),
+          highlightColor: context.c.textPrimary.withValues(alpha: 0.06),
+          child: Center(
+            child: AnimatedRotation(
+              turns: open ? 0.125 : 0,
+              duration: reduced ? Duration.zero : AppMotion.fast,
+              child: Icon(
+                open ? Icons.close : Icons.add,
+                size: 26,
+                color: context.c.textPrimary,
               ),
-              AnimatedRotation(
-                turns: open ? 0.125 : 0,
-                duration: reduced ? Duration.zero : AppMotion.fast,
-                child: Icon(
-                  open ? Icons.close : Icons.add,
-                  size: 30,
-                  color: context.c.textPrimary,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -220,8 +237,7 @@ class _FabPill extends StatelessWidget {
               Text(
                 label,
                 style: TextStyle(
-                  color:
-                      fill ? context.c.textPrimary : context.c.textPrimary,
+                  color: context.c.textPrimary,
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),

@@ -29,7 +29,8 @@ class HomeDosageList extends StatelessWidget {
     final sorted = [...dosages]
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
     return ListView.builder(
-      padding: const EdgeInsets.only(top: 12, bottom: 100),
+      // Clear the FAB so the final row's amount pill is never covered.
+      padding: const EdgeInsets.only(top: 4, bottom: 120),
       itemCount: sorted.length + 1,
       itemBuilder: (context, index) {
         if (index == 0) return header;
@@ -46,14 +47,14 @@ class HomeDosageList extends StatelessWidget {
             children: [
               if (showPeriod)
                 Padding(
-                  padding: const EdgeInsets.only(left: 8, top: 20, bottom: 8),
+                  padding: const EdgeInsets.only(left: 4, top: 14, bottom: 6),
                   child: Text(
-                    period,
+                    period.toUpperCase(),
                     style: TextStyle(
-                      color: context.c.accent,
-                      fontSize: 14,
+                      color: context.c.textTertiary,
+                      fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      letterSpacing: 0.5,
+                      letterSpacing: 1.2,
                     ),
                   ),
                 ),
@@ -118,7 +119,7 @@ class _DoseCard extends StatelessWidget {
       button: true,
       label: semantics,
       child: Card(
-        margin: const EdgeInsets.only(bottom: 8),
+        margin: const EdgeInsets.only(bottom: 6),
         color: context.c.surfaceRaised,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
@@ -131,99 +132,109 @@ class _DoseCard extends StatelessWidget {
             showDosageOptions(context, dosage);
           },
           borderRadius: BorderRadius.circular(12),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 72),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: strainColor.withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      strainIcons[strain?.icon] ?? Icons.local_florist,
-                      color: strainColor,
-                    ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: strainColor.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          code,
-                          style: TextStyle(
-                            color: context.c.textPrimary,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Row(
-                          children: [
-                            Text(
-                              time,
-                              style: TextStyle(color: context.c.textSecondary),
-                            ),
-                            if (gap != null) ...[
-                              const SizedBox(width: 8),
-                              Text(
-                                _gapText,
-                                style: TextStyle(color: context.c.textTertiary),
-                              ),
-                            ],
-                          ],
-                        ),
-                        if (dosage.notes?.isNotEmpty ?? false) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            dosage.notes!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: context.c.textTertiary,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
+                  child: Icon(
+                    strainIcons[strain?.icon] ?? Icons.local_florist,
+                    color: strainColor,
+                    size: 22,
                   ),
-                  const SizedBox(width: 8),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    mainAxisSize: MainAxisSize.min,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 7,
+                      // Optical top-align with the amount pill.
+                      const SizedBox(height: 2),
+                      Text(
+                        code,
+                        style: TextStyle(
+                          color: context.c.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.1,
                         ),
-                        decoration: BoxDecoration(
-                          color: chipColors.background,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          '${dosage.amount}g',
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Text(
+                            time,
+                            style: TextStyle(
+                              color: context.c.textSecondary,
+                              fontSize: 13,
+                            ),
+                          ),
+                          if (gap != null) ...[
+                            const SizedBox(width: 8),
+                            Text(
+                              _gapText,
+                              style: TextStyle(
+                                color: context.c.textTertiary,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (dosage.notes?.isNotEmpty ?? false) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          dosage.notes!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: chipColors.foreground,
-                            fontWeight: FontWeight.bold,
+                            color: context.c.textTertiary,
+                            fontSize: 12,
                           ),
                         ),
-                      ),
-                      _EffectAffordance(
-                        dosage: dosage,
-                        effect: effect,
-                        foreground: chipColors.foreground,
-                      ),
+                      ],
                     ],
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 8),
+                // Fixed right-column structure: amount pill always on the
+                // same baseline; effect slot always below it.
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 11,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: chipColors.background,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${dosage.amount}g',
+                        style: TextStyle(
+                          color: chipColors.foreground,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                    _EffectAffordance(
+                      dosage: dosage,
+                      effect: effect,
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ),
@@ -233,42 +244,35 @@ class _DoseCard extends StatelessWidget {
 }
 
 /// Compact, quiet effect entry point on a dose row. Shows nothing for doses
-/// taken less than 45 minutes ago — there is nothing to report yet.
+/// taken less than 45 minutes ago — there is nothing to report yet. The slot
+/// always occupies the same vertical band so amount pills stay aligned.
 class _EffectAffordance extends StatelessWidget {
   const _EffectAffordance({
     required this.dosage,
     required this.effect,
-    required this.foreground,
   });
 
   final Dosage dosage;
   final Effect? effect;
-  final Color foreground;
 
   static const _threshold = Duration(minutes: 45);
+  static const _slotHeight = 20.0;
 
   @override
   Widget build(BuildContext context) {
+    Widget? content;
     if (effect != null) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 6),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => EffectLogSheet.show(
-            context,
-            dosageId: dosage.id,
-            existing: effect,
-          ),
-          child: _EffectSummary(effect: effect!),
+      content = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => EffectLogSheet.show(
+          context,
+          dosageId: dosage.id,
+          existing: effect,
         ),
+        child: _EffectSummary(effect: effect!),
       );
-    }
-    if (DateTime.now().difference(dosage.timestamp) < _threshold) {
-      return const SizedBox.shrink();
-    }
-    return Padding(
-      padding: const EdgeInsets.only(top: 6),
-      child: GestureDetector(
+    } else if (DateTime.now().difference(dosage.timestamp) >= _threshold) {
+      content = GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => EffectLogSheet.show(
           context,
@@ -292,7 +296,17 @@ class _EffectAffordance extends StatelessWidget {
             ),
           ],
         ),
-      ),
+      );
+    }
+
+    return SizedBox(
+      height: _slotHeight,
+      child: content == null
+          ? null
+          : Align(
+              alignment: Alignment.bottomRight,
+              child: content,
+            ),
     );
   }
 }

@@ -1,55 +1,39 @@
 import 'package:flutter/material.dart';
 
+/// Ambient 24h dose texture. No framed panel, no fill, no hour labels — just
+/// quiet ticks and dose marks drawn on the card surface itself.
 class TimelinePainter extends CustomPainter {
   const TimelinePainter({
-    required this.backgroundColor,
-    required this.bandColor,
     required this.dividerColor,
-    required this.labelColor,
     required this.dosages,
   });
 
-  final Color backgroundColor;
-  final Color bandColor;
   final Color dividerColor;
-  final Color labelColor;
   final List<({DateTime timestamp, double amount, Color color, double height})>
       dosages;
 
   @override
   void paint(Canvas canvas, Size size) {
+    final axisY = size.height - 2;
     final paint = Paint()..style = PaintingStyle.fill;
-    final background = RRect.fromRectAndRadius(
-      Offset.zero & size,
-      const Radius.circular(6),
-    );
-    paint.shader = LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [backgroundColor, backgroundColor.withValues(alpha: 0.82)],
-    ).createShader(background.outerRect);
-    canvas.drawRRect(background, paint);
 
-    // Reserve a label row at the bottom so axis labels sit clear of the ticks.
-    const labelHeight = 14.0;
-    final axisY = size.height - labelHeight;
-    final plotHeight = axisY;
-
-    paint.shader = null;
-    for (var i = 0; i < 4; i++) {
+    // Soft vertical band hints at morning / afternoon / evening thirds.
+    paint.color = dividerColor.withValues(alpha: 0.08);
+    for (var i = 0; i < 3; i++) {
       if (i.isEven) continue;
-      paint.color = bandColor.withValues(alpha: 0.18);
       canvas.drawRect(
-        Rect.fromLTWH(i * size.width / 4, 0, size.width / 4, plotHeight),
+        Rect.fromLTWH(i * size.width / 3, 0, size.width / 3, axisY),
         paint,
       );
     }
 
-    paint.color = dividerColor;
+    // Dotted vertical references at 6 / 12 / 18 — no labels; the ticks alone
+    // read as a day and stay quieter than spelled-out hour marks.
+    paint.color = dividerColor.withValues(alpha: 0.55);
     for (final hour in [6, 12, 18]) {
       final x = hour * size.width / 24;
-      for (double y = 3; y < axisY; y += 3) {
-        canvas.drawCircle(Offset(x, y), 0.5, paint);
+      for (double y = 2; y < axisY - 1; y += 3.5) {
+        canvas.drawCircle(Offset(x, y), 0.45, paint);
       }
     }
 
@@ -57,12 +41,12 @@ class TimelinePainter extends CustomPainter {
       final minute = dose.timestamp.hour * 60 + dose.timestamp.minute;
       final x = minute * size.width / 1440;
       final startY = axisY;
-      final endY = startY - dose.height * 0.6;
+      final endY = startY - dose.height * 0.55;
       canvas.drawLine(
         Offset(x, startY),
         Offset(x, endY),
         Paint()
-          ..color = dose.color.withValues(alpha: 0.3)
+          ..color = dose.color.withValues(alpha: 0.28)
           ..strokeWidth = 3
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2),
       );
@@ -70,48 +54,21 @@ class TimelinePainter extends CustomPainter {
         Offset(x, startY),
         Offset(x, endY),
         Paint()
-          ..color = dose.color
+          ..color = dose.color.withValues(alpha: 0.85)
           ..strokeWidth = 1.5,
       );
     }
 
-    paint.color = dividerColor;
+    // Hairline base edge of the card.
+    paint.color = dividerColor.withValues(alpha: 0.7);
     canvas.drawRect(
       Rect.fromLTWH(0, axisY - 0.5, size.width, 1),
       paint,
-    );
-
-    final labelStyle = TextStyle(color: labelColor, fontSize: 10);
-    _paintLabel(canvas, size, '6 AM', 0.25, axisY, labelStyle);
-    _paintLabel(canvas, size, '6 PM', 0.75, axisY, labelStyle);
-  }
-
-  void _paintLabel(
-    Canvas canvas,
-    Size size,
-    String text,
-    double position,
-    double axisY,
-    TextStyle style,
-  ) {
-    final painter = TextPainter(
-      text: TextSpan(text: text, style: style),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    painter.paint(
-      canvas,
-      Offset(
-        size.width * position - painter.width / 2,
-        axisY + 3,
-      ),
     );
   }
 
   @override
   bool shouldRepaint(TimelinePainter oldDelegate) =>
       oldDelegate.dosages != dosages ||
-      oldDelegate.backgroundColor != backgroundColor ||
-      oldDelegate.bandColor != bandColor ||
-      oldDelegate.dividerColor != dividerColor ||
-      oldDelegate.labelColor != labelColor;
+      oldDelegate.dividerColor != dividerColor;
 }
