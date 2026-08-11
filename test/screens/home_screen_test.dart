@@ -60,7 +60,7 @@ void main() {
     await _pumpHome(tester, provider, theme: ThemeProvider.lightTheme);
 
     final container = tester.widget<Container>(
-      find.byKey(const Key('home-calendar-surface')),
+      find.byKey(const Key('home-day-card-surface')),
     );
     final decoration = container.decoration! as BoxDecoration;
     expect(decoration.color, AppColors.light.surfaceRaised);

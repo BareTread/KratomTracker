@@ -1,9 +1,13 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../theme/app_theme.dart';
 
+/// Add-Dose-first FAB. A tap fires Add Dose directly (the most-used action in
+/// the app). A long-press expands two large labelled pills stacked above the
+/// button within a thumb arc; tap-anywhere dismisses.
 class HomeFabMenu extends StatefulWidget {
   const HomeFabMenu({
     super.key,
@@ -28,7 +32,10 @@ class HomeFabMenuState extends State<HomeFabMenu>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: AppMotion.fast);
+    _controller = AnimationController(
+      vsync: this,
+      duration: AppMotion.normal,
+    );
   }
 
   @override
@@ -44,16 +51,23 @@ class HomeFabMenuState extends State<HomeFabMenu>
     _controller.reverse();
   }
 
-  void _toggle() {
-    setState(() => _open = !_open);
-    widget.onVisibilityChanged(_open);
+  void _openMenu() {
+    HapticFeedback.mediumImpact();
+    setState(() => _open = true);
+    widget.onVisibilityChanged(true);
     if (AppMotion.reduced(context)) {
-      _controller.value = _open ? 1 : 0;
-    } else if (_open) {
-      _controller.forward();
+      _controller.value = 1;
     } else {
-      _controller.reverse();
+      _controller.forward();
     }
+  }
+
+  void _tapFab() {
+    if (_open) {
+      close();
+      return;
+    }
+    widget.onAddDose();
   }
 
   void _run(VoidCallback action) {
@@ -63,98 +77,184 @@ class HomeFabMenuState extends State<HomeFabMenu>
 
   @override
   Widget build(BuildContext context) {
+    final reduced = AppMotion.reduced(context);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         if (_open) ...[
-          _FabOption(
+          _FabPill(
+            key: const Key('home-fab-add-strain'),
             label: 'Add Strain',
-            heroTag: 'addStrain',
-            icon: Icons.local_florist,
-            color: context.c.positive,
+            icon: Icons.local_florist_outlined,
+            fill: false,
             animation: _controller,
             onPressed: () => _run(widget.onAddStrain),
+            reduced: reduced,
           ),
-          const SizedBox(height: 8),
-          _FabOption(
+          const SizedBox(height: 10),
+          _FabPill(
+            key: const Key('home-fab-add-dose'),
             label: 'Add Dose',
-            heroTag: 'addDose',
             icon: Icons.add,
-            color: context.c.accentMuted,
+            fill: true,
             animation: _controller,
             onPressed: () => _run(widget.onAddDose),
+            reduced: reduced,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
         ],
-        Stack(
-          alignment: Alignment.center,
-          children: [
-            ClipOval(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
-                child: const SizedBox(width: 56, height: 56),
-              ),
-            ),
-            FloatingActionButton(
-              onPressed: _toggle,
-              backgroundColor: context.c.accent,
-              child: AnimatedRotation(
-                duration:
-                    AppMotion.reduced(context) ? Duration.zero : AppMotion.fast,
-                turns: _open ? 0.125 : 0,
-                child: const Icon(Icons.add),
-              ),
-            ),
-          ],
+        _FabButton(
+          key: const Key('home-fab'),
+          open: _open,
+          reduced: reduced,
+          onTap: _tapFab,
+          onLongPress: _open ? null : _openMenu,
         ),
       ],
     );
   }
 }
 
-class _FabOption extends StatelessWidget {
-  const _FabOption({
-    required this.label,
-    required this.heroTag,
-    required this.icon,
-    required this.color,
-    required this.animation,
-    required this.onPressed,
+class _FabButton extends StatelessWidget {
+  const _FabButton({
+    super.key,
+    required this.open,
+    required this.reduced,
+    required this.onTap,
+    required this.onLongPress,
   });
 
-  final String label;
-  final String heroTag;
-  final IconData icon;
-  final Color color;
-  final Animation<double> animation;
-  final VoidCallback onPressed;
+  final bool open;
+  final bool reduced;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
-    return ScaleTransition(
-      scale: CurvedAnimation(parent: animation, curve: AppMotion.spring),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: context.c.surfaceRaised,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: context.c.hairline),
+    return SizedBox(
+      width: 64,
+      height: 64,
+      child: Material(
+        color: context.c.accent,
+        borderRadius: BorderRadius.circular(20),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          borderRadius: BorderRadius.circular(20),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              ClipOval(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
+                  child: const SizedBox(width: 64, height: 64),
+                ),
+              ),
+              AnimatedRotation(
+                turns: open ? 0.125 : 0,
+                duration: reduced ? Duration.zero : AppMotion.fast,
+                child: Icon(
+                  open ? Icons.close : Icons.add,
+                  size: 30,
+                  color: context.c.textPrimary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A large labelled pill — label inside the button, not floating beside it.
+/// Add Dose is the filled accent pill (dominant); Add Strain is the outlined
+/// surface pill (secondary).
+class _FabPill extends StatelessWidget {
+  const _FabPill({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.fill,
+    required this.animation,
+    required this.onPressed,
+    required this.reduced,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool fill;
+  final Animation<double> animation;
+  final VoidCallback onPressed;
+  final bool reduced;
+
+  @override
+  Widget build(BuildContext context) {
+    final pill = Material(
+      color: fill ? context.c.accent : context.c.surfaceRaised,
+      borderRadius: BorderRadius.circular(18),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 56),
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          decoration: fill
+              ? null
+              : BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: context.c.hairline),
+                ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 22,
+                color: fill ? context.c.textPrimary : context.c.textSecondary,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                label,
+                style: TextStyle(
+                  color:
+                      fill ? context.c.textPrimary : context.c.textPrimary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (reduced) {
+      return SizeTransition(
+        sizeFactor: AlwaysStoppedAnimation(animation.value),
+        child: pill,
+      );
+    }
+    return SizeTransition(
+      sizeFactor: CurvedAnimation(parent: animation, curve: AppMotion.spring),
+      alignment: Alignment.bottomRight,
+      child: FadeTransition(
+        opacity: CurvedAnimation(parent: animation, curve: AppMotion.emphasized),
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 0.25),
+            end: Offset.zero,
+          ).animate(
+            CurvedAnimation(
+              parent: animation,
+              curve: AppMotion.spring,
             ),
-            child: Text(label, style: TextStyle(color: context.c.textPrimary)),
           ),
-          const SizedBox(width: 8),
-          FloatingActionButton(
-            heroTag: heroTag,
-            onPressed: onPressed,
-            backgroundColor: color,
-            mini: true,
-            child: Icon(icon),
-          ),
-        ],
+          child: pill,
+        ),
       ),
     );
   }

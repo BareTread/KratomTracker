@@ -46,7 +46,7 @@ class HomeDosageList extends StatelessWidget {
             children: [
               if (showPeriod)
                 Padding(
-                  padding: const EdgeInsets.only(left: 8, top: 16, bottom: 8),
+                  padding: const EdgeInsets.only(left: 8, top: 20, bottom: 8),
                   child: Text(
                     period,
                     style: TextStyle(

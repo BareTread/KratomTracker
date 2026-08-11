@@ -9,12 +9,10 @@ import '../providers/kratom_provider.dart';
 import '../theme/app_theme.dart';
 import '../widgets/add_dosage_form.dart';
 import '../widgets/add_strain_form.dart';
-import 'home/home_calendar_section.dart';
-import 'home/home_day_summary.dart';
+import 'home/home_day_card.dart';
 import 'home/home_dosage_list.dart';
 import 'home/home_empty_state.dart';
 import 'home/home_fab_menu.dart';
-import 'home/home_timeline_card.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -97,7 +95,7 @@ class _HomeScreenState extends State<HomeScreen> {
             bottom: false,
             child: Column(
               children: [
-                HomeCalendarSection(
+                HomeDayCard(
                   focusedDay: _focusedDay,
                   onDaySelected: _selectDay,
                 ),
@@ -128,16 +126,19 @@ class _HomeScreenState extends State<HomeScreen> {
         if (_fabOpen)
           Positioned.fill(
             child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
               onTap: () => _fabKey.currentState?.close(),
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
-                child: const ColoredBox(color: Colors.transparent),
+                filter: ImageFilter.blur(sigmaX: 1.5, sigmaY: 1.5),
+                child: ColoredBox(
+                  color: Colors.black.withValues(alpha: 0.35),
+                ),
               ),
             ),
           ),
         Positioned(
           right: 16,
-          bottom: 24,
+          bottom: 28,
           child: HomeFabMenu(
             key: _fabKey,
             onAddDose: _openAddDose,
@@ -195,12 +196,7 @@ class _HomeDayPage extends StatelessWidget {
         child: HomeDosageList(
           dosages: List<Dosage>.unmodifiable(dosages),
           strainsById: strains,
-          header: Column(
-            children: [
-              HomeDaySummary(date: date),
-              HomeTimelineCard(dosages: dosages, strainsById: strains),
-            ],
-          ),
+          header: const SizedBox(height: 8),
         ),
       ),
     );
