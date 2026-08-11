@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kratom_tracker_plus/providers/kratom_provider.dart';
 import 'package:kratom_tracker_plus/providers/theme_provider.dart';
@@ -12,7 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('hero slot shows time-since-last-dose for today', (tester) async {
+  testWidgets('quiet line shows time-since-last-dose for today', (tester) async {
     final now = DateTime.now();
     final provider = await _provider(
       dosages: [
@@ -22,14 +21,18 @@ void main() {
 
     await _pumpCard(tester, provider, focusedDay: DateUtils.dateOnly(now));
 
-    // Sub-line names the strain code and amount for the last dose.
+    // Quiet line: "<elapsed> since last dose · 2g today"
     expect(
-      find.textContaining('since TEST', findRichText: true),
+      find.textContaining('since last dose', findRichText: true),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('2g today', findRichText: true),
       findsOneWidget,
     );
   });
 
-  testWidgets('hero slot shows the day total for a past date', (tester) async {
+  testWidgets('quiet line shows the day total for a past date', (tester) async {
     final now = DateTime.now();
     final past = DateUtils.dateOnly(now).subtract(const Duration(days: 2));
     final provider = await _provider(
@@ -42,23 +45,18 @@ void main() {
     await _pumpCard(tester, provider, focusedDay: past);
     await tester.pumpAndSettle();
 
-    // Past-day hero is the day's total; the first-to-last window stays quiet.
-    expect(find.text('5g'), findsOneWidget);
-    // Build the expected window with DateFormat so intl's exact spacing
-    // (narrow no-break space before AM/PM) is not hardcoded.
-    String at(int hour, int minute) => DateFormat.jm()
-        .format(DateTime(past.year, past.month, past.day, hour, minute));
+    // Past-day quiet line is the day's total and dose count.
     expect(
-      find.textContaining(
-        '2 doses · ${at(7, 4)} – ${at(20, 32)}',
-        findRichText: true,
-      ),
+      find.textContaining('5g', findRichText: true),
       findsOneWidget,
     );
-    // The span hero is gone, and "since <code>" must not appear for a past day.
-    expect(find.textContaining('span', findRichText: true), findsNothing);
     expect(
-      find.textContaining('since TEST', findRichText: true),
+      find.textContaining('across 2 doses', findRichText: true),
+      findsOneWidget,
+    );
+    // Elapsed "since last dose" must not appear for a past day.
+    expect(
+      find.textContaining('since last dose', findRichText: true),
       findsNothing,
     );
   });

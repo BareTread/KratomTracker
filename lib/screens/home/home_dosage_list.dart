@@ -10,252 +10,773 @@ import '../../providers/kratom_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/effect_log_sheet.dart';
 import '../../widgets/strain_mark.dart';
+import '../../widgets/vine_painter.dart';
 import 'home_dose_actions.dart';
 
+/// Vertical pitch of one dose row. Sized so four-to-five doses sit above the
+/// fold on a 393×852 screen without shrinking the leaf.
+const double _rowPitch = 92;
+
+/// Height of the inter-row gap strip that holds the elapsed label.
+const double _gapStrip = 28;
+
+/// Height of the terminal NOW row on today.
+const double _nowPitch = 72;
+
+const _tabular = [FontFeature.tabularFigures()];
+
+/// The day's doses as leaves on a single vine. Three fixed columns:
+/// time gutter (64) · vine band (~72) · content. Only the vine itself curves.
 class HomeDosageList extends StatelessWidget {
   const HomeDosageList({
     super.key,
     required this.dosages,
     required this.strainsById,
-    required this.header,
+    this.isToday = true,
+    this.header = const SizedBox.shrink(),
   });
 
   final List<Dosage> dosages;
   final Map<String, Strain> strainsById;
+
+  /// When true, the vine continues past the last dose to a terminal NOW node.
+  final bool isToday;
+
+  /// Optional widget rendered above the vine (kept for call-site compatibility).
   final Widget header;
 
   @override
   Widget build(BuildContext context) {
     final sorted = [...dosages]
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-    return ListView.builder(
-      // Clear the FAB so the final row's amount pill is never covered.
-      padding: const EdgeInsets.only(top: 10, bottom: 120),
-      itemCount: sorted.length + 1,
-      itemBuilder: (context, index) {
-        if (index == 0) return header;
-        final row = index - 1;
-        final dosage = sorted[row];
-        final previous = row == 0 ? null : sorted[row - 1];
-        final period = _period(dosage.timestamp);
-        final showPeriod =
-            previous == null || _period(previous.timestamp) != period;
-        return _EntranceRow(
-          index: row,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (showPeriod)
-                Padding(
-                  padding: const EdgeInsets.only(left: 4, top: 18, bottom: 8),
-                  child: Text(
-                    period.toUpperCase(),
-                    style: TextStyle(
-                      color: context.c.textTertiary,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                ),
-              _DoseCard(
-                dosage: dosage,
-                strain: strainsById[dosage.strainId],
-                gap: previous == null
-                    ? null
-                    : dosage.timestamp.difference(previous.timestamp),
-              ),
-            ],
+
+    // Build the flat item list: optional header, then dose rows interleaved
+    // with gap strips, then the NOW node on today (or a trailing stem end).
+    final items = <_VineItem>[];
+    for (var i = 0; i < sorted.length; i++) {
+      if (i > 0) {
+        items.add(
+          _VineItem.gap(
+            sorted[i].timestamp.difference(sorted[i - 1].timestamp),
+            fromIndex: i - 1,
+            toIndex: i,
           ),
         );
+      }
+      items.add(_VineItem.dose(sorted[i], nodeIndex: i));
+    }
+    if (isToday) {
+      final last = sorted.isEmpty ? null : sorted.last;
+      final since = last == null
+          ? Duration.zero
+          : DateTime.now().difference(last.timestamp);
+      if (sorted.isNotEmpty) {
+        items.add(
+          _VineItem.gap(
+            since,
+            fromIndex: sorted.length - 1,
+            toIndex: sorted.length,
+            toNow: true,
+          ),
+        );
+      }
+      items.add(
+        _VineItem.now(
+          nodeIndex: sorted.length,
+          lastColor: last == null
+              ? null
+              : _strainColor(context, strainsById[last.strainId]),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      // Bottom pad clears the day-total / Add Dose bar.
+      padding: const EdgeInsets.only(top: 4, bottom: 100),
+      itemCount: 1 + items.length,
+      itemBuilder: (context, index) {
+        if (index == 0) return header;
+        final item = items[index - 1];
+        return switch (item.kind) {
+          _Kind.dose => _DoseRow(
+              dosage: item.dosage!,
+              strain: strainsById[item.dosage!.strainId],
+              nodeIndex: item.nodeIndex,
+              prevColor: item.nodeIndex > 0
+                  ? _strainColor(
+                      context,
+                      strainsById[sorted[item.nodeIndex - 1].strainId],
+                    )
+                  : null,
+              nextColor: item.nodeIndex < sorted.length - 1
+                  ? _strainColor(
+                      context,
+                      strainsById[sorted[item.nodeIndex + 1].strainId],
+                    )
+                  : (isToday ? _nowColor(context) : null),
+              isFirst: item.nodeIndex == 0,
+              isLast: item.nodeIndex == sorted.length - 1 && !isToday,
+            ),
+          _Kind.gap => _GapRow(
+              gap: item.gap!,
+              fromIndex: item.fromIndex,
+              toIndex: item.toIndex,
+              fromColor: _strainColor(
+                context,
+                strainsById[sorted[item.fromIndex].strainId],
+              ),
+              toColor: item.toNow
+                  ? _nowColor(context)
+                  : _strainColor(
+                      context,
+                      strainsById[sorted[item.toIndex].strainId],
+                    ),
+              toNow: item.toNow,
+            ),
+          _Kind.now => _NowRow(
+              nodeIndex: item.nodeIndex,
+              lastColor: item.lastColor,
+            ),
+        };
       },
     );
   }
 
-  String _period(DateTime time) => time.hour < 12
-      ? 'Morning'
-      : time.hour < 17
-          ? 'Afternoon'
-          : time.hour < 21
-              ? 'Evening'
-              : 'Night';
+  static Color _strainColor(BuildContext context, Strain? strain) {
+    if (strain == null) return context.c.textTertiary;
+    return legibleStrainColor(
+      Color(strain.color),
+      Theme.of(context).brightness,
+    );
+  }
+
+  static Color _nowColor(BuildContext context) => context.c.textSecondary;
 }
 
-class _DoseCard extends StatelessWidget {
-  const _DoseCard({
+enum _Kind { dose, gap, now }
+
+class _VineItem {
+  const _VineItem._({
+    required this.kind,
+    this.dosage,
+    this.gap,
+    this.nodeIndex = 0,
+    this.fromIndex = 0,
+    this.toIndex = 0,
+    this.toNow = false,
+    this.lastColor,
+  });
+
+  factory _VineItem.dose(Dosage d, {required int nodeIndex}) => _VineItem._(
+        kind: _Kind.dose,
+        dosage: d,
+        nodeIndex: nodeIndex,
+      );
+
+  factory _VineItem.gap(
+    Duration gap, {
+    required int fromIndex,
+    required int toIndex,
+    bool toNow = false,
+  }) =>
+      _VineItem._(
+        kind: _Kind.gap,
+        gap: gap,
+        fromIndex: fromIndex,
+        toIndex: toIndex,
+        toNow: toNow,
+      );
+
+  factory _VineItem.now({
+    required int nodeIndex,
+    Color? lastColor,
+  }) =>
+      _VineItem._(
+        kind: _Kind.now,
+        nodeIndex: nodeIndex,
+        lastColor: lastColor,
+      );
+
+  final _Kind kind;
+  final Dosage? dosage;
+  final Duration? gap;
+  final int nodeIndex;
+  final int fromIndex;
+  final int toIndex;
+  final bool toNow;
+  final Color? lastColor;
+}
+
+// ── Dose row ──────────────────────────────────────────────────────────────
+
+class _DoseRow extends StatelessWidget {
+  const _DoseRow({
     required this.dosage,
     required this.strain,
-    required this.gap,
+    required this.nodeIndex,
+    required this.prevColor,
+    required this.nextColor,
+    required this.isFirst,
+    required this.isLast,
   });
 
   final Dosage dosage;
   final Strain? strain;
-  final Duration? gap;
-
-  String get _gapText {
-    if (gap == null) return '';
-    final hours = gap!.inHours;
-    final minutes = gap!.inMinutes.remainder(60);
-    return hours > 0 ? '+${hours}h ${minutes}m' : '+${minutes}m';
-  }
+  final int nodeIndex;
+  final Color? prevColor;
+  final Color? nextColor;
+  final bool isFirst;
+  final bool isLast;
 
   @override
   Widget build(BuildContext context) {
-    final code = strain?.code ?? 'Unknown strain';
-    final strainColor =
+    final brightness = Theme.of(context).brightness;
+    final rawColor =
         strain == null ? context.c.textTertiary : Color(strain!.color);
-    final time = DateFormat.jm().format(dosage.timestamp);
+    final leafColor = legibleStrainColor(rawColor, brightness);
+    final amountColor = leafColor;
+    final code = strain?.code ?? '???';
+    final shape = resolveLeafShape(strain?.icon ?? '', strain?.code ?? '');
+    final xOff = VineGeometry.offsetFor(nodeIndex);
+
     context.select<KratomProvider, int>(
       (p) => Object.hashAll(p.effectsForDosage(dosage.id)),
     );
     final effect =
         context.read<KratomProvider>().effectsForDosage(dosage.id).firstOrNull;
-    final semantics = '$time, $code, ${dosage.amount} grams'
-        '${gap == null ? '' : ', ${_gapText.substring(1)} since previous dose'}'
-        '${effect == null ? '' : ', effect logged'}';
     final showAffordance = effect != null ||
         DateTime.now().difference(dosage.timestamp) >=
             _EffectAffordance.threshold;
+
+    final hour = DateFormat('h:mm').format(dosage.timestamp);
+    final ampm = DateFormat('a').format(dosage.timestamp).toUpperCase();
+
+    final semantics = '$hour $ampm, $code, ${dosage.amount} grams'
+        '${effect == null ? '' : ', effect logged'}';
+
+    // Stem colour above/below the leaf so segments join with neighbours.
+    final above = prevColor ?? leafColor;
+    final below = nextColor ?? leafColor;
+
     return Semantics(
       button: true,
       label: semantics,
-      child: Card(
-        margin: const EdgeInsets.only(bottom: 12),
-        color: context.c.surfaceRaised,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: context.c.hairline),
-        ),
+      child: SizedBox(
+        height: _rowPitch,
         child: InkWell(
           onTap: () => showDosageOptions(context, dosage),
           onLongPress: () {
             HapticFeedback.mediumImpact();
             showDosageOptions(context, dosage);
           },
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: strainColor.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Center(
-                    child: StrainMark(
-                      shape: resolveLeafShape(
-                        strain?.icon ?? '',
-                        strain?.code ?? '',
-                      ),
-                      color: strainColor,
-                      size: 30,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Time gutter — right-aligned, fixed 64px.
+              SizedBox(
+                width: VineGeometry.timeGutter,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 6),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        code,
+                        hour,
                         style: TextStyle(
                           color: context.c.textPrimary,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.1,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
                           height: 1.1,
+                          fontFeatures: _tabular,
                         ),
                       ),
-                      const SizedBox(height: 5),
-                      Row(
-                        children: [
-                          Text(
-                            time,
-                            style: TextStyle(
-                              color: context.c.textSecondary,
-                              fontSize: 13,
-                            ),
-                          ),
-                          if (gap != null)
-                            Text(
-                              '  ·  $_gapText',
-                              style: TextStyle(
-                                color: context.c.textTertiary,
-                                fontSize: 13,
-                              ),
-                            ),
-                        ],
+                      const SizedBox(height: 2),
+                      Text(
+                        ampm,
+                        style: TextStyle(
+                          color: context.c.textTertiary,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                          height: 1.1,
+                          letterSpacing: 0.6, // ~0.06em at 10px
+                          fontFeatures: _tabular,
+                        ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.min,
+              ),
+              // Vine band — leaf sits on the stem; stem curves inside.
+              SizedBox(
+                width: VineGeometry.vineBand,
+                height: _rowPitch,
+                child: Stack(
+                  clipBehavior: Clip.none,
                   children: [
-                    _AmountPill(amount: dosage.amount, strain: strain),
-                    if (showAffordance)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: _EffectAffordance(
-                          dosage: dosage,
-                          effect: effect,
+                    CustomPaint(
+                      size: const Size(VineGeometry.vineBand, _rowPitch),
+                      painter: VineRowStemPainter(
+                        xOffset: xOff,
+                        colorAbove: above,
+                        colorMid: leafColor,
+                        colorBelow: below,
+                        extendUp: !isFirst,
+                        extendDown: !isLast,
+                      ),
+                    ),
+                    // Leaf, centred on the row and offset with the vine.
+                    Align(
+                      alignment: Alignment.center,
+                      child: Transform.translate(
+                        offset: Offset(xOff * 0.55, 0),
+                        child: StrainMark(
+                          shape: shape,
+                          color: leafColor,
+                          size: VineGeometry.leafSize,
                         ),
                       ),
+                    ),
                   ],
                 ),
-              ],
-            ),
+              ),
+              // Content column — amount dominant, code secondary.
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 10, right: 8),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        code,
+                        style: TextStyle(
+                          color: context.c.textTertiary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 1.1,
+                          height: 1.1,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        _formatAmount(dosage.amount),
+                        style: TextStyle(
+                          color: amountColor,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          height: 1.05,
+                          letterSpacing: -0.3,
+                          fontFeatures: _tabular,
+                        ),
+                      ),
+                      if (showAffordance) ...[
+                        const SizedBox(height: 3),
+                        _EffectAffordance(dosage: dosage, effect: effect),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
+
+  String _formatAmount(double value) {
+    final body = value == value.roundToDouble()
+        ? value.toStringAsFixed(0)
+        : value
+            .toStringAsFixed(2)
+            .replaceFirst(RegExp(r'0+$'), '')
+            .replaceFirst(RegExp(r'\.$'), '');
+    return '${body}g';
+  }
 }
 
-/// The amount as a solid object: a saturated fill in the strain's own colour
-/// with text picked for contrast. Strain colours are chosen to work as fills,
-/// so the pill is where their full saturation belongs.
-class _AmountPill extends StatelessWidget {
-  const _AmountPill({required this.amount, required this.strain});
+// ── Gap strip ─────────────────────────────────────────────────────────────
 
-  final double amount;
-  final Strain? strain;
+class _GapRow extends StatelessWidget {
+  const _GapRow({
+    required this.gap,
+    required this.fromIndex,
+    required this.toIndex,
+    required this.fromColor,
+    required this.toColor,
+    this.toNow = false,
+  });
 
-  static Color _textOn(Color fill) => fill.computeLuminance() > 0.2
-      ? const Color(0xFF10151A)
-      : const Color(0xFFF5F7F8);
+  final Duration gap;
+  final int fromIndex;
+  final int toIndex;
+  final Color fromColor;
+  final Color toColor;
+  final bool toNow;
 
   @override
   Widget build(BuildContext context) {
-    final fill = strain == null ? context.c.hairline : Color(strain!.color);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
-      decoration: BoxDecoration(
-        color: fill,
-        borderRadius: BorderRadius.circular(20),
+    final fromOff = VineGeometry.offsetFor(fromIndex);
+    final toOff = VineGeometry.offsetFor(toIndex);
+    final label = _gapLabel(gap);
+
+    // Live gap (last dose → NOW) gets accent rules and a heavier weight.
+    final ruleColor = toNow
+        ? context.c.accent.withValues(alpha: 0.22)
+        : context.c.hairline;
+    final labelWeight = toNow ? FontWeight.w600 : FontWeight.w500; // ~520 / ~450
+    final labelColor = toNow
+        ? context.c.textSecondary
+        : context.c.textTertiary;
+
+    final stem = toNow
+        ? _LiveGapStem(
+            fromOffset: fromOff,
+            toOffset: toOff,
+            fromColor: fromColor,
+            toColor: toColor,
+          )
+        : CustomPaint(
+            painter: VineGapStemPainter(
+              fromOffset: fromOff,
+              toOffset: toOff,
+              fromColor: fromColor,
+              toColor: toColor,
+            ),
+          );
+
+    return SizedBox(
+      height: _gapStrip,
+      child: Row(
+        children: [
+          const SizedBox(width: VineGeometry.timeGutter),
+          SizedBox(
+            width: VineGeometry.vineBand,
+            height: _gapStrip,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Positioned.fill(child: stem),
+                // Gap label with flanking hairlines. FittedBox.scaleDown keeps
+                // long labels ("13h 0m") inside the 72px vine band without
+                // clipping the stem underneath.
+                ColoredBox(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _GapRule(color: ruleColor),
+                          Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 4),
+                            child: Text(
+                              label,
+                              style: TextStyle(
+                                color: labelColor,
+                                fontSize: 10.5,
+                                fontWeight: labelWeight,
+                                height: 1.1,
+                                letterSpacing: 0.42, // ~0.04em at 10.5px
+                                fontFeatures: _tabular,
+                              ),
+                            ),
+                          ),
+                          _GapRule(color: ruleColor),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Expanded(child: SizedBox.shrink()),
+        ],
       ),
-      child: Text(
-        '${amount}g',
-        style: TextStyle(
-          color: strain == null ? context.c.textPrimary : _textOn(fill),
-          fontWeight: FontWeight.w700,
-          fontSize: 15,
-        ),
+    );
+  }
+
+  String _gapLabel(Duration d) {
+    final hours = d.inHours;
+    final minutes = d.inMinutes.remainder(60);
+    if (hours > 0) return '${hours}h ${minutes}m';
+    if (minutes > 0) return '${minutes}m';
+    return 'now';
+  }
+}
+
+/// 1px hairline flanking a gap label. Spec range is 18–28px; 18 keeps the
+/// craft while FittedBox above can still scale the whole unit if needed.
+class _GapRule extends StatelessWidget {
+  const _GapRule({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 18,
+      height: 1,
+      child: ColoredBox(color: color),
+    );
+  }
+}
+
+/// Animated dashed stem for the live gap (last dose → NOW). Isolated in its
+/// own [RepaintBoundary] + ticker so the rest of the list never repaints.
+class _LiveGapStem extends StatefulWidget {
+  const _LiveGapStem({
+    required this.fromOffset,
+    required this.toOffset,
+    required this.fromColor,
+    required this.toColor,
+  });
+
+  final double fromOffset;
+  final double toOffset;
+  final Color fromColor;
+  final Color toColor;
+
+  @override
+  State<_LiveGapStem> createState() => _LiveGapStemState();
+}
+
+class _LiveGapStemState extends State<_LiveGapStem>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: VineGeometry.livePeriod,
+    );
+  }
+
+  bool _shouldAnimate(BuildContext context) {
+    if (!TickerMode.of(context)) return false;
+    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) return false;
+    return !AppMotion.reduced(context);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Start/stop outside build so reduced-motion and widget tests can settle.
+    final animate = _shouldAnimate(context);
+    if (animate) {
+      if (!_controller.isAnimating) _controller.repeat();
+    } else if (_controller.isAnimating) {
+      _controller.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final liveColor = context.c.accent;
+    final animate = _shouldAnimate(context);
+
+    Widget paint(double dashOffset) => CustomPaint(
+          painter: VineGapStemPainter(
+            fromOffset: widget.fromOffset,
+            toOffset: widget.toOffset,
+            fromColor: widget.fromColor,
+            toColor: widget.toColor,
+            live: true,
+            dashOffset: dashOffset,
+            liveColor: liveColor,
+          ),
+        );
+
+    if (!animate) {
+      return RepaintBoundary(child: paint(0));
+    }
+
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          // Travel −36 over one period so dashes flow toward NOW.
+          final offset = -VineGeometry.liveDashTravel * _controller.value;
+          return paint(offset);
+        },
       ),
     );
   }
 }
 
-/// Quiet, text-only effect entry point tucked under the amount pill. Shown
-/// only when there is something to do or report — no reserved slot, no icon.
+// ── NOW row ───────────────────────────────────────────────────────────────
+
+class _NowRow extends StatelessWidget {
+  const _NowRow({
+    required this.nodeIndex,
+    required this.lastColor,
+  });
+
+  final int nodeIndex;
+  final Color? lastColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final xOff = VineGeometry.offsetFor(nodeIndex);
+    final tipColor = context.c.accent;
+    final fromColor = lastColor ?? tipColor;
+
+    return SizedBox(
+      height: _nowPitch,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: VineGeometry.timeGutter,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Text(
+                'now',
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  color: context.c.textTertiary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            ),
+          ),
+          SizedBox(
+            width: VineGeometry.vineBand,
+            height: _nowPitch,
+            // Final segment into NOW is always the live dashed tail on today.
+            child: _LiveNowStem(
+              xOffset: xOff,
+              fromColor: fromColor,
+              tipColor: tipColor,
+              hasPrior: lastColor != null,
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(left: 10),
+              child: Text(
+                lastColor == null ? 'waiting for first dose' : 'NOW',
+                style: TextStyle(
+                  color: context.c.textSecondary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.4,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Animated dashed young-shoot into the NOW disc on an empty today.
+class _LiveNowStem extends StatefulWidget {
+  const _LiveNowStem({
+    required this.xOffset,
+    required this.fromColor,
+    required this.tipColor,
+    required this.hasPrior,
+  });
+
+  final double xOffset;
+  final Color fromColor;
+  final Color tipColor;
+  final bool hasPrior;
+
+  @override
+  State<_LiveNowStem> createState() => _LiveNowStemState();
+}
+
+class _LiveNowStemState extends State<_LiveNowStem>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: VineGeometry.livePeriod,
+    );
+  }
+
+  bool _shouldAnimate(BuildContext context) {
+    if (!TickerMode.of(context)) return false;
+    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) return false;
+    return !AppMotion.reduced(context);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final animate = _shouldAnimate(context);
+    if (animate) {
+      if (!_controller.isAnimating) _controller.repeat();
+    } else if (_controller.isAnimating) {
+      _controller.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final liveColor = context.c.accent;
+    final animate = _shouldAnimate(context);
+
+    Widget paint(double dashOffset) => CustomPaint(
+          painter: VineNowStemPainter(
+            xOffset: widget.xOffset,
+            fromColor: widget.fromColor,
+            tipColor: widget.tipColor,
+            hasPrior: widget.hasPrior,
+            live: true,
+            dashOffset: dashOffset,
+            liveColor: liveColor,
+          ),
+        );
+
+    if (!animate) {
+      return RepaintBoundary(child: paint(0));
+    }
+
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final offset = -VineGeometry.liveDashTravel * _controller.value;
+          return paint(offset);
+        },
+      ),
+    );
+  }
+}
+
+// ── Effect affordance ─────────────────────────────────────────────────────
+
+/// Quiet text under the amount. Shown once a dose is ≥45 min old or already
+/// logged — never forces a third line into every row.
 class _EffectAffordance extends StatelessWidget {
   const _EffectAffordance({
     required this.dosage,
@@ -282,19 +803,12 @@ class _EffectAffordance extends StatelessWidget {
     }
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => EffectLogSheet.show(
-        context,
-        dosageId: dosage.id,
-      ),
-      child: Padding(
-        // Keep the small text comfortably tappable.
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-        child: Text(
-          'Log how it felt',
-          style: TextStyle(
-            color: context.c.textTertiary,
-            fontSize: 11,
-          ),
+      onTap: () => EffectLogSheet.show(context, dosageId: dosage.id),
+      child: Text(
+        'Log how it felt',
+        style: TextStyle(
+          color: context.c.textTertiary,
+          fontSize: 11,
         ),
       ),
     );
@@ -320,51 +834,6 @@ class _EffectSummary extends StatelessWidget {
     return Text(
       parts.join(' · '),
       style: TextStyle(color: context.c.textTertiary, fontSize: 11),
-    );
-  }
-}
-
-class _EntranceRow extends StatefulWidget {
-  const _EntranceRow({required this.index, required this.child});
-
-  final int index;
-  final Widget child;
-
-  @override
-  State<_EntranceRow> createState() => _EntranceRowState();
-}
-
-class _EntranceRowState extends State<_EntranceRow> {
-  bool _visible = false;
-  bool _scheduled = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_scheduled) return;
-    _scheduled = true;
-    final delay = AppMotion.reduced(context)
-        ? Duration.zero
-        : Duration(milliseconds: (widget.index * 20).clamp(0, 160));
-    Future<void>.delayed(delay, () {
-      if (mounted) setState(() => _visible = true);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final duration =
-        AppMotion.reduced(context) ? Duration.zero : AppMotion.normal;
-    return AnimatedOpacity(
-      opacity: _visible ? 1 : 0,
-      duration: duration,
-      curve: AppMotion.emphasized,
-      child: AnimatedSlide(
-        offset: _visible ? Offset.zero : const Offset(0, 0.04),
-        duration: duration,
-        curve: AppMotion.spring,
-        child: widget.child,
-      ),
     );
   }
 }

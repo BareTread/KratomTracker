@@ -19,13 +19,13 @@ void main() {
       final now = DateTime.now();
       final provider = await _provider(
         dosages: [
-          _dose('dose-1', now.subtract(const Duration(minutes: 90)), 2)
+          _dose('dose-1', now.subtract(const Duration(minutes: 90)), 2),
         ],
       );
 
       await _pumpList(tester, provider, doseIds: ['dose-1']);
 
-      await tester.longPress(find.byType(Card).first);
+      await tester.longPress(find.text('2g'));
       await tester.pumpAndSettle();
 
       expect(find.text('Log again now'), findsOneWidget);
@@ -38,12 +38,12 @@ void main() {
       final now = DateTime.now();
       final provider = await _provider(
         dosages: [
-          _dose('dose-1', now.subtract(const Duration(minutes: 90)), 2)
+          _dose('dose-1', now.subtract(const Duration(minutes: 90)), 2),
         ],
       );
       await _pumpList(tester, provider, doseIds: ['dose-1']);
 
-      await tester.longPress(find.byType(Card).first);
+      await tester.longPress(find.text('2g'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Log again now'));
@@ -154,6 +154,7 @@ Future<void> _pumpList(
           body: HomeDosageList(
             dosages: List<Dosage>.unmodifiable(dosages),
             strainsById: strains,
+            isToday: false,
             header: const SizedBox.shrink(),
           ),
         ),

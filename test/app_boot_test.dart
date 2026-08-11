@@ -32,7 +32,9 @@ void main() {
     });
 
     await _bootAndExercise(tester);
-    expect(find.text('No doses recorded'), findsOneWidget);
+    // Empty today: young vine shoot, not the past-day empty-state CTA.
+    expect(find.text('waiting for first dose'), findsOneWidget);
+    expect(find.text('No doses recorded'), findsNothing);
   });
 
   for (final themeCase in [
@@ -56,6 +58,13 @@ void main() {
 
 Future<void> _bootAndExercise(WidgetTester tester) async {
   final prefs = await SharedPreferences.getInstance();
+  // MaterialApp rebuilds MediaQuery from the view, so an outer wrap is not
+  // enough. Drive disableAnimations via the platform dispatcher so the live
+  // vine tail stays static and pumpAndSettle can finish.
+  tester.platformDispatcher.accessibilityFeaturesTestValue =
+      const FakeAccessibilityFeatures(disableAnimations: true);
+  addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+
   await tester.pumpWidget(app.AppBootstrap(prefs: prefs));
 
   expect(find.byType(CircularProgressIndicator), findsOneWidget);

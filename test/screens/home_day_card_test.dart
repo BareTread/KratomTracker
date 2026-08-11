@@ -12,14 +12,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('per-day bars scale against the visible week maximum',
+  testWidgets('per-day presence dots mark days with doses',
       (tester) async {
     // Wednesday 12 Feb 2025; the visible week runs Mon 10 – Sun 16.
     final focused = DateTime(2025, 2, 12);
     final totals = <DateTime, double>{
       DateTime(2025, 2, 10): 5,
       DateTime(2025, 2, 11): 0,
-      DateTime(2025, 2, 12): 10, // week max
+      DateTime(2025, 2, 12): 10,
       DateTime(2025, 2, 13): 2.5,
       DateTime(2025, 2, 14): 0,
       DateTime(2025, 2, 15): 0,
@@ -41,20 +41,16 @@ void main() {
     await tester.pumpAndSettle();
 
     String keyFor(DateTime d) => 'home-day-bar-${d.year}-${d.month}-${d.day}';
-    final wedSize =
-        tester.getSize(find.byKey(ValueKey(keyFor(DateTime(2025, 2, 12)))));
-    final monSize =
+    // Every day keeps a 3×3 presence slot so the week row stays level.
+    final mon =
         tester.getSize(find.byKey(ValueKey(keyFor(DateTime(2025, 2, 10)))));
-    final thuSize =
-        tester.getSize(find.byKey(ValueKey(keyFor(DateTime(2025, 2, 13)))));
-    final tueSize =
+    final tue =
         tester.getSize(find.byKey(ValueKey(keyFor(DateTime(2025, 2, 11)))));
-
-    // The max day is tallest, and partial days scale below it.
-    expect(wedSize.height, greaterThan(monSize.height));
-    expect(monSize.height, greaterThan(thuSize.height));
-    // A zero-grams day renders as a small dot, shorter than any real bar.
-    expect(tueSize.height, lessThan(thuSize.height));
+    final wed =
+        tester.getSize(find.byKey(ValueKey(keyFor(DateTime(2025, 2, 12)))));
+    expect(mon, const Size(3, 3));
+    expect(tue, const Size(3, 3));
+    expect(wed, const Size(3, 3));
   });
 
   testWidgets('Today pill is absent when today is selected', (tester) async {

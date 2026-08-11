@@ -84,6 +84,10 @@ Future<void> _pumpHome(WidgetTester tester, KratomProvider provider) async {
       value: provider,
       child: MaterialApp(
         theme: ThemeProvider.darkTheme,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true),
+          child: child!,
+        ),
         home: const HomeScreen(),
       ),
     ),

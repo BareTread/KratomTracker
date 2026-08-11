@@ -87,6 +87,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Reserve space so the vine list never draws under the bottom bar.
+    const barBodyHeight = 68.0;
+
     return Stack(
       children: [
         Scaffold(
@@ -119,6 +122,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ),
+                // Spacer matching the overlaid bottom bar so content clears it.
+                SizedBox(
+                  height: barBodyHeight +
+                      MediaQuery.paddingOf(context).bottom * 0.15,
+                ),
               ],
             ),
           ),
@@ -136,20 +144,115 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
+        // Bottom bar lives above the dim overlay so the expanded menu stays
+        // tappable and the day total remains readable.
         Positioned(
-          right: 16,
-          bottom: 28,
-          child: HomeFabMenu(
-            key: _fabKey,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: _DayBottomBar(
+            date: _focusedDay,
+            fabKey: _fabKey,
             onAddDose: _openAddDose,
             onAddStrain: _openAddStrain,
-            onVisibilityChanged: (visible) {
+            onFabVisibilityChanged: (visible) {
               if (_fabOpen != visible) setState(() => _fabOpen = visible);
             },
           ),
         ),
       ],
     );
+  }
+}
+
+/// Day total on the left, labelled Add Dose pill on the right. Replaces the
+/// floating FAB that used to cover the last vine row.
+class _DayBottomBar extends StatelessWidget {
+  const _DayBottomBar({
+    required this.date,
+    required this.fabKey,
+    required this.onAddDose,
+    required this.onAddStrain,
+    required this.onFabVisibilityChanged,
+  });
+
+  final DateTime date;
+  final GlobalKey<HomeFabMenuState> fabKey;
+  final VoidCallback onAddDose;
+  final VoidCallback onAddStrain;
+  final ValueChanged<bool> onFabVisibilityChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    context.select<KratomProvider, int>((p) {
+      final doses = p.getDosagesForDate(date);
+      return Object.hashAll(doses);
+    });
+    final doses = context.read<KratomProvider>().getDosagesForDate(date);
+    final total = doses.fold<double>(0, (sum, d) => sum + d.amount);
+    final count = doses.length;
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+
+    return Material(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 10, 16, 10 + bottomInset * 0.15),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: count == 0
+                    ? Text(
+                        'No doses yet',
+                        style: TextStyle(
+                          color: context.c.textTertiary,
+                          fontSize: 13,
+                        ),
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _formatAmount(total),
+                            style: TextStyle(
+                              color: context.c.textPrimary,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              height: 1.1,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'across $count ${count == 1 ? 'dose' : 'doses'}',
+                            style: TextStyle(
+                              color: context.c.textTertiary,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+            HomeFabMenu(
+              key: fabKey,
+              onAddDose: onAddDose,
+              onAddStrain: onAddStrain,
+              onVisibilityChanged: onFabVisibilityChanged,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatAmount(double value) {
+    final body = value == value.roundToDouble()
+        ? value.toStringAsFixed(0)
+        : value.toStringAsFixed(1);
+    return '${body}g';
   }
 }
 
@@ -174,7 +277,15 @@ class _HomeDayPage extends StatelessWidget {
     );
     final provider = context.read<KratomProvider>();
     final dosages = provider.getDosagesForDate(date);
-    if (dosages.isEmpty) return HomeEmptyState(onAddDose: onAddDose);
+    final today = DateUtils.dateOnly(DateTime.now());
+    final isToday = DateUtils.isSameDay(date, today);
+
+    // Today with no doses still shows a young shoot + NOW; past empty days
+    // keep the existing empty-state CTA.
+    if (dosages.isEmpty && !isToday) {
+      return HomeEmptyState(onAddDose: onAddDose);
+    }
+
     final strains = <String, Strain>{
       for (final strain in provider.strains) strain.id: strain,
     };
@@ -192,10 +303,11 @@ class _HomeDayPage extends StatelessWidget {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         child: HomeDosageList(
           dosages: List<Dosage>.unmodifiable(dosages),
           strainsById: strains,
+          isToday: isToday,
           header: const SizedBox.shrink(),
         ),
       ),

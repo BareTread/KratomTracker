@@ -5,7 +5,7 @@ import 'package:table_calendar/table_calendar.dart';
 
 import '../../theme/app_theme.dart';
 
-/// Calendar content (week strip + per-day grams bars + month picker) intended
+/// Calendar content (week strip + per-day dose dots + month picker) intended
 /// to live inside its own card. Owns no card chrome — the surrounding card
 /// supplies the surface, border, and radius.
 class HomeCalendarSection extends StatelessWidget {
@@ -19,8 +19,9 @@ class HomeCalendarSection extends StatelessWidget {
   final DateTime focusedDay;
   final ValueChanged<DateTime> onDaySelected;
 
-  /// Per-day grams totals used to draw the bars under each date. Defaults to
-  /// zero so the widget renders standalone (e.g. in tests) without a provider.
+  /// Per-day grams totals used to decide whether a day has doses (presence
+  /// dot). Defaults to zero so the widget renders standalone without a
+  /// provider.
   final double Function(DateTime date)? totalForDate;
 
   bool _sameDay(DateTime a, DateTime b) =>
@@ -42,7 +43,6 @@ class HomeCalendarSection extends StatelessWidget {
       7,
       (i) => totalFor(monday.add(Duration(days: i))),
     );
-    final weekMax = weekTotals.fold<double>(0, (a, b) => a > b ? a : b);
     final canGoForward = focusedDay
         .add(const Duration(days: 7))
         .isBefore(today.add(const Duration(days: 1)));
@@ -163,7 +163,6 @@ class HomeCalendarSection extends StatelessWidget {
               context,
               day,
               weekTotals: weekTotals,
-              weekMax: weekMax,
               monday: monday,
               today: today,
             ),
@@ -171,7 +170,6 @@ class HomeCalendarSection extends StatelessWidget {
               context,
               day,
               weekTotals: weekTotals,
-              weekMax: weekMax,
               monday: monday,
               today: today,
             ),
@@ -179,7 +177,6 @@ class HomeCalendarSection extends StatelessWidget {
               context,
               day,
               weekTotals: weekTotals,
-              weekMax: weekMax,
               monday: monday,
               today: today,
               enabled: true,
@@ -188,7 +185,6 @@ class HomeCalendarSection extends StatelessWidget {
               context,
               day,
               weekTotals: weekTotals,
-              weekMax: weekMax,
               monday: monday,
               today: today,
               enabled: false,
@@ -197,7 +193,6 @@ class HomeCalendarSection extends StatelessWidget {
               context,
               day,
               weekTotals: weekTotals,
-              weekMax: weekMax,
               monday: monday,
               today: today,
               enabled: false,
@@ -219,7 +214,6 @@ class HomeCalendarSection extends StatelessWidget {
     BuildContext context,
     DateTime day, {
     required List<double> weekTotals,
-    required double weekMax,
     required DateTime monday,
     required DateTime today,
     bool enabled = true,
@@ -229,6 +223,19 @@ class HomeCalendarSection extends StatelessWidget {
     final dayIndex = day.difference(monday).inDays;
     final total = (dayIndex >= 0 && dayIndex < 7) ? weekTotals[dayIndex] : 0.0;
     final hasDoses = total > 0 && !day.isAfter(today);
+    // Selected → filled accent circle, scaffold-coloured text.
+    // Today (not selected) → 1.5px inset accent ring, accent text.
+    // Has doses → 3×3 presence dot under the number.
+    final Color textColor;
+    if (!enabled) {
+      textColor = context.c.textTertiary;
+    } else if (selected) {
+      textColor = Theme.of(context).scaffoldBackgroundColor;
+    } else if (isToday) {
+      textColor = context.c.accent;
+    } else {
+      textColor = context.c.textPrimary;
+    }
     return Semantics(
       label:
           '${DateFormat.yMMMMEEEEd().format(day)}${selected ? ', selected' : ''}',
@@ -239,20 +246,16 @@ class HomeCalendarSection extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Fill means "you are looking at this day"; the greyscale ring
-            // means "this is today". They compose: today selected shows both.
             Container(
-              width: 40,
-              height: 40,
+              width: 32,
+              height: 32,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: selected ? context.c.accent : null,
                 shape: BoxShape.circle,
-                border: isToday
+                border: isToday && !selected
                     ? Border.all(
-                        color: selected
-                            ? context.c.textPrimary
-                            : context.c.textSecondary,
+                        color: context.c.accent,
                         width: 1.5,
                       )
                     : null,
@@ -260,20 +263,18 @@ class HomeCalendarSection extends StatelessWidget {
               child: Text(
                 '${day.day}',
                 style: TextStyle(
-                  color: !enabled
-                      ? context.c.textTertiary
-                      : selected
-                          ? Colors.black87
-                          : context.c.textPrimary,
-                  fontWeight: selected || isToday ? FontWeight.bold : null,
+                  color: textColor,
+                  fontWeight: selected
+                      ? FontWeight.w600
+                      : isToday
+                          ? FontWeight.w600
+                          : FontWeight.w500,
                 ),
               ),
             ),
             const SizedBox(height: 3),
-            _DayBar(
+            _DayDot(
               key: ValueKey('home-day-bar-${day.year}-${day.month}-${day.day}'),
-              total: total,
-              weekMax: weekMax,
               hasDoses: hasDoses,
               selected: selected,
             ),
@@ -415,48 +416,35 @@ class HomeCalendarSection extends StatelessWidget {
   }
 }
 
-/// A small bar under a calendar date whose height encodes that day's total
-/// grams, scaled against the largest day in the visible week. Days with no
-/// doses show a faint dot so the column still reads as a unit.
-class _DayBar extends StatelessWidget {
-  const _DayBar({
+/// 3×3 presence dot under a calendar day number. Visible only when the day
+/// has doses. On the selected day the dot is scaffold-coloured at half
+/// opacity so it still reads against the filled accent circle above.
+class _DayDot extends StatelessWidget {
+  const _DayDot({
     super.key,
-    required this.total,
-    required this.weekMax,
     required this.hasDoses,
     required this.selected,
   });
 
-  final double total;
-  final double weekMax;
   final bool hasDoses;
   final bool selected;
 
-  static const _maxHeight = 10.0;
-  static const _minHeight = 3.0;
-
   @override
   Widget build(BuildContext context) {
+    // Reserve the same 3px slot whether or not a dose exists so the week
+    // row height stays uniform.
     if (!hasDoses) {
-      return Container(
-        width: 3,
-        height: 3,
-        decoration: BoxDecoration(
-          color: context.c.textTertiary.withValues(alpha: 0.35),
-          shape: BoxShape.circle,
-        ),
-      );
+      return const SizedBox(width: 3, height: 3);
     }
-    final fraction = weekMax > 0 ? (total / weekMax).clamp(0.0, 1.0) : 0.0;
-    final height = _minHeight + (_maxHeight - _minHeight) * fraction;
+    final color = selected
+        ? Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.5)
+        : context.c.textTertiary.withValues(alpha: 0.7);
     return Container(
-      width: 10,
-      height: height,
+      width: 3,
+      height: 3,
       decoration: BoxDecoration(
-        color: selected
-            ? context.c.accent
-            : context.c.textTertiary.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(2),
+        color: color,
+        shape: BoxShape.circle,
       ),
     );
   }

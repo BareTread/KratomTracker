@@ -3,9 +3,9 @@ import 'package:flutter/services.dart';
 
 import '../../theme/app_theme.dart';
 
-/// Add-Dose-first FAB. A tap fires Add Dose directly (the most-used action in
-/// the app). A long-press expands two large labelled pills stacked above the
-/// button within a thumb arc; tap-anywhere dismisses.
+/// Add Dose pill for the home bottom bar. A tap fires Add Dose; a long-press
+/// expands two labelled actions (Add Dose / Add Strain) above it. Replaces the
+/// floating FAB so it no longer covers the last vine row.
 class HomeFabMenu extends StatefulWidget {
   const HomeFabMenu({
     super.key,
@@ -81,7 +81,7 @@ class HomeFabMenuState extends State<HomeFabMenu>
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         if (_open) ...[
-          _FabPill(
+          _MenuPill(
             key: const Key('home-fab-add-strain'),
             label: 'Add Strain',
             icon: Icons.local_florist_outlined,
@@ -91,7 +91,7 @@ class HomeFabMenuState extends State<HomeFabMenu>
             reduced: reduced,
           ),
           const SizedBox(height: 10),
-          _FabPill(
+          _MenuPill(
             key: const Key('home-fab-add-dose'),
             label: 'Add Dose',
             icon: Icons.add,
@@ -102,7 +102,7 @@ class HomeFabMenuState extends State<HomeFabMenu>
           ),
           const SizedBox(height: 12),
         ],
-        _FabButton(
+        _AddDosePill(
           key: const Key('home-fab'),
           open: _open,
           reduced: reduced,
@@ -114,8 +114,9 @@ class HomeFabMenuState extends State<HomeFabMenu>
   }
 }
 
-class _FabButton extends StatelessWidget {
-  const _FabButton({
+/// Labelled cyan pill — the primary "Add Dose" control on the bottom bar.
+class _AddDosePill extends StatelessWidget {
+  const _AddDosePill({
     super.key,
     required this.open,
     required this.reduced,
@@ -132,51 +133,57 @@ class _FabButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final accent = context.c.accent;
     final muted = context.c.accentMuted;
-    return Container(
-      width: 60,
-      height: 60,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color.lerp(accent, muted, 0.15)!,
-            Color.lerp(accent, muted, 0.55)!,
-          ],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: accent.withValues(alpha: 0.28),
-            blurRadius: 18,
-            spreadRadius: 0,
-            offset: const Offset(0, 8),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        onLongPress: onLongPress,
+        borderRadius: BorderRadius.circular(22),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color.lerp(accent, muted, 0.1)!,
+                Color.lerp(accent, muted, 0.45)!,
+              ],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: accent.withValues(alpha: 0.28),
+                blurRadius: 14,
+                offset: const Offset(0, 5),
+              ),
+            ],
           ),
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.25),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(18),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          onLongPress: onLongPress,
-          borderRadius: BorderRadius.circular(18),
-          splashColor: context.c.textPrimary.withValues(alpha: 0.12),
-          highlightColor: context.c.textPrimary.withValues(alpha: 0.06),
-          child: Center(
-            child: AnimatedRotation(
-              turns: open ? 0.125 : 0,
-              duration: reduced ? Duration.zero : AppMotion.fast,
-              child: Icon(
-                open ? Icons.close : Icons.add,
-                size: 26,
-                color: context.c.textPrimary,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48, minWidth: 120),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedRotation(
+                    turns: open ? 0.125 : 0,
+                    duration: reduced ? Duration.zero : AppMotion.fast,
+                    child: Icon(
+                      open ? Icons.close : Icons.add,
+                      size: 20,
+                      color: context.c.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    open ? 'Close' : 'Add Dose',
+                    style: TextStyle(
+                      color: context.c.textPrimary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -186,11 +193,9 @@ class _FabButton extends StatelessWidget {
   }
 }
 
-/// A large labelled pill — label inside the button, not floating beside it.
-/// Add Dose is the filled accent pill (dominant); Add Strain is the outlined
-/// surface pill (secondary).
-class _FabPill extends StatelessWidget {
-  const _FabPill({
+/// Expanded menu pill shown above the Add Dose control on long-press.
+class _MenuPill extends StatelessWidget {
+  const _MenuPill({
     super.key,
     required this.label,
     required this.icon,
@@ -217,8 +222,8 @@ class _FabPill extends StatelessWidget {
         onTap: onPressed,
         borderRadius: BorderRadius.circular(18),
         child: Container(
-          constraints: const BoxConstraints(minHeight: 56),
-          padding: const EdgeInsets.symmetric(horizontal: 20),
+          constraints: const BoxConstraints(minHeight: 52),
+          padding: const EdgeInsets.symmetric(horizontal: 18),
           decoration: fill
               ? null
               : BoxDecoration(
@@ -230,7 +235,7 @@ class _FabPill extends StatelessWidget {
             children: [
               Icon(
                 icon,
-                size: 22,
+                size: 20,
                 color: fill ? context.c.textPrimary : context.c.textSecondary,
               ),
               const SizedBox(width: 10),
@@ -238,7 +243,7 @@ class _FabPill extends StatelessWidget {
                 label,
                 style: TextStyle(
                   color: context.c.textPrimary,
-                  fontSize: 16,
+                  fontSize: 15,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -258,16 +263,14 @@ class _FabPill extends StatelessWidget {
       sizeFactor: CurvedAnimation(parent: animation, curve: AppMotion.spring),
       alignment: Alignment.bottomRight,
       child: FadeTransition(
-        opacity: CurvedAnimation(parent: animation, curve: AppMotion.emphasized),
+        opacity:
+            CurvedAnimation(parent: animation, curve: AppMotion.emphasized),
         child: SlideTransition(
           position: Tween<Offset>(
             begin: const Offset(0, 0.25),
             end: Offset.zero,
           ).animate(
-            CurvedAnimation(
-              parent: animation,
-              curve: AppMotion.spring,
-            ),
+            CurvedAnimation(parent: animation, curve: AppMotion.spring),
           ),
           child: pill,
         ),

@@ -15,20 +15,23 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('empty provider renders the home empty state', (tester) async {
+  testWidgets('empty today renders a young vine with NOW, not the past empty state',
+      (tester) async {
     final provider = await _provider();
 
     await _pumpHome(tester, provider);
 
-    expect(find.text('No doses recorded'), findsOneWidget);
-    expect(find.byKey(const Key('home-empty-add-dose')), findsOneWidget);
+    // Today with no doses: young shoot + NOW tip, not the past-day empty CTA.
+    expect(find.text('No doses recorded'), findsNothing);
+    expect(find.text('waiting for first dose'), findsOneWidget);
+    expect(find.byKey(const Key('home-empty-add-dose')), findsNothing);
   });
 
-  testWidgets('empty-state CTA opens the add-dose sheet', (tester) async {
+  testWidgets('Add Dose pill opens the add-dose sheet', (tester) async {
     final provider = await _provider();
     await _pumpHome(tester, provider);
 
-    await tester.tap(find.byKey(const Key('home-empty-add-dose')));
+    await tester.tap(find.byKey(const Key('home-fab')));
     await tester.pumpAndSettle();
 
     expect(find.byType(AddDosageForm), findsOneWidget);
@@ -47,10 +50,9 @@ void main() {
 
     await _pumpHome(tester, provider, tall: true);
 
-    // Rows no longer render notes; identify them by their time labels.
-    // Format expectations with DateFormat so intl's exact spacing matches.
+    // Gutter times are "h:mm" (ampm sits on the line below).
     String at(int hour) =>
-        DateFormat.jm().format(DateTime(now.year, now.month, now.day, hour));
+        DateFormat('h:mm').format(DateTime(now.year, now.month, now.day, hour));
     final earlyY = tester.getCenter(find.text(at(7))).dy;
     final middleY = tester.getCenter(find.text(at(13))).dy;
     final lateY = tester.getCenter(find.text(at(20))).dy;
@@ -77,6 +79,10 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: ThemeProvider.lightTheme,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true),
+          child: child!,
+        ),
         home: Scaffold(
           body: HomeCalendarSection(
             focusedDay: DateTime(2025, 2, 15),
@@ -157,6 +163,12 @@ Future<void> _pumpHome(
       value: provider,
       child: MaterialApp(
         theme: theme ?? ThemeProvider.darkTheme,
+        // Live vine tail is a looping ticker; keep it static in widget tests
+        // so pumpAndSettle can finish.
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true),
+          child: child!,
+        ),
         home: const HomeScreen(),
       ),
     ),
