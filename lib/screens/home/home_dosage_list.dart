@@ -13,20 +13,13 @@ import '../../widgets/strain_mark.dart';
 import '../../widgets/vine_painter.dart';
 import 'home_dose_actions.dart';
 
-/// Vertical pitch of one dose row. Sized so four-to-five doses sit above the
-/// fold on a 393×852 screen without shrinking the leaf.
-const double _rowPitch = 92;
-
-/// Height of the inter-row gap strip that holds the elapsed label.
-const double _gapStrip = 28;
-
-/// Height of the terminal NOW row on today.
-const double _nowPitch = 72;
-
 const _tabular = [FontFeature.tabularFigures()];
 
 /// The day's doses as leaves on a single vine. Three fixed columns:
 /// time gutter (64) · vine band (~72) · content. Only the vine itself curves.
+///
+/// On low-dose days the vertical rhythm expands (via [VineRhythm]) so the
+/// ledger occupies the available viewport instead of clustering at the top.
 class HomeDosageList extends StatelessWidget {
   const HomeDosageList({
     super.key,
@@ -90,54 +83,70 @@ class HomeDosageList extends StatelessWidget {
       );
     }
 
-    return ListView.builder(
-      // Bottom pad clears the circular FAB floating above the nav.
-      padding: const EdgeInsets.only(top: 4, bottom: 88),
-      itemCount: 1 + items.length,
-      itemBuilder: (context, index) {
-        if (index == 0) return header;
-        final item = items[index - 1];
-        return switch (item.kind) {
-          _Kind.dose => _DoseRow(
-              dosage: item.dosage!,
-              strain: strainsById[item.dosage!.strainId],
-              nodeIndex: item.nodeIndex,
-              prevColor: item.nodeIndex > 0
-                  ? _strainColor(
-                      context,
-                      strainsById[sorted[item.nodeIndex - 1].strainId],
-                    )
-                  : null,
-              nextColor: item.nodeIndex < sorted.length - 1
-                  ? _strainColor(
-                      context,
-                      strainsById[sorted[item.nodeIndex + 1].strainId],
-                    )
-                  : (isToday ? _nowColor(context) : null),
-              isFirst: item.nodeIndex == 0,
-              isLast: item.nodeIndex == sorted.length - 1 && !isToday,
-            ),
-          _Kind.gap => _GapRow(
-              gap: item.gap!,
-              fromIndex: item.fromIndex,
-              toIndex: item.toIndex,
-              fromColor: _strainColor(
-                context,
-                strainsById[sorted[item.fromIndex].strainId],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final rhythm = VineRhythm.compute(
+          viewportHeight: constraints.maxHeight,
+          doseCount: sorted.length,
+          showNow: isToday,
+        );
+
+        return ListView.builder(
+          // Bottom pad clears the circular FAB floating above the nav.
+          padding: const EdgeInsets.only(
+            top: VineRhythm.listTopPad,
+            bottom: VineRhythm.listBottomPad,
+          ),
+          itemCount: 1 + items.length,
+          itemBuilder: (context, index) {
+            if (index == 0) return header;
+            final item = items[index - 1];
+            return switch (item.kind) {
+              _Kind.dose => _DoseRow(
+                dosage: item.dosage!,
+                strain: strainsById[item.dosage!.strainId],
+                nodeIndex: item.nodeIndex,
+                rowPitch: rhythm.rowPitch,
+                prevColor: item.nodeIndex > 0
+                    ? _strainColor(
+                        context,
+                        strainsById[sorted[item.nodeIndex - 1].strainId],
+                      )
+                    : null,
+                nextColor: item.nodeIndex < sorted.length - 1
+                    ? _strainColor(
+                        context,
+                        strainsById[sorted[item.nodeIndex + 1].strainId],
+                      )
+                    : (isToday ? _nowColor(context) : null),
+                isFirst: item.nodeIndex == 0,
+                isLast: item.nodeIndex == sorted.length - 1 && !isToday,
               ),
-              toColor: item.toNow
-                  ? _nowColor(context)
-                  : _strainColor(
-                      context,
-                      strainsById[sorted[item.toIndex].strainId],
-                    ),
-              toNow: item.toNow,
-            ),
-          _Kind.now => _NowRow(
-              nodeIndex: item.nodeIndex,
-              lastColor: item.lastColor,
-            ),
-        };
+              _Kind.gap => _GapRow(
+                gap: item.gap!,
+                gapStrip: rhythm.gapStrip,
+                fromIndex: item.fromIndex,
+                toIndex: item.toIndex,
+                fromColor: _strainColor(
+                  context,
+                  strainsById[sorted[item.fromIndex].strainId],
+                ),
+                toColor: item.toNow
+                    ? _nowColor(context)
+                    : _strainColor(
+                        context,
+                        strainsById[sorted[item.toIndex].strainId],
+                      ),
+                toNow: item.toNow,
+              ),
+              _Kind.now => _NowRow(
+                nodeIndex: item.nodeIndex,
+                nowPitch: rhythm.nowPitch,
+                lastColor: item.lastColor,
+              ),
+            };
+          },
+        );
       },
     );
   }
@@ -167,35 +176,24 @@ class _VineItem {
     this.lastColor,
   });
 
-  factory _VineItem.dose(Dosage d, {required int nodeIndex}) => _VineItem._(
-        kind: _Kind.dose,
-        dosage: d,
-        nodeIndex: nodeIndex,
-      );
+  factory _VineItem.dose(Dosage d, {required int nodeIndex}) =>
+      _VineItem._(kind: _Kind.dose, dosage: d, nodeIndex: nodeIndex);
 
   factory _VineItem.gap(
     Duration gap, {
     required int fromIndex,
     required int toIndex,
     bool toNow = false,
-  }) =>
-      _VineItem._(
-        kind: _Kind.gap,
-        gap: gap,
-        fromIndex: fromIndex,
-        toIndex: toIndex,
-        toNow: toNow,
-      );
+  }) => _VineItem._(
+    kind: _Kind.gap,
+    gap: gap,
+    fromIndex: fromIndex,
+    toIndex: toIndex,
+    toNow: toNow,
+  );
 
-  factory _VineItem.now({
-    required int nodeIndex,
-    Color? lastColor,
-  }) =>
-      _VineItem._(
-        kind: _Kind.now,
-        nodeIndex: nodeIndex,
-        lastColor: lastColor,
-      );
+  factory _VineItem.now({required int nodeIndex, Color? lastColor}) =>
+      _VineItem._(kind: _Kind.now, nodeIndex: nodeIndex, lastColor: lastColor);
 
   final _Kind kind;
   final Dosage? dosage;
@@ -214,6 +212,7 @@ class _DoseRow extends StatelessWidget {
     required this.dosage,
     required this.strain,
     required this.nodeIndex,
+    required this.rowPitch,
     required this.prevColor,
     required this.nextColor,
     required this.isFirst,
@@ -223,6 +222,7 @@ class _DoseRow extends StatelessWidget {
   final Dosage dosage;
   final Strain? strain;
   final int nodeIndex;
+  final double rowPitch;
   final Color? prevColor;
   final Color? nextColor;
   final bool isFirst;
@@ -231,8 +231,9 @@ class _DoseRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
-    final rawColor =
-        strain == null ? context.c.textTertiary : Color(strain!.color);
+    final rawColor = strain == null
+        ? context.c.textTertiary
+        : Color(strain!.color);
     final leafColor = legibleStrainColor(rawColor, brightness);
     final amountColor = leafColor;
     final code = strain?.code ?? '???';
@@ -242,8 +243,10 @@ class _DoseRow extends StatelessWidget {
     context.select<KratomProvider, int>(
       (p) => Object.hashAll(p.effectsForDosage(dosage.id)),
     );
-    final effect =
-        context.read<KratomProvider>().effectsForDosage(dosage.id).firstOrNull;
+    final effect = context
+        .read<KratomProvider>()
+        .effectsForDosage(dosage.id)
+        .firstOrNull;
     // Only show the effects sub-line when something is logged. The empty
     // "Log how it felt" placeholder was a nag repeated down the column;
     // logging stays reachable via the row's tap / long-press actions.
@@ -251,7 +254,8 @@ class _DoseRow extends StatelessWidget {
     final hour = DateFormat('h:mm').format(dosage.timestamp);
     final ampm = DateFormat('a').format(dosage.timestamp).toUpperCase();
 
-    final semantics = '$hour $ampm, $code, ${dosage.amount} grams'
+    final semantics =
+        '$hour $ampm, $code, ${dosage.amount} grams'
         '${effect == null ? '' : ', effect logged'}';
 
     // Stem colour above/below the leaf so segments join with neighbours.
@@ -262,7 +266,7 @@ class _DoseRow extends StatelessWidget {
       button: true,
       label: semantics,
       child: SizedBox(
-        height: _rowPitch,
+        height: rowPitch,
         child: InkWell(
           onTap: () => showDosageOptions(context, dosage),
           onLongPress: () {
@@ -307,15 +311,15 @@ class _DoseRow extends StatelessWidget {
                   ),
                 ),
               ),
-              // Vine band — leaf sits on the stem; stem curves inside.
+              // Vine band — stem runs beside the leaf; petiole attaches.
               SizedBox(
                 width: VineGeometry.vineBand,
-                height: _rowPitch,
+                height: rowPitch,
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
                     CustomPaint(
-                      size: const Size(VineGeometry.vineBand, _rowPitch),
+                      size: Size(VineGeometry.vineBand, rowPitch),
                       painter: VineRowStemPainter(
                         xOffset: xOff,
                         colorAbove: above,
@@ -325,16 +329,14 @@ class _DoseRow extends StatelessWidget {
                         extendDown: !isLast,
                       ),
                     ),
-                    // Leaf, centred on the row and offset with the vine.
+                    // Leaf stays band-centred so data columns remain stable.
+                    // The stem is offset beside it (see VineGeometry.offsetFor).
                     Align(
                       alignment: Alignment.center,
-                      child: Transform.translate(
-                        offset: Offset(xOff * 0.55, 0),
-                        child: StrainMark(
-                          shape: shape,
-                          color: leafColor,
-                          size: VineGeometry.leafSize,
-                        ),
+                      child: StrainMark(
+                        shape: shape,
+                        color: leafColor,
+                        size: VineGeometry.leafSize,
                       ),
                     ),
                   ],
@@ -399,9 +401,9 @@ class _DoseRow extends StatelessWidget {
     final body = value == value.roundToDouble()
         ? value.toStringAsFixed(0)
         : value
-            .toStringAsFixed(2)
-            .replaceFirst(RegExp(r'0+$'), '')
-            .replaceFirst(RegExp(r'\.$'), '');
+              .toStringAsFixed(2)
+              .replaceFirst(RegExp(r'0+$'), '')
+              .replaceFirst(RegExp(r'\.$'), '');
     return '${body}g';
   }
 }
@@ -411,6 +413,7 @@ class _DoseRow extends StatelessWidget {
 class _GapRow extends StatelessWidget {
   const _GapRow({
     required this.gap,
+    required this.gapStrip,
     required this.fromIndex,
     required this.toIndex,
     required this.fromColor,
@@ -419,6 +422,7 @@ class _GapRow extends StatelessWidget {
   });
 
   final Duration gap;
+  final double gapStrip;
   final int fromIndex;
   final int toIndex;
   final Color fromColor;
@@ -483,13 +487,13 @@ class _GapRow extends StatelessWidget {
           );
 
     return SizedBox(
-      height: _gapStrip,
+      height: gapStrip,
       child: Row(
         children: [
           const SizedBox(width: VineGeometry.timeGutter),
           SizedBox(
             width: VineGeometry.vineBand,
-            height: _gapStrip,
+            height: gapStrip,
             child: Stack(
               alignment: Alignment.center,
               children: [
@@ -522,11 +526,7 @@ class _GapRule extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 18,
-      height: 1,
-      child: ColoredBox(color: color),
-    );
+    return SizedBox(width: 18, height: 1, child: ColoredBox(color: color));
   }
 }
 
@@ -592,16 +592,16 @@ class _LiveGapStemState extends State<_LiveGapStem>
     final animate = _shouldAnimate(context);
 
     Widget paint(double dashOffset) => CustomPaint(
-          painter: VineGapStemPainter(
-            fromOffset: widget.fromOffset,
-            toOffset: widget.toOffset,
-            fromColor: widget.fromColor,
-            toColor: widget.toColor,
-            live: true,
-            dashOffset: dashOffset,
-            liveColor: liveColor,
-          ),
-        );
+      painter: VineGapStemPainter(
+        fromOffset: widget.fromOffset,
+        toOffset: widget.toOffset,
+        fromColor: widget.fromColor,
+        toColor: widget.toColor,
+        live: true,
+        dashOffset: dashOffset,
+        liveColor: liveColor,
+      ),
+    );
 
     if (!animate) {
       return RepaintBoundary(child: paint(0));
@@ -625,10 +625,12 @@ class _LiveGapStemState extends State<_LiveGapStem>
 class _NowRow extends StatelessWidget {
   const _NowRow({
     required this.nodeIndex,
+    required this.nowPitch,
     required this.lastColor,
   });
 
   final int nodeIndex;
+  final double nowPitch;
   final Color? lastColor;
 
   @override
@@ -638,7 +640,7 @@ class _NowRow extends StatelessWidget {
     final fromColor = lastColor ?? tipColor;
 
     return SizedBox(
-      height: _nowPitch,
+      height: nowPitch,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -660,7 +662,7 @@ class _NowRow extends StatelessWidget {
           ),
           SizedBox(
             width: VineGeometry.vineBand,
-            height: _nowPitch,
+            height: nowPitch,
             // Final segment into NOW is always the live dashed tail on today.
             child: _LiveNowStem(
               xOffset: xOff,
@@ -749,16 +751,16 @@ class _LiveNowStemState extends State<_LiveNowStem>
     final animate = _shouldAnimate(context);
 
     Widget paint(double dashOffset) => CustomPaint(
-          painter: VineNowStemPainter(
-            xOffset: widget.xOffset,
-            fromColor: widget.fromColor,
-            tipColor: widget.tipColor,
-            hasPrior: widget.hasPrior,
-            live: true,
-            dashOffset: dashOffset,
-            liveColor: liveColor,
-          ),
-        );
+      painter: VineNowStemPainter(
+        xOffset: widget.xOffset,
+        fromColor: widget.fromColor,
+        tipColor: widget.tipColor,
+        hasPrior: widget.hasPrior,
+        live: true,
+        dashOffset: dashOffset,
+        liveColor: liveColor,
+      ),
+    );
 
     if (!animate) {
       return RepaintBoundary(child: paint(0));
@@ -781,10 +783,7 @@ class _LiveNowStemState extends State<_LiveNowStem>
 /// Effects summary under the amount. Only built when an effect is already
 /// logged — the empty placeholder was removed; logging stays on the row.
 class _EffectAffordance extends StatelessWidget {
-  const _EffectAffordance({
-    required this.dosage,
-    required this.effect,
-  });
+  const _EffectAffordance({required this.dosage, required this.effect});
 
   final Dosage dosage;
   final Effect effect;
@@ -793,11 +792,8 @@ class _EffectAffordance extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => EffectLogSheet.show(
-        context,
-        dosageId: dosage.id,
-        existing: effect,
-      ),
+      onTap: () =>
+          EffectLogSheet.show(context, dosageId: dosage.id, existing: effect),
       child: _EffectSummary(effect: effect),
     );
   }
