@@ -139,7 +139,19 @@ class VineRhythm {
       return nodes - 1;
     }();
 
-    // Empty today (NOW only) or empty past — keep compact.
+    // Empty today: the NOW node is the only thing on the vine, so let its
+    // row own the whole body and centre itself in it (see _NowRow). Anchored
+    // at the top it reads as a broken first row rather than an empty page.
+    if (rows == 0 && showNow) {
+      final body = viewportHeight - listTopPad - todayClearance;
+      return VineRhythm(
+        rowPitch: baseRow,
+        gapStrip: baseGap,
+        nowPitch: math.max(baseNow, body),
+      );
+    }
+
+    // Empty past — nothing to lay out.
     if (rows == 0) return base;
 
     // 6+ doses: scroll at base rhythm; do not compress into the viewport.

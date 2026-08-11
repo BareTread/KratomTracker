@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -612,55 +614,85 @@ class _NowRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final xOff = VineGeometry.offsetFor(nodeIndex);
     final tipColor = context.c.accent;
+    final empty = lastColor == null;
     final fromColor = lastColor ?? tipColor;
+
+    // On an empty today the row is handed the whole body height; the shoot
+    // itself stays its designed length and sits centred in it.
+    final band = math.min(nowPitch, VineRhythm.baseNow);
 
     return SizedBox(
       height: nowPitch,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: VineGeometry.timeGutter,
-            child: Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: Text(
-                'now',
-                textAlign: TextAlign.right,
-                style: TextStyle(
-                  color: context.c.textTertiary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.4,
+      child: Center(
+        child: SizedBox(
+          height: band,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: VineGeometry.timeGutter,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: Text(
+                    'now',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      color: context.c.textTertiary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-          SizedBox(
-            width: VineGeometry.vineBand,
-            height: nowPitch,
-            // Final segment into NOW is always the live dashed tail on today.
-            child: _LiveNowStem(
-              xOffset: xOff,
-              fromColor: fromColor,
-              tipColor: tipColor,
-              hasPrior: lastColor != null,
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(left: 10),
-              child: Text(
-                lastColor == null ? 'waiting for first dose' : 'NOW',
-                style: TextStyle(
-                  color: context.c.textSecondary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.4,
+              SizedBox(
+                width: VineGeometry.vineBand,
+                height: band,
+                // Final segment into NOW is always the live dashed tail today.
+                child: _LiveNowStem(
+                  xOffset: xOff,
+                  fromColor: fromColor,
+                  tipColor: tipColor,
+                  hasPrior: !empty,
                 ),
               ),
-            ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 10),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        empty ? 'NO DOSES YET' : 'NOW',
+                        style: TextStyle(
+                          color: context.c.textSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.4,
+                        ),
+                      ),
+                      // Mirrors the effects sub-line on a dose row, so the
+                      // empty state sits on the same grid as a real one.
+                      if (empty) ...[
+                        const SizedBox(height: 5),
+                        Text(
+                          'tap + to log the first',
+                          style: TextStyle(
+                            color: context.c.textTertiary,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

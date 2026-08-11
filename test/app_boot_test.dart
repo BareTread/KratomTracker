@@ -33,7 +33,7 @@ void main() {
 
     await _bootAndExercise(tester);
     // Empty today: young vine shoot, not the past-day empty-state CTA.
-    expect(find.text('waiting for first dose'), findsOneWidget);
+    expect(find.text('NO DOSES YET'), findsOneWidget);
     expect(find.text('No doses recorded'), findsNothing);
   });
 

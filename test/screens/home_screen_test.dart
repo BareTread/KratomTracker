@@ -23,7 +23,8 @@ void main() {
 
     // Today with no doses: young shoot + NOW tip, not the past-day empty CTA.
     expect(find.text('No doses recorded'), findsNothing);
-    expect(find.text('waiting for first dose'), findsOneWidget);
+    expect(find.text('NO DOSES YET'), findsOneWidget);
+    expect(find.text('tap + to log the first'), findsOneWidget);
     expect(find.byKey(const Key('home-empty-add-dose')), findsNothing);
   });
 
