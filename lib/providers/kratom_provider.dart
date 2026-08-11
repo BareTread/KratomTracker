@@ -115,8 +115,9 @@ class KratomProvider with ChangeNotifier {
     String name,
     String code,
     int color,
-    String icon,
-  ) async {
+    String icon, {
+    bool inStock = true,
+  }) async {
     if (name.trim().isEmpty || code.trim().isEmpty || icon.trim().isEmpty) {
       throw ArgumentError('Strain name, code, and icon must not be empty');
     }
@@ -127,6 +128,7 @@ class KratomProvider with ChangeNotifier {
         code: code.trim(),
         color: color,
         icon: icon,
+        inStock: inStock,
       ),
     );
     _invalidateComputedData();
@@ -140,6 +142,7 @@ class KratomProvider with ChangeNotifier {
     String? code,
     int? color,
     String? icon,
+    bool? inStock,
   }) async {
     final index = _strains.indexWhere((strain) => strain.id == id);
     if (index < 0) throw ArgumentError.value(id, 'id', 'unknown strain');
@@ -153,7 +156,21 @@ class KratomProvider with ChangeNotifier {
       code: code?.trim(),
       color: color,
       icon: icon,
+      inStock: inStock,
     );
+    _invalidateComputedData();
+    await _save({_strainsKey: _encodeStrains()});
+    _notifyMutation();
+  }
+
+  /// Toggles whether a strain is currently on hand. A display/ranking concern
+  /// only — never touches dosage records. Follows the same persist + cache
+  /// invalidation + mutation-stamp path as [updateStrain].
+  Future<void> setStrainInStock(String id, {required bool inStock}) async {
+    final index = _strains.indexWhere((strain) => strain.id == id);
+    if (index < 0) throw ArgumentError.value(id, 'id', 'unknown strain');
+    if (_strains[index].inStock == inStock) return;
+    _strains[index] = _strains[index].copyWith(inStock: inStock);
     _invalidateComputedData();
     await _save({_strainsKey: _encodeStrains()});
     _notifyMutation();

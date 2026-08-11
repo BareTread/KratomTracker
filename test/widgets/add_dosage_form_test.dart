@@ -153,63 +153,6 @@ void main() {
   });
 
   group('strain search', () {
-    // Seeds four strains with a deterministic frozen order:
-    //   CEDR, CINN (both never used, tie broken by code ascending),
-    //   then BASL (used 4d ago), then ALOE (used 1d ago).
-    Future<KratomProvider> searchSeed() async {
-      final now = DateTime.now();
-      SharedPreferences.setMockInitialValues({
-        'strains': jsonEncode([
-          {
-            'id': 's-a',
-            'name': 'Aloe Vera',
-            'code': 'ALOE',
-            'color': 0xFF00ACC1,
-            'icon': 'Leaf',
-          },
-          {
-            'id': 's-b',
-            'name': 'Basil Fresh',
-            'code': 'BASL',
-            'color': 0xFF4CAF50,
-            'icon': 'Plant',
-          },
-          {
-            'id': 's-c',
-            'name': 'Cedar Wood',
-            'code': 'CEDR',
-            'color': 0xFFFF9800,
-            'icon': 'Forest',
-          },
-          {
-            'id': 's-d',
-            'name': 'Cinnamon Bark',
-            'code': 'CINN',
-            'color': 0xFFE91E63,
-            'icon': 'Leaf',
-          },
-        ]),
-        'dosages': jsonEncode([
-          {
-            'id': 'd1',
-            'strainId': 's-a',
-            'amount': 2.0,
-            'timestamp':
-                now.subtract(const Duration(days: 1)).toIso8601String(),
-          },
-          {
-            'id': 'd2',
-            'strainId': 's-b',
-            'amount': 2.0,
-            'timestamp':
-                now.subtract(const Duration(days: 4)).toIso8601String(),
-          },
-        ]),
-        'effects': '[]',
-      });
-      return KratomProvider.create(await SharedPreferences.getInstance());
-    }
-
     Finder codeFinder(List<String> codes) => find.byWidgetPredicate(
           (widget) =>
               widget is Text &&
@@ -291,6 +234,103 @@ void main() {
     });
   });
 
+  group('strain stock partition', () {
+    // Same seed as `searchSeed`: frozen order is CEDR, CINN, BASL, ALOE.
+    Future<KratomProvider> partitionSeed() async {
+      final provider = await searchSeed();
+      // Mark CINN and ALOE out of stock. In-stock group keeps frozen relative
+      // order [CEDR, BASL]; out-of-stock group keeps [CINN, ALOE].
+      await provider.setStrainInStock('s-d', inStock: false);
+      await provider.setStrainInStock('s-a', inStock: false);
+      return provider;
+    }
+
+    Finder codeFinder(List<String> codes) => find.byWidgetPredicate(
+          (widget) =>
+              widget is Text &&
+              codes.contains(widget.data) &&
+              widget.style?.fontWeight == FontWeight.w600,
+        );
+
+    List<String> visibleCodes(WidgetTester tester, List<String> all) =>
+        tester.widgetList<Text>(codeFinder(all)).map((t) => t.data!).toList();
+
+    testWidgets('in-stock group first, then divider, then out-of-stock group',
+        (tester) async {
+      final provider = await partitionSeed();
+      await _pumpForm(tester, provider);
+
+      // Divider is present.
+      expect(find.text('Out of stock'), findsOneWidget);
+
+      // Visible order: in-stock frozen order, then out-of-stock frozen order.
+      expect(
+        visibleCodes(tester, ['ALOE', 'BASL', 'CEDR', 'CINN']),
+        ['CEDR', 'BASL', 'CINN', 'ALOE'],
+      );
+    });
+
+    testWidgets('out-of-stock rows carry a one-tap back-in-stock affordance',
+        (tester) async {
+      final provider = await partitionSeed();
+      await _pumpForm(tester, provider);
+
+      expect(find.text('Back in stock'), findsNWidgets(2));
+
+      // Tap the first one (belongs to CINN, the first out-of-stock row).
+      await tester.tap(find.text('Back in stock').first);
+      await tester.pumpAndSettle();
+
+      expect(provider.getStrain('s-d')!.inStock, true);
+      // CINN moved up into the in-stock group; divider still present (ALOE
+      // remains out).
+      expect(find.text('Out of stock'), findsOneWidget);
+      expect(
+        visibleCodes(tester, ['ALOE', 'BASL', 'CEDR', 'CINN']),
+        ['CEDR', 'CINN', 'BASL', 'ALOE'],
+      );
+    });
+
+    testWidgets('out-of-stock rows remain fully selectable', (tester) async {
+      final provider = await partitionSeed();
+      await _pumpForm(tester, provider);
+
+      // Tap ALOE — the last row, out of stock — should still open the dose
+      // details form (identified by its back arrow, unique to that step).
+      await tester.tap(find.text('ALOE'));
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+      expect(find.widgetWithText(ElevatedButton, 'Add Dose'), findsOneWidget);
+    });
+
+    testWidgets('search keeps an out-of-stock match in the out-of-stock group',
+        (tester) async {
+      final provider = await partitionSeed();
+      await _pumpForm(tester, provider);
+
+      // 'cin' matches CINN only — and CINN is out of stock, so it stays below
+      // the divider.
+      await tester.enterText(find.byType(TextField), 'cin');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Out of stock'), findsOneWidget);
+      expect(visibleCodes(tester, ['CINN']), ['CINN']);
+    });
+
+    testWidgets('all in stock: no divider, no header, frozen order unchanged',
+        (tester) async {
+      final provider = await searchSeed();
+      final frozenOrder =
+          provider.strainUsage.map((u) => u.strain.code).toList();
+      await _pumpForm(tester, provider);
+
+      expect(find.text('Out of stock'), findsNothing);
+      expect(find.text('Back in stock'), findsNothing);
+      expect(visibleCodes(tester, frozenOrder), frozenOrder);
+    });
+  });
+
   group('validateDoseAmount / parseDoseAmount', () {
     test('accepts comma decimal separator', () {
       expect(parseDoseAmount('1,5'), 1.5);
@@ -302,6 +342,63 @@ void main() {
       expect(validateDoseAmount(''), contains('enter an amount'));
     });
   });
+}
+
+/// Seeds four strains with a deterministic frozen order:
+///   CEDR, CINN (both never used, tie broken by code ascending),
+///   then BASL (used 4d ago), then ALOE (used 1d ago).
+Future<KratomProvider> searchSeed() async {
+  final now = DateTime.now();
+  SharedPreferences.setMockInitialValues({
+    'strains': jsonEncode([
+      {
+        'id': 's-a',
+        'name': 'Aloe Vera',
+        'code': 'ALOE',
+        'color': 0xFF00ACC1,
+        'icon': 'Leaf',
+      },
+      {
+        'id': 's-b',
+        'name': 'Basil Fresh',
+        'code': 'BASL',
+        'color': 0xFF4CAF50,
+        'icon': 'Plant',
+      },
+      {
+        'id': 's-c',
+        'name': 'Cedar Wood',
+        'code': 'CEDR',
+        'color': 0xFFFF9800,
+        'icon': 'Forest',
+      },
+      {
+        'id': 's-d',
+        'name': 'Cinnamon Bark',
+        'code': 'CINN',
+        'color': 0xFFE91E63,
+        'icon': 'Leaf',
+      },
+    ]),
+    'dosages': jsonEncode([
+      {
+        'id': 'd1',
+        'strainId': 's-a',
+        'amount': 2.0,
+        'timestamp':
+            now.subtract(const Duration(days: 1)).toIso8601String(),
+      },
+      {
+        'id': 'd2',
+        'strainId': 's-b',
+        'amount': 2.0,
+        'timestamp':
+            now.subtract(const Duration(days: 4)).toIso8601String(),
+      },
+    ]),
+    'effects': '[]',
+  });
+  return KratomProvider.create(await SharedPreferences.getInstance());
 }
 
 Future<KratomProvider> _seededProvider() async {

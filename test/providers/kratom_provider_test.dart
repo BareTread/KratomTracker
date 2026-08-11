@@ -82,6 +82,47 @@ void main() {
     expect(provider.getStrain('strain-1')!.name, 'Original');
     expect(provider.dosages.map((d) => d.id), ['dose-1', 'dose-2']);
   });
+
+  test('setStrainInStock persists, invalidates the usage cache, and stamps',
+      () async {
+    final provider = await _providerWithFixture();
+    final stampBefore = provider.lastMutationStamp;
+    expect(provider.getStrain('strain-1')!.inStock, true);
+
+    await provider.setStrainInStock('strain-1', inStock: false);
+
+    expect(provider.getStrain('strain-1')!.inStock, false);
+    expect(provider.lastMutationStamp, stampBefore + 1);
+    // Cache was invalidated and rebuilt — the usage row reflects the new flag.
+    expect(
+      provider.strainUsage.singleWhere((u) => u.strain.id == 'strain-1').
+          strain.inStock,
+      false,
+    );
+
+    // Toggling back to the same value is a no-op (no stamp bump).
+    final stampMid = provider.lastMutationStamp;
+    await provider.setStrainInStock('strain-1', inStock: false);
+    expect(provider.lastMutationStamp, stampMid);
+  });
+
+  test('setStrainInStock never alters dosage history', () async {
+    final provider = await _providerWithFixture();
+    final dosesBefore = provider.dosages.toList();
+
+    await provider.setStrainInStock('strain-1', inStock: false);
+    await provider.setStrainInStock('strain-1', inStock: true);
+
+    expect(provider.dosages, equals(dosesBefore));
+  });
+
+  test('setStrainInStock rejects an unknown strain', () async {
+    final provider = await _providerWithFixture();
+    await expectLater(
+      provider.setStrainInStock('nope', inStock: false),
+      throwsArgumentError,
+    );
+  });
 }
 
 Future<KratomProvider> _providerWithFixture() async {

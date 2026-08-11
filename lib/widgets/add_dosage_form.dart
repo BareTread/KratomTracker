@@ -270,28 +270,100 @@ class _StrainSelectionViewState extends State<_StrainSelectionView> {
                 ),
               ),
               Expanded(
-                child: filtered.isEmpty
-                    ? _emptySearchState(c)
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                        itemCount: filtered.length,
-                        itemBuilder: (context, index) {
-                          final item = filtered[index];
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: _StaggeredEntrance(
-                              index: index,
-                              child: StrainUsageTile(
-                                usage: item,
-                                onTap: () =>
-                                    widget.onStrainSelected(item.strain.id),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
+                child: _buildList(c, provider, filtered),
               ),
             ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildList(
+    AppColors c,
+    KratomProvider provider,
+    List<StrainUsage> filtered,
+  ) {
+    if (filtered.isEmpty) return _emptySearchState(c);
+
+    // Stock is a partition applied AFTER the frozen ranking: in-stock strains
+    // keep their relative order, then out-of-stock ones keep theirs. Search
+    // filters but never reorders, so an out-of-stock match stays in the
+    // out-of-stock group.
+    final inStockItems = filtered
+        .where((u) => u.strain.inStock)
+        .toList(growable: false);
+    final outOfStockItems = filtered
+        .where((u) => !u.strain.inStock)
+        .toList(growable: false);
+    final hasOutOfStock = outOfStockItems.isNotEmpty;
+    final queryActive = _query.trim().isNotEmpty;
+
+    if (!hasOutOfStock) {
+      // Day-one state: every strain in stock — no divider, no header, no
+      // visual change from the pre-stock picker.
+      return ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        itemCount: inStockItems.length,
+        itemBuilder: (context, index) {
+          final item = inStockItems[index];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _StaggeredEntrance(
+              index: index,
+              enabled: !queryActive,
+              child: StrainUsageTile(
+                usage: item,
+                onTap: () => widget.onStrainSelected(item.strain.id),
+              ),
+            ),
+          );
+        },
+      );
+    }
+
+    final totalCount =
+        inStockItems.length + 1 + outOfStockItems.length;
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      itemCount: totalCount,
+      itemBuilder: (context, index) {
+        if (index < inStockItems.length) {
+          final item = inStockItems[index];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _StaggeredEntrance(
+              index: index,
+              enabled: !queryActive,
+              child: StrainUsageTile(
+                usage: item,
+                onTap: () => widget.onStrainSelected(item.strain.id),
+              ),
+            ),
+          );
+        }
+        if (index == inStockItems.length) {
+          return Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 8),
+            child: _StockDivider(),
+          );
+        }
+        final outIndex = index - inStockItems.length - 1;
+        final item = outOfStockItems[outIndex];
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: _StaggeredEntrance(
+            index: index,
+            enabled: !queryActive,
+            child: StrainUsageTile(
+              usage: item,
+              inStock: false,
+              onTap: () => widget.onStrainSelected(item.strain.id),
+              onToggleStock: () => provider.setStrainInStock(
+                item.strain.id,
+                inStock: true,
+              ),
+            ),
           ),
         );
       },
@@ -378,15 +450,17 @@ class _SearchField extends StatelessWidget {
 class _StaggeredEntrance extends StatelessWidget {
   final int index;
   final Widget child;
+  final bool enabled;
 
   const _StaggeredEntrance({
     required this.index,
     required this.child,
+    this.enabled = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (AppMotion.reduced(context)) return child;
+    if (!enabled || AppMotion.reduced(context)) return child;
 
     final staggerMs = (index * 20).clamp(0, 200);
     final totalMs = AppMotion.normal.inMilliseconds + staggerMs;
@@ -406,6 +480,34 @@ class _StaggeredEntrance extends StatelessWidget {
         );
       },
       child: child,
+    );
+  }
+}
+
+class _StockDivider extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Row(
+      children: [
+        Expanded(
+          child: Container(height: 1, color: c.hairline),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          'Out of stock',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.3,
+            color: c.textTertiary,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Container(height: 1, color: c.hairline),
+        ),
+      ],
     );
   }
 }

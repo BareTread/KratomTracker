@@ -6,14 +6,23 @@ import '../theme/app_theme.dart';
 
 /// One row in the smart strain picker. Renders a [StrainUsage] without
 /// re-sorting or filtering — callers iterate `provider.strainUsage` as-is.
+///
+/// When [inStock] is false the row is de-emphasised (reduced opacity on text
+/// and the freshness bar) but the strain colour swatch stays at full strength
+/// so the strain stays identifiable, and a one-tap "Back in stock" affordance
+/// is shown. The row remains fully selectable.
 class StrainUsageTile extends StatelessWidget {
   final StrainUsage usage;
   final VoidCallback onTap;
+  final bool inStock;
+  final VoidCallback? onToggleStock;
 
   const StrainUsageTile({
     super.key,
     required this.usage,
     required this.onTap,
+    this.inStock = true,
+    this.onToggleStock,
   });
 
   @override
@@ -33,7 +42,10 @@ class StrainUsageTile extends StatelessWidget {
       recency: recency,
       load: load,
       isTopPick: isTopPick,
+      inStock: inStock,
     );
+
+    final contentOpacity = inStock ? 1.0 : 0.55;
 
     return Semantics(
       button: true,
@@ -71,74 +83,84 @@ class StrainUsageTile extends StatelessWidget {
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    strain.code,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                      color: c.textPrimary,
+                        child: Opacity(
+                          opacity: contentOpacity,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      strain.code,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                        color: c.textPrimary,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                if (isTopPick) ...[
-                                  const SizedBox(width: 8),
-                                  _RotationPickMarker(color: strainColor),
+                                  if (isTopPick) ...[
+                                    const SizedBox(width: 8),
+                                    _RotationPickMarker(color: strainColor),
+                                  ],
                                 ],
+                              ),
+                              if (showName) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  strain.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: c.textSecondary,
+                                  ),
+                                ),
                               ],
-                            ),
-                            if (showName) ...[
-                              const SizedBox(height: 2),
+                              const SizedBox(height: 4),
                               Text(
-                                strain.name,
-                                maxLines: 1,
+                                recency,
+                                maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontSize: 13,
+                                  height: 1.25,
                                   color: c.textSecondary,
                                 ),
                               ),
-                            ],
-                            const SizedBox(height: 4),
-                            Text(
-                              recency,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 13,
-                                height: 1.25,
-                                color: c.textSecondary,
-                              ),
-                            ),
-                            if (load != null) ...[
-                              const SizedBox(height: 2),
-                              Text(
-                                load,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: c.textTertiary,
+                              if (load != null) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  load,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: c.textTertiary,
+                                  ),
                                 ),
-                              ),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
                       ),
+                      if (!inStock && onToggleStock != null) ...[
+                        const SizedBox(width: 8),
+                        _BackInStockButton(onTap: onToggleStock!),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 8),
-                  _FreshnessBar(
-                    daysSinceLastUse: usage.daysSinceLastUse,
-                    neverUsed: usage.lastUsed == null,
-                    color: strainColor,
+                  Opacity(
+                    opacity: contentOpacity,
+                    child: _FreshnessBar(
+                      daysSinceLastUse: usage.daysSinceLastUse,
+                      neverUsed: usage.lastUsed == null,
+                      color: strainColor,
+                    ),
                   ),
                 ],
               ),
@@ -198,12 +220,14 @@ class StrainUsageTile extends StatelessWidget {
     required String recency,
     required String? load,
     required bool isTopPick,
+    required bool inStock,
   }) {
     final buffer = StringBuffer(code);
     if (name != null) buffer.write(', $name');
     buffer.write(', $recency');
     if (load != null) buffer.write(', $load');
     if (isTopPick) buffer.write(', rotation pick');
+    buffer.write(inStock ? ', in stock' : ', out of stock');
     return buffer.toString();
   }
 }
@@ -230,6 +254,48 @@ class _RotationPickMarker extends StatelessWidget {
           letterSpacing: 0.2,
           height: 1.1,
           color: color,
+        ),
+      ),
+    );
+  }
+}
+
+class _BackInStockButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _BackInStockButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Semantics(
+      button: true,
+      label: 'Back in stock',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            color: c.accent.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: c.accent.withValues(alpha: 0.35)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.add_circle_outline, size: 14, color: c.accent),
+              const SizedBox(width: 4),
+              Text(
+                'Back in stock',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: c.accent,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

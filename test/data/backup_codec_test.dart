@@ -22,6 +22,38 @@ void main() {
         source['effects']!.first);
   });
 
+  test('strain inStock round-trips through the codec', () {
+    final source = _backup();
+    source['strains']!.first['inStock'] = false;
+
+    final ok = parseBackup(jsonEncode(source)) as BackupOk;
+
+    expect(ok.payload.strains.single.inStock, false);
+    expect(ok.payload.strains.single.toJson()['inStock'], false);
+  });
+
+  test('a strain payload with no inStock field defaults to in stock', () {
+    final source = _backup();
+    // Field absent entirely — the day-one / legacy shape.
+    (source['strains']!.first as Map).remove('inStock');
+
+    final ok = parseBackup(jsonEncode(source)) as BackupOk;
+
+    expect(ok.payload.strains.single.inStock, true,
+        reason: 'existing strains and old backups must come back in stock');
+  });
+
+  test('an explicit null inStock field defaults to in stock', () {
+    final source = _backup();
+    final strain = Map<String, dynamic>.from(source['strains']!.first as Map);
+    strain['inStock'] = null;
+    source['strains'] = [strain];
+
+    final ok = parseBackup(jsonEncode(source)) as BackupOk;
+
+    expect(ok.payload.strains.single.inStock, true);
+  });
+
   test('accepts legacy pain_relief and numeric string amount', () {
     final source = _backup();
     source['dosages']!.first['amount'] = '1.5';
