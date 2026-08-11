@@ -6,8 +6,8 @@ import 'package:table_calendar/table_calendar.dart';
 import '../../theme/app_theme.dart';
 
 /// Calendar content (week strip + per-day grams bars + month picker) intended
-/// to be embedded inside [HomeDayCard]. Owns no card chrome — the surrounding
-/// card supplies the surface, border, and radius.
+/// to live inside its own card. Owns no card chrome — the surrounding card
+/// supplies the surface, border, and radius.
 class HomeCalendarSection extends StatelessWidget {
   const HomeCalendarSection({
     super.key,
@@ -43,10 +43,85 @@ class HomeCalendarSection extends StatelessWidget {
       (i) => totalFor(monday.add(Duration(days: i))),
     );
     final weekMax = weekTotals.fold<double>(0, (a, b) => a > b ? a : b);
+    final canGoForward = focusedDay
+        .add(const Duration(days: 7))
+        .isBefore(today.add(const Duration(days: 1)));
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 6, 8, 0),
+          child: Row(
+            children: [
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                onPressed: () {
+                  final prev = focusedDay.subtract(const Duration(days: 7));
+                  _select(
+                    prev.isBefore(DateTime.utc(2020))
+                        ? DateTime.utc(2020)
+                        : prev,
+                  );
+                },
+                icon: Icon(
+                  Icons.chevron_left,
+                  color: context.c.accent,
+                ),
+              ),
+              Expanded(
+                child: Center(
+                  child: InkWell(
+                    onTap: () async {
+                      final picked = await _showMonthPicker(context, focusedDay);
+                      if (picked != null) _select(picked);
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 40),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            DateFormat.yMMMM().format(focusedDay),
+                            style: TextStyle(
+                              color: context.c.textPrimary,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          Icon(
+                            Icons.arrow_drop_down,
+                            color: context.c.accent,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                onPressed: canGoForward
+                    ? () {
+                        final next = focusedDay.add(const Duration(days: 7));
+                        _select(next.isAfter(today) ? today : next);
+                      }
+                    : null,
+                icon: Icon(
+                  Icons.chevron_right,
+                  color: canGoForward
+                      ? context.c.accent
+                      : context.c.textTertiary.withValues(alpha: 0.4),
+                ),
+              ),
+              if (!onToday)
+                _TodayButton(onTap: () => _select(today))
+              else
+                const SizedBox(width: 8),
+            ],
+          ),
+        ),
         TableCalendar<void>(
           firstDay: DateTime.utc(2020),
           lastDay: today,
@@ -56,20 +131,8 @@ class HomeCalendarSection extends StatelessWidget {
           availableCalendarFormats: const {CalendarFormat.week: 'Week'},
           startingDayOfWeek: StartingDayOfWeek.monday,
           rowHeight: 58,
-          daysOfWeekHeight: 24,
-          headerStyle: HeaderStyle(
-            formatButtonVisible: false,
-            titleCentered: true,
-            leftChevronIcon: Icon(
-              Icons.chevron_left,
-              color: context.c.textSecondary,
-            ),
-            rightChevronIcon: Icon(
-              Icons.chevron_right,
-              color: context.c.textSecondary,
-            ),
-            headerPadding: const EdgeInsets.symmetric(vertical: 4),
-          ),
+          daysOfWeekHeight: 22,
+          headerVisible: false,
           calendarStyle: CalendarStyle(
             defaultTextStyle: TextStyle(color: context.c.textPrimary),
             weekendTextStyle: TextStyle(color: context.c.textPrimary),
@@ -86,39 +149,16 @@ class HomeCalendarSection extends StatelessWidget {
             selectedTextStyle: TextStyle(color: context.c.textPrimary),
           ),
           daysOfWeekStyle: DaysOfWeekStyle(
-            weekdayStyle: TextStyle(color: context.c.textTertiary),
-            weekendStyle: TextStyle(color: context.c.textTertiary),
+            weekdayStyle: TextStyle(
+              color: context.c.textTertiary,
+              fontSize: 12,
+            ),
+            weekendStyle: TextStyle(
+              color: context.c.textTertiary,
+              fontSize: 12,
+            ),
           ),
           calendarBuilders: CalendarBuilders<void>(
-            headerTitleBuilder: (context, day) => Center(
-              child: InkWell(
-                onTap: () async {
-                  final picked = await _showMonthPicker(context, day);
-                  if (picked != null) _select(picked);
-                },
-                borderRadius: BorderRadius.circular(12),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: 48),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        DateFormat.yMMMM().format(day),
-                        style: TextStyle(
-                          color: context.c.textPrimary,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      Icon(
-                        Icons.arrow_drop_down,
-                        color: context.c.accent,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
             defaultBuilder: (context, day, focused) => _semanticDay(
               context,
               day,
@@ -170,27 +210,7 @@ class HomeCalendarSection extends StatelessWidget {
           },
           selectedDayPredicate: (day) => _sameDay(focusedDay, day),
         ),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                onToday
-                    ? 'Today, ${DateFormat('d MMM').format(focusedDay)}'
-                    : DateFormat('d MMM').format(focusedDay),
-                style: TextStyle(
-                  color: context.c.textSecondary,
-                  fontSize: 14,
-                ),
-              ),
-              if (!onToday) ...[
-                const SizedBox(width: 8),
-                _TodayButton(onTap: () => _select(today)),
-              ],
-            ],
-          ),
-        ),
+        const SizedBox(height: 8),
       ],
     );
   }
@@ -435,6 +455,7 @@ class _DayBar extends StatelessWidget {
   }
 }
 
+/// Accent-tinted pill, shown only when the selected day is not today.
 class _TodayButton extends StatelessWidget {
   const _TodayButton({required this.onTap});
 
@@ -446,28 +467,25 @@ class _TodayButton extends StatelessWidget {
       button: true,
       label: 'Jump to today',
       child: Material(
-        color: context.c.surfaceSunken,
+        key: const Key('home-today-pill'),
+        color: context.c.accent.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(14),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 28),
-            child: const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 10),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.today, size: 13),
-                  SizedBox(width: 4),
-                  Text(
-                    'Today',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
+            constraints: const BoxConstraints(minHeight: 32, minWidth: 64),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Center(
+                child: Text(
+                  'Today',
+                  style: TextStyle(
+                    color: context.c.accent,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
                   ),
-                ],
+                ),
               ),
             ),
           ),

@@ -196,7 +196,7 @@ class _HomeDayPage extends StatelessWidget {
         child: HomeDosageList(
           dosages: List<Dosage>.unmodifiable(dosages),
           strainsById: strains,
-          header: const SizedBox(height: 8),
+          header: const SizedBox.shrink(),
         ),
       ),
     );

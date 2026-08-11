@@ -11,9 +11,9 @@ import '../../theme/app_theme.dart';
 import '../../widgets/timeline_painter.dart';
 import 'home_calendar_section.dart';
 
-/// One card consolidating the calendar week strip, the time-since-last-dose
-/// hero, today's totals, the weekly trend, and the 24h timeline as its bottom
-/// edge. Replaces the former four stacked cards.
+/// Two peer cards: the calendar (navigation) and the day status (summary +
+/// ambient timeline). Split deliberately so each job keeps its own weight and
+/// the home top no longer reads as one tall slab.
 class HomeDayCard extends StatelessWidget {
   const HomeDayCard({
     super.key,
@@ -41,38 +41,52 @@ class HomeDayCard extends StatelessWidget {
       for (final s in provider.strains) s.id: s,
     };
 
-    return Container(
-      key: const Key('home-day-card-surface'),
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-      decoration: BoxDecoration(
-        color: context.c.surfaceRaised,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: context.c.hairline),
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          HomeCalendarSection(
-            focusedDay: focusedDay,
-            onDaySelected: onDaySelected,
-            totalForDate: provider.totalForDate,
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Divider(height: 1, color: context.c.hairline),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-            child: _SummaryBlock(
-              isToday: isToday,
-              day: day,
-              dayDoses: dayDoses,
-              allDoses: provider.dosages,
-              strainsById: strainsById,
-              provider: provider,
+          Container(
+            key: const Key('home-day-card-surface'),
+            decoration: BoxDecoration(
+              color: context.c.surfaceRaised,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: context.c.hairline),
+            ),
+            child: HomeCalendarSection(
+              focusedDay: focusedDay,
+              onDaySelected: onDaySelected,
+              totalForDate: provider.totalForDate,
             ),
           ),
-          _TimelineEdge(dosages: dayDoses, strainsById: strainsById),
+          // Same external rhythm the dose rows use between cards.
+          const SizedBox(height: 8),
+          Container(
+            key: const Key('home-status-card-surface'),
+            decoration: BoxDecoration(
+              color: context.c.surfaceRaised,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: context.c.hairline),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+                  child: _SummaryBlock(
+                    isToday: isToday,
+                    day: day,
+                    dayDoses: dayDoses,
+                    allDoses: provider.dosages,
+                    strainsById: strainsById,
+                    provider: provider,
+                  ),
+                ),
+                _TimelineEdge(dosages: dayDoses, strainsById: strainsById),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -153,7 +167,8 @@ class _SummaryBlock extends StatelessWidget {
     final dayTotal =
         dayDoses.fold<double>(0, (sum, dose) => sum + dose.amount);
     final count = dayDoses.length;
-    final dayLine = '${_formatAmount(dayTotal)}g · $count ${count == 1 ? 'dose' : 'doses'}';
+    final dayLine =
+        '${_formatAmount(dayTotal)}g · $count ${count == 1 ? 'dose' : 'doses'}';
     if (isToday) {
       final today = DateUtils.dateOnly(DateTime.now());
       final week = List.generate(
@@ -171,11 +186,12 @@ class _SummaryBlock extends StatelessWidget {
           : (weekTotal - previousTotal) / previousTotal * 100;
       return _Secondary(
         primaryLine: dayLine,
-        secondaryLine: '${_formatAmount(weekTotal)}g wk · ${_trendText(change)}',
-        trendChange: change,
+        secondaryLine: '${_formatAmount(weekTotal)}g week ${_trendText(change)}',
       );
     }
-    return _Secondary(primaryLine: dayLine, secondaryLine: '');
+    // Same two-line structure as today so the card does not restructure
+    // when swiping between days — secondary stays quiet textTertiary empty.
+    return _Secondary(primaryLine: dayLine, secondaryLine: ' ');
   }
 
   String _elapsedText(Duration elapsed) {
@@ -229,7 +245,7 @@ class _Hero extends StatelessWidget {
           value,
           style: TextStyle(
             color: valueColor,
-            fontSize: 30,
+            fontSize: 28,
             fontWeight: FontWeight.w700,
             height: 1.05,
             letterSpacing: -0.5,
@@ -251,11 +267,13 @@ class _Hero extends StatelessWidget {
 }
 
 class _Secondary extends StatelessWidget {
-  const _Secondary({required this.primaryLine, required this.secondaryLine, this.trendChange});
+  const _Secondary({
+    required this.primaryLine,
+    required this.secondaryLine,
+  });
 
   final String primaryLine;
   final String secondaryLine;
-  final double? trendChange;
 
   @override
   Widget build(BuildContext context) {
@@ -272,31 +290,23 @@ class _Secondary extends StatelessWidget {
             fontWeight: FontWeight.w600,
           ),
         ),
-        if (secondaryLine.isNotEmpty) ...[
-          const SizedBox(height: 3),
-          Text(
-            secondaryLine,
-            textAlign: TextAlign.right,
-            style: TextStyle(
-              color: _trendColor(context, trendChange),
-              fontSize: 12,
-            ),
+        const SizedBox(height: 3),
+        // Always reserve the second line so today/past share the same height.
+        Text(
+          secondaryLine,
+          textAlign: TextAlign.right,
+          style: TextStyle(
+            color: context.c.textTertiary,
+            fontSize: 12,
           ),
-        ],
+        ),
       ],
     );
   }
-
-  Color _trendColor(BuildContext context, double? change) {
-    if (change == null) return context.c.textTertiary;
-    if (change > 10) return context.c.caution;
-    if (change < -10) return context.c.positive;
-    return context.c.textTertiary;
-  }
 }
 
-/// The 24h timeline as the card's bottom edge — no title, no gram badge. The
-/// total now lives in the secondary column; this strip is ambient texture.
+/// 24h timeline as the status card's base edge — no panel chrome. Ticks and
+/// marks draw flush across the content width, ambient under the hero numbers.
 class _TimelineEdge extends StatelessWidget {
   const _TimelineEdge({required this.dosages, required this.strainsById});
 
@@ -317,17 +327,14 @@ class _TimelineEdge extends StatelessWidget {
           height: heights[dose.id] ?? 0,
         ),
     ];
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-      child: SizedBox(
-        height: 46,
+    return SizedBox(
+      height: 36,
+      width: double.infinity,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
         child: CustomPaint(
-          size: const Size(double.infinity, 46),
           painter: TimelinePainter(
-            backgroundColor: context.c.surfaceSunken,
-            bandColor: context.c.surfaceRaised,
             dividerColor: context.c.hairline,
-            labelColor: context.c.textTertiary,
             dosages: timeline,
           ),
         ),
@@ -337,7 +344,7 @@ class _TimelineEdge extends StatelessWidget {
 
   Map<String, double> _calculateHeights(List<Dosage> values) {
     if (values.isEmpty) return const {};
-    if (values.length == 1) return {values.single.id: 24};
+    if (values.length == 1) return {values.single.id: 22};
     final maximum = values.map((d) => d.amount).reduce(max);
     final minimum = values.map((d) => d.amount).reduce(min);
     final range = maximum - minimum;
@@ -345,9 +352,9 @@ class _TimelineEdge extends StatelessWidget {
     return {
       for (final dose in values)
         dose.id: range == 0
-            ? 22
-            : 12 +
-                20 *
+            ? 20
+            : 10 +
+                18 *
                     (ratio > 5
                         ? log(dose.amount / minimum) / log(ratio)
                         : (dose.amount - minimum) / range),
