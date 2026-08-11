@@ -101,7 +101,9 @@ Map<DateTime, double> dailyTotals(List<Dosage> d, DateTimeRange range) {
   for (final dose in d) {
     if (inRangeInclusive(dose.timestamp, start, end)) {
       final day = startOfDay(dose.timestamp);
-      result[day] = result[day]! + dose.amount;
+      // Tolerate a key the seeding loop didn't produce rather than crash the
+      // stats screen; the DST fix in date_utils should make this unreachable.
+      result[day] = (result[day] ?? 0) + dose.amount;
     }
   }
   return result;
@@ -245,7 +247,7 @@ StrainInsight computeStrainInsight(
   );
 }
 
-DateTime _nextDay(DateTime day) => DateTime(day.year, day.month, day.day + 1);
+DateTime _nextDay(DateTime day) => addDays(day, 1);
 
 double _mean(Iterable<double> values) {
   var count = 0;

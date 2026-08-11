@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../constants/app_version.dart';
 import '../data/backup_codec.dart';
 import '../providers/kratom_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -36,7 +37,9 @@ class _ManageScreenState extends State<ManageScreen> {
   }
 
   Future<void> _createBackup(
-      BuildContext context, KratomProvider provider) async {
+    BuildContext context,
+    KratomProvider provider,
+  ) async {
     await _showAsyncDialog(
       context,
       () async {
@@ -61,7 +64,9 @@ class _ManageScreenState extends State<ManageScreen> {
   }
 
   Future<void> _restoreBackup(
-      BuildContext context, KratomProvider provider) async {
+    BuildContext context,
+    KratomProvider provider,
+  ) async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -110,7 +115,9 @@ class _ManageScreenState extends State<ManageScreen> {
   }
 
   Future<void> _showClearDataDialog(
-      BuildContext context, KratomProvider provider) async {
+    BuildContext context,
+    KratomProvider provider,
+  ) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -276,15 +283,17 @@ class _ManageScreenState extends State<ManageScreen> {
   }
 
   Widget _buildNotificationSettings(
-      BuildContext context, KratomProvider provider) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    BuildContext context,
+    KratomProvider provider,
+  ) {
+    return const Card(
+      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
         children: [
           ListTile(
-            leading: const Icon(Icons.notifications_outlined),
-            title: const Text('Dosage Reminders'),
-            subtitle: const Text(
+            leading: Icon(Icons.notifications_outlined),
+            title: Text('Dosage Reminders'),
+            subtitle: Text(
               'Currently not implemented. We aim to provide tracking tools without encouraging unnecessary usage.',
               style: TextStyle(fontSize: 13),
             ),
@@ -324,7 +333,9 @@ class _ManageScreenState extends State<ManageScreen> {
   }
 
   Widget _buildDataManagementCard(
-      BuildContext context, KratomProvider provider) {
+    BuildContext context,
+    KratomProvider provider,
+  ) {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
@@ -381,10 +392,10 @@ class _ManageScreenState extends State<ManageScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
         children: [
-          ListTile(
-            leading: const Icon(Icons.info_outline),
-            title: const Text('Version'),
-            subtitle: const Text('1.0.0'),
+          const ListTile(
+            leading: Icon(Icons.info_outline),
+            title: Text('Version'),
+            subtitle: Text(kAppVersion),
           ),
           const Divider(height: 1),
           ListTile(

@@ -21,69 +21,69 @@ class _AddStrainFormState extends State<AddStrainForm> {
   // Updated color palette with more distinct shades
   final Map<String, List<_ColorOption>> _strainTypes = {
     'Green': [
-      _ColorOption(
-        color: const Color(0xFF2E7D32), // Darker forest green
+      const _ColorOption(
+        color: Color(0xFF2E7D32), // Darker forest green
         name: 'Forest',
         intensity: 'Mild',
       ),
-      _ColorOption(
-        color: const Color(0xFF4CAF50), // Medium green
+      const _ColorOption(
+        color: Color(0xFF4CAF50), // Medium green
         name: 'Jade',
         intensity: 'Medium',
       ),
-      _ColorOption(
-        color: const Color(0xFF81C784), // Light green
+      const _ColorOption(
+        color: Color(0xFF81C784), // Light green
         name: 'Mint',
         intensity: 'Strong',
       ),
     ],
     'Red': [
-      _ColorOption(
-        color: const Color(0xFFB71C1C), // Deep red
+      const _ColorOption(
+        color: Color(0xFFB71C1C), // Deep red
         name: 'Ruby',
         intensity: 'Mild',
       ),
-      _ColorOption(
-        color: const Color(0xFFE53935), // Bright red
+      const _ColorOption(
+        color: Color(0xFFE53935), // Bright red
         name: 'Crimson',
         intensity: 'Medium',
       ),
-      _ColorOption(
-        color: const Color(0xFFEF5350), // Light red
+      const _ColorOption(
+        color: Color(0xFFEF5350), // Light red
         name: 'Garnet',
         intensity: 'Strong',
       ),
     ],
     'White': [
-      _ColorOption(
-        color: const Color(0xFFE3F2FD), // Light blue-white
+      const _ColorOption(
+        color: Color(0xFFE3F2FD), // Light blue-white
         name: 'Pearl',
         intensity: 'Mild',
       ),
-      _ColorOption(
-        color: const Color(0xFFBBDEFB), // Brighter blue-white
+      const _ColorOption(
+        color: Color(0xFFBBDEFB), // Brighter blue-white
         name: 'Silver',
         intensity: 'Medium',
       ),
-      _ColorOption(
-        color: const Color(0xFF90CAF9), // More vibrant blue
+      const _ColorOption(
+        color: Color(0xFF90CAF9), // More vibrant blue
         name: 'Platinum',
         intensity: 'Strong',
       ),
     ],
     'Yellow': [
-      _ColorOption(
-        color: const Color(0xFFF9A825), // Deep gold
+      const _ColorOption(
+        color: Color(0xFFF9A825), // Deep gold
         name: 'Sunrise',
         intensity: 'Mild',
       ),
-      _ColorOption(
-        color: const Color(0xFFFDD835), // Bright yellow
+      const _ColorOption(
+        color: Color(0xFFFDD835), // Bright yellow
         name: 'Gold',
         intensity: 'Medium',
       ),
-      _ColorOption(
-        color: const Color(0xFFFFEE58), // Light yellow
+      const _ColorOption(
+        color: Color(0xFFFFEE58), // Light yellow
         name: 'Amber',
         intensity: 'Strong',
       ),
@@ -103,7 +103,7 @@ class _AddStrainFormState extends State<AddStrainForm> {
   Widget _buildMarkSection(BuildContext context) {
     final c = context.c;
     final strains = Provider.of<KratomProvider>(context, listen: false).strains;
-    final colorValue = _selectedColor!.color.value;
+    final colorValue = _selectedColor!.color.toARGB32();
     final collision = markCollision(
       strains
           .map(
@@ -171,7 +171,7 @@ class _AddStrainFormState extends State<AddStrainForm> {
             boxShadow: isSelected
                 ? [
                     BoxShadow(
-                      color: color.color.withOpacity(0.4),
+                      color: color.color.withValues(alpha: 0.4),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -198,7 +198,7 @@ class _AddStrainFormState extends State<AddStrainForm> {
                 color.intensity,
                 style: TextStyle(
                   fontSize: 10,
-                  color: Colors.white.withOpacity(0.8),
+                  color: Colors.white.withValues(alpha: 0.8),
                   shadows: const [
                     Shadow(
                       color: Colors.black54,
@@ -347,7 +347,7 @@ class _AddStrainFormState extends State<AddStrainForm> {
                         provider.addStrain(
                           _nameController.text,
                           _codeController.text,
-                          _selectedColor!.color.value,
+                          _selectedColor!.color.toARGB32(),
                           _selectedShape.name,
                           inStock: _inStock,
                         );

@@ -386,10 +386,14 @@ class KratomProvider with ChangeNotifier {
       _effectsKey: '[]',
       _settingsKey: jsonEncode(settings.toJson()),
     });
+    // The name is user data too — leaving it behind meant it survived a
+    // "clear all" and reappeared in the next export.
+    await _prefs.remove(_userNameKey);
     _strains = [];
     _dosages = [];
     _effects = [];
     _settings = settings;
+    _userName = null;
     _invalidateComputedData();
     _notifyMutation();
   }

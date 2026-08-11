@@ -72,7 +72,9 @@ class _StatsScreenState extends State<StatsScreen> {
                     children: [
                       Text(
                         'Stats',
-                        style: Theme.of(context).textTheme.headlineSmall
+                        style: Theme.of(context)
+                            .textTheme
+                            .headlineSmall
                             ?.copyWith(fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 12),
@@ -90,7 +92,9 @@ class _StatsScreenState extends State<StatsScreen> {
                       _RotationHeatmapSection(bundle: bundle, range: _range),
                       const SizedBox(height: 16),
                       _RestDaysSection(bundle: bundle, range: _range),
-                      SizedBox(height: MediaQuery.of(context).padding.bottom + 80),
+                      SizedBox(
+                        height: MediaQuery.of(context).padding.bottom + 80,
+                      ),
                       ListTile(
                         leading: Icon(Icons.history, color: c.accent),
                         title: const Text('Dosage History'),
@@ -164,8 +168,8 @@ class _StatsBundle {
         final n = selected.days!;
         range = lastNDays(n, now: now);
         final prevRange = DateTimeRange(
-          start: range.start.subtract(Duration(days: n)),
-          end: range.start.subtract(const Duration(days: 1)),
+          start: addDays(range.start, -n),
+          end: addDays(range.start, -1),
         );
         previous = computeDoseStats(dosages, prevRange);
       case _Range.all:
@@ -175,7 +179,17 @@ class _StatsBundle {
           final earliest = dosages
               .map((d) => startOfDay(d.timestamp))
               .reduce((a, b) => a.isBefore(b) ? a : b);
-          range = DateTimeRange(start: earliest, end: startOfDay(now));
+          // Imported data can carry future timestamps; DateTimeRange asserts
+          // start <= end, so let the range run to the later of today and the
+          // last dose rather than blowing up the screen.
+          final latest = dosages
+              .map((d) => startOfDay(d.timestamp))
+              .reduce((a, b) => a.isAfter(b) ? a : b);
+          final today = startOfDay(now);
+          range = DateTimeRange(
+            start: earliest,
+            end: latest.isAfter(today) ? latest : today,
+          );
         }
         previous = null;
     }
@@ -233,7 +247,8 @@ class _RangeSelector extends StatelessWidget {
         visualDensity: VisualDensity(horizontal: -3, vertical: -2),
       ),
       segments: [
-        for (final r in _Range.values) ButtonSegment(value: r, label: Text(r.label)),
+        for (final r in _Range.values)
+          ButtonSegment(value: r, label: Text(r.label)),
       ],
       selected: {range},
       onSelectionChanged: (s) => onChanged(s.first),
@@ -297,7 +312,9 @@ String _delta(
 ) {
   if (previous == null) return '';
   if (previous == 0) {
-    return current > 0 ? 'new vs previous ${range.label}' : '— vs previous ${range.label}';
+    return current > 0
+        ? 'new vs previous ${range.label}'
+        : '— vs previous ${range.label}';
   }
   final pct = ((current - previous) / previous) * 100;
   final sign = pct >= 0 ? '+' : '−';
@@ -333,7 +350,7 @@ class _StatCard extends StatelessWidget {
             label,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: c.textSecondary,
-            ),
+                ),
           ),
           const SizedBox(height: 6),
           Text(
@@ -466,9 +483,12 @@ class _DailyTrendChart extends StatelessWidget {
         ),
         titlesData: FlTitlesData(
           show: true,
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          bottomTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           leftTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
@@ -596,9 +616,12 @@ class _HourHistogramChart extends StatelessWidget {
         gridData: const FlGridData(show: false),
         titlesData: FlTitlesData(
           show: true,
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
@@ -675,7 +698,8 @@ class _RotationHeatmapSection extends StatelessWidget {
                 const SizedBox(height: 12),
                 Semantics(
                   container: true,
-                  label: 'Rotation heatmap with ${_plural(strains.length, 'strain')} '
+                  label:
+                      'Rotation heatmap with ${_plural(strains.length, 'strain')} '
                       'across ${_plural(days.length, 'day')}.',
                   child: _RotationHeatmap(
                     bundle: bundle,
@@ -887,7 +911,11 @@ class _RestDaysSection extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _Section extends StatelessWidget {
-  const _Section({required this.icon, required this.title, required this.child});
+  const _Section({
+    required this.icon,
+    required this.title,
+    required this.child,
+  });
 
   final IconData icon;
   final String title;

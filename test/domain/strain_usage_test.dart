@@ -37,8 +37,12 @@ void main() {
     expect(usage.map((item) => item.strain.id), ['c', 'b', 'a']);
     expect(usage.map((item) => item.rank), [0, 1, 2]);
     expect(
-        usage.singleWhere((item) => item.strain.id == 'a').dosesLastUsedDay, 1);
+      usage.singleWhere((item) => item.strain.id == 'a').dosesLastUsedDay,
+      1,
+    );
     expect(
-        usage.singleWhere((item) => item.strain.id == 'b').dosesLastUsedDay, 2);
+      usage.singleWhere((item) => item.strain.id == 'b').dosesLastUsedDay,
+      2,
+    );
   });
 }

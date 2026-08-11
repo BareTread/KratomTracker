@@ -118,9 +118,12 @@ void main() {
   test('legacy pain_relief spelling survives the migration', () {
     final ok = parseBackup(legacyExport()) as BackupOk;
     final e1 = ok.payload.effects.singleWhere((e) => e.id == 'e1');
-    expect(e1.painRelief, 3,
-        reason: 'the original app wrote pain_relief; dropping it would '
-            'silently lose every pain rating ever recorded');
+    expect(
+      e1.painRelief,
+      3,
+      reason: 'the original app wrote pain_relief; dropping it would '
+          'silently lose every pain rating ever recorded',
+    );
     expect(e1.duration, const Duration(minutes: 180));
   });
 
@@ -159,8 +162,7 @@ void main() {
 
     test('a new canonical name round-trips unchanged', () {
       final source = jsonDecode(legacyExport()) as Map<String, dynamic>;
-      final strains =
-          (source['strains'] as List).cast<Map<String, dynamic>>();
+      final strains = (source['strains'] as List).cast<Map<String, dynamic>>();
       strains[0]['icon'] = 'palmate';
       strains[1]['icon'] = 'capsule';
 
@@ -170,10 +172,10 @@ void main() {
       expect(byId['s-red']!.icon, 'capsule');
     });
 
-    test('an unknown icon value falls back deterministically from the code', () {
+    test('an unknown icon value falls back deterministically from the code',
+        () {
       final source = jsonDecode(legacyExport()) as Map<String, dynamic>;
-      final strains =
-          (source['strains'] as List).cast<Map<String, dynamic>>();
+      final strains = (source['strains'] as List).cast<Map<String, dynamic>>();
       strains[0]['icon'] = 'something-the-original-app-wrote';
 
       final first = (parseBackup(jsonEncode(source)) as BackupOk)
@@ -193,8 +195,7 @@ void main() {
 
     test('a missing icon field falls back deterministically from the code', () {
       final source = jsonDecode(legacyExport()) as Map<String, dynamic>;
-      final strains =
-          (source['strains'] as List).cast<Map<String, dynamic>>();
+      final strains = (source['strains'] as List).cast<Map<String, dynamic>>();
       strains[0].remove('icon');
 
       final first = (parseBackup(jsonEncode(source)) as BackupOk)

@@ -59,12 +59,16 @@ List<StrainUsage> computeStrainUsage(
             .where((dose) => _sameDay(dose.timestamp, lastUsed!))
             .toList(growable: false);
     final last7d = strainDoses
-        .where((dose) =>
-            inRangeInclusive(dose.timestamp, range7d.start, range7d.end))
+        .where(
+          (dose) =>
+              inRangeInclusive(dose.timestamp, range7d.start, range7d.end),
+        )
         .toList(growable: false);
     final last30d = strainDoses
-        .where((dose) =>
-            inRangeInclusive(dose.timestamp, range30d.start, range30d.end))
+        .where(
+          (dose) =>
+              inRangeInclusive(dose.timestamp, range30d.start, range30d.end),
+        )
         .toList(growable: false);
     final grams30d = _sum(last30d);
 

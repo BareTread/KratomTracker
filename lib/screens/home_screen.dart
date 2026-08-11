@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../domain/date_utils.dart';
 import '../models/dosage.dart';
 import '../models/strain.dart';
 import '../providers/kratom_provider.dart';
@@ -59,8 +60,10 @@ class _HomeScreenState extends State<HomeScreen> {
     provider.setSelectedDate(_focusedDay.value);
   }
 
-  DateTime _dateForPage(int index) => DateUtils.dateOnly(DateTime.now())
-      .add(Duration(days: index - _todayPage));
+  // Calendar days, not elapsed hours: Duration(days: n) is 24h each and
+  // slips a page either side of a DST transition.
+  DateTime _dateForPage(int index) =>
+      addDays(DateTime.now(), index - _todayPage);
 
   bool _sameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
@@ -69,7 +72,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final cleanDay = DateUtils.dateOnly(day);
     if (_sameDay(cleanDay, _focusedDay.value)) return;
     final current = _pageController.page?.round() ?? _todayPage;
-    final target = current + cleanDay.difference(_focusedDay.value).inDays;
+    final target = current + daysBetween(_focusedDay.value, cleanDay);
     final adjacent = (target - current).abs() == 1;
     _focusedDay.value = cleanDay;
     if (!_pageController.hasClients) {

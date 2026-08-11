@@ -18,8 +18,10 @@ void main() {
     expect(ok.summary.dosageCount, 1);
     expect(ok.summary.effectCount, 1);
     expect(ok.summary.totalGrams, 1.5);
-    expect(jsonDecode(jsonEncode(ok.payload.effects.single.toJson())),
-        source['effects']!.first);
+    expect(
+      jsonDecode(jsonEncode(ok.payload.effects.single.toJson())),
+      source['effects']!.first,
+    );
   });
 
   test('strain inStock round-trips through the codec', () {
@@ -39,8 +41,11 @@ void main() {
 
     final ok = parseBackup(jsonEncode(source)) as BackupOk;
 
-    expect(ok.payload.strains.single.inStock, true,
-        reason: 'existing strains and old backups must come back in stock');
+    expect(
+      ok.payload.strains.single.inStock,
+      true,
+      reason: 'existing strains and old backups must come back in stock',
+    );
   });
 
   test('an explicit null inStock field defaults to in stock', () {

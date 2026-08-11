@@ -30,69 +30,69 @@ class _EditStrainFormState extends State<EditStrainForm> {
   // Define color options similar to AddStrainForm
   final Map<String, List<_ColorOption>> _strainTypes = {
     'Green': [
-      _ColorOption(
-        color: const Color(0xFF2E7D32),
+      const _ColorOption(
+        color: Color(0xFF2E7D32),
         name: 'Forest',
         intensity: 'Mild',
       ),
-      _ColorOption(
-        color: const Color(0xFF4CAF50),
+      const _ColorOption(
+        color: Color(0xFF4CAF50),
         name: 'Jade',
         intensity: 'Medium',
       ),
-      _ColorOption(
-        color: const Color(0xFF81C784),
+      const _ColorOption(
+        color: Color(0xFF81C784),
         name: 'Mint',
         intensity: 'Strong',
       ),
     ],
     'Red': [
-      _ColorOption(
-        color: const Color(0xFFB71C1C),
+      const _ColorOption(
+        color: Color(0xFFB71C1C),
         name: 'Ruby',
         intensity: 'Mild',
       ),
-      _ColorOption(
-        color: const Color(0xFFE53935),
+      const _ColorOption(
+        color: Color(0xFFE53935),
         name: 'Crimson',
         intensity: 'Medium',
       ),
-      _ColorOption(
-        color: const Color(0xFFEF5350),
+      const _ColorOption(
+        color: Color(0xFFEF5350),
         name: 'Garnet',
         intensity: 'Strong',
       ),
     ],
     'White': [
-      _ColorOption(
-        color: const Color(0xFFCFD8DC),
+      const _ColorOption(
+        color: Color(0xFFCFD8DC),
         name: 'Pearl',
         intensity: 'Mild',
       ),
-      _ColorOption(
-        color: const Color(0xFFB0BEC5),
+      const _ColorOption(
+        color: Color(0xFFB0BEC5),
         name: 'Silver',
         intensity: 'Medium',
       ),
-      _ColorOption(
-        color: const Color(0xFF90A4AE),
+      const _ColorOption(
+        color: Color(0xFF90A4AE),
         name: 'Platinum',
         intensity: 'Strong',
       ),
     ],
     'Yellow': [
-      _ColorOption(
-        color: const Color(0xFFF9A825),
+      const _ColorOption(
+        color: Color(0xFFF9A825),
         name: 'Sunrise',
         intensity: 'Mild',
       ),
-      _ColorOption(
-        color: const Color(0xFFFDD835),
+      const _ColorOption(
+        color: Color(0xFFFDD835),
         name: 'Gold',
         intensity: 'Medium',
       ),
-      _ColorOption(
-        color: const Color(0xFFFFEE58),
+      const _ColorOption(
+        color: Color(0xFFFFEE58),
         name: 'Amber',
         intensity: 'Strong',
       ),
@@ -113,7 +113,7 @@ class _EditStrainFormState extends State<EditStrainForm> {
     // Find matching color in strainTypes
     for (var type in _strainTypes.keys) {
       for (var color in _strainTypes[type]!) {
-        if (color.color.value == currentColor.value) {
+        if (color.color.toARGB32() == currentColor.toARGB32()) {
           foundType = type;
           foundColor = color;
           break;
@@ -134,7 +134,7 @@ class _EditStrainFormState extends State<EditStrainForm> {
   Widget _buildMarkSection(BuildContext context) {
     final c = context.c;
     final strains = Provider.of<KratomProvider>(context, listen: false).strains;
-    final colorValue = _selectedColor.color.value;
+    final colorValue = _selectedColor.color.toARGB32();
     final collision = markCollision(
       strains
           .map(
@@ -221,7 +221,7 @@ class _EditStrainFormState extends State<EditStrainForm> {
             const SizedBox(height: 16),
             // Color type selection
             DropdownButtonFormField<String>(
-              value: _selectedType,
+              initialValue: _selectedType,
               items: _strainTypes.keys.map((String type) {
                 return DropdownMenuItem<String>(
                   value: type,
@@ -277,7 +277,7 @@ class _EditStrainFormState extends State<EditStrainForm> {
                         widget.strain.id,
                         name: _nameController.text,
                         code: _codeController.text,
-                        color: _selectedColor.color.value,
+                        color: _selectedColor.color.toARGB32(),
                         icon: _selectedShape.name,
                         inStock: _inStock,
                       );
@@ -327,7 +327,7 @@ class _EditStrainFormState extends State<EditStrainForm> {
               color.intensity,
               style: TextStyle(
                 fontSize: 10,
-                color: Colors.white.withOpacity(0.8),
+                color: Colors.white.withValues(alpha: 0.8),
               ),
             ),
           ],
