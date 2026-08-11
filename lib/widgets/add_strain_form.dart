@@ -89,6 +89,7 @@ class _AddStrainFormState extends State<AddStrainForm> {
 
   String _selectedType = 'Green';
   _ColorOption? _selectedColor;
+  bool _inStock = true;
 
   final List<_IconOption> _icons = [
     _IconOption(
@@ -378,6 +379,16 @@ class _AddStrainFormState extends State<AddStrainForm> {
                   const SizedBox(height: 12),
                 ],
                 const SizedBox(height: 24),
+                SwitchListTile(
+                  value: _inStock,
+                  onChanged: (value) => setState(() => _inStock = value),
+                  title: const Text('In stock'),
+                  subtitle: const Text(
+                    "Turn off when you don't have it on hand. Keeps the history; drops it below the picker line.",
+                  ),
+                  contentPadding: EdgeInsets.zero,
+                ),
+                const SizedBox(height: 24),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -389,6 +400,7 @@ class _AddStrainFormState extends State<AddStrainForm> {
                           _codeController.text,
                           _selectedColor!.color.value,
                           _icons[_selectedIcon].name,
+                          inStock: _inStock,
                         );
                         Navigator.pop(context);
                       }

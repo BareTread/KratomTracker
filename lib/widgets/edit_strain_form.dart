@@ -22,6 +22,7 @@ class _EditStrainFormState extends State<EditStrainForm> {
   late String _selectedType;
   late _ColorOption _selectedColor;
   late _IconOption _selectedIcon;
+  late bool _inStock;
 
   // Define color options similar to AddStrainForm
   final Map<String, List<_ColorOption>> _strainTypes = {
@@ -145,6 +146,7 @@ class _EditStrainFormState extends State<EditStrainForm> {
       (icon) => icon.name == widget.strain.icon,
       orElse: () => _icons[0], // Default to first icon if not found
     );
+    _inStock = widget.strain.inStock;
   }
 
   // Rest of the form remains the same, but update the icon selection UI:
@@ -287,6 +289,16 @@ class _EditStrainFormState extends State<EditStrainForm> {
             ),
             const SizedBox(height: 16),
             _buildIconSelection(),
+            const SizedBox(height: 16),
+            SwitchListTile(
+              value: _inStock,
+              onChanged: (value) => setState(() => _inStock = value),
+              title: const Text('In stock'),
+              subtitle: const Text(
+                "Turn off when you don't have it on hand. Keeps the history; drops it below the picker line.",
+              ),
+              contentPadding: EdgeInsets.zero,
+            ),
             const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -305,6 +317,7 @@ class _EditStrainFormState extends State<EditStrainForm> {
                         code: _codeController.text,
                         color: _selectedColor.color.value,
                         icon: _selectedIcon.name,
+                        inStock: _inStock,
                       );
                       Navigator.pop(context);
                     }

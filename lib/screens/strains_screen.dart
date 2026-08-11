@@ -6,6 +6,7 @@ import '../widgets/edit_strain_form.dart';
 import '../models/strain.dart';
 import '../widgets/strain_details_view.dart';
 import '../constants/icons.dart';
+import '../theme/app_theme.dart';
 import 'dart:ui';  // For ImageFilter
 
 class StrainsScreen extends StatelessWidget {
@@ -200,6 +201,13 @@ class StrainsScreen extends StatelessWidget {
                     ],
                   ),
                 ),
+                _StockChip(
+                  inStock: strain.inStock,
+                  onTap: () => provider.setStrainInStock(
+                    strain.id,
+                    inStock: !strain.inStock,
+                  ),
+                ),
                 IconButton(
                   icon: Icon(
                     Icons.more_vert,
@@ -367,6 +375,46 @@ class StrainsScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Tappable stock badge shown on each strain card. One tap flips the state
+/// without opening the full edit form. Stock is a display/ranking concern
+/// only — flipping never touches dosage history.
+class _StockChip extends StatelessWidget {
+  final bool inStock;
+  final VoidCallback onTap;
+
+  const _StockChip({required this.inStock, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final color = inStock ? c.accent : c.textTertiary;
+    return Semantics(
+      button: true,
+      label: inStock ? 'In stock, tap to mark out of stock' : 'Out of stock, tap to mark back in stock',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: inStock ? 0.14 : 0.08),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color.withValues(alpha: inStock ? 0.35 : 0.2)),
+          ),
+          child: Text(
+            inStock ? 'In stock' : 'Out of stock',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ),
       ),
     );
   }
