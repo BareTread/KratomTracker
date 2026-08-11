@@ -104,6 +104,35 @@ extension AppColorsX on BuildContext {
   AppColors get c => Theme.of(this).extension<AppColors>()!;
 }
 
+/// Strain colours are chosen to look right as *fills*. Used as text they fail:
+/// the dark reds sit around 0.30 lightness, which is nearly invisible on the
+/// near-black surfaces, and the pale whites vanish on light backgrounds.
+/// Clamp lightness into a readable band, keeping hue and saturation so the
+/// strain stays recognisable.
+Color legibleStrainColor(Color color, Brightness brightness) {
+  final hsl = HSLColor.fromColor(color);
+  final lightness = brightness == Brightness.dark
+      ? hsl.lightness.clamp(0.62, 0.92)
+      : hsl.lightness.clamp(0.24, 0.46);
+  return hsl.withLightness(lightness).toColor();
+}
+
+/// A soft chip in a strain's colour: low-alpha fill, colour carried by the
+/// text. Reads as identity rather than as an alert, which a saturated red
+/// fill does not.
+({Color background, Color foreground}) strainChipColors(
+  Color strainColor,
+  Brightness brightness,
+) {
+  final foreground = legibleStrainColor(strainColor, brightness);
+  return (
+    background: foreground.withValues(
+      alpha: brightness == Brightness.dark ? 0.16 : 0.14,
+    ),
+    foreground: foreground,
+  );
+}
+
 class AppMotion {
   const AppMotion._();
 

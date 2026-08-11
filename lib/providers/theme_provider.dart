@@ -56,6 +56,15 @@ class ThemeProvider with ChangeNotifier {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
     ),
+    // Without this, Material's default snackbar is a near-white bar, which is
+    // jarring in an app that is otherwise black.
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: AppColors.dark.surfaceRaised,
+      contentTextStyle: const TextStyle(color: Color(0xFFF5F7F8)),
+      actionTextColor: AppColors.dark.accent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: AppColors.dark.surfaceSunken,
@@ -110,6 +119,13 @@ class ThemeProvider with ChangeNotifier {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+    ),
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: AppColors.light.textPrimary,
+      contentTextStyle: const TextStyle(color: Color(0xFFF5F7F8)),
+      actionTextColor: AppColors.light.accentMuted,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,

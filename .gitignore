@@ -68,3 +68,6 @@ android/key.properties
 
 # orchestration scratch
 .pi-worker/
+
+# Personal device screenshots used for design review; not part of the build.
+screenshots/
