@@ -181,7 +181,7 @@ class _StatusRule extends StatelessWidget {
   Widget build(BuildContext context) {
     final border = context.c.hairline;
     return SizedBox(
-      width: 156,
+      width: double.infinity,
       height: 1,
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -191,6 +191,7 @@ class _StatusRule extends StatelessWidget {
               border,
               border.withValues(alpha: 0),
             ],
+            stops: const [0, 0.06, 1],
           ),
         ),
       ),

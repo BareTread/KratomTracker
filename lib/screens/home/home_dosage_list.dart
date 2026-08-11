@@ -340,27 +340,41 @@ class _DoseRow extends StatelessWidget {
                   ],
                 ),
               ),
-              // Content column — amount dominant, code secondary.
+              // Content — ledger line: identity left, amount on the right
+              // margin so the row spans the full width and the amounts form
+              // one scannable right-aligned column.
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.only(left: 10, right: 8),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  padding: const EdgeInsets.only(left: 10, right: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text(
-                        code,
-                        style: TextStyle(
-                          color: context.c.textTertiary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 1.1,
-                          height: 1.1,
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              code,
+                              style: TextStyle(
+                                color: context.c.textSecondary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 1.1,
+                                height: 1.1,
+                              ),
+                            ),
+                            if (effect != null) ...[
+                              const SizedBox(height: 4),
+                              _EffectAffordance(dosage: dosage, effect: effect),
+                            ],
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 3),
+                      const SizedBox(width: 8),
                       Text(
                         _formatAmount(dosage.amount),
+                        textAlign: TextAlign.right,
                         style: TextStyle(
                           color: amountColor,
                           fontSize: 22,
@@ -370,10 +384,6 @@ class _DoseRow extends StatelessWidget {
                           fontFeatures: _tabular,
                         ),
                       ),
-                      if (effect != null) ...[
-                        const SizedBox(height: 3),
-                        _EffectAffordance(dosage: dosage, effect: effect),
-                      ],
                     ],
                   ),
                 ),
