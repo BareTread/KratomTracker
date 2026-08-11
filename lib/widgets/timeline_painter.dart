@@ -14,22 +14,12 @@ class TimelinePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final axisY = size.height - 2;
+    final axisY = size.height - 1;
     final paint = Paint()..style = PaintingStyle.fill;
-
-    // Soft vertical band hints at morning / afternoon / evening thirds.
-    paint.color = dividerColor.withValues(alpha: 0.08);
-    for (var i = 0; i < 3; i++) {
-      if (i.isEven) continue;
-      canvas.drawRect(
-        Rect.fromLTWH(i * size.width / 3, 0, size.width / 3, axisY),
-        paint,
-      );
-    }
 
     // Dotted vertical references at 6 / 12 / 18 — no labels; the ticks alone
     // read as a day and stay quieter than spelled-out hour marks.
-    paint.color = dividerColor.withValues(alpha: 0.55);
+    paint.color = dividerColor.withValues(alpha: 0.45);
     for (final hour in [6, 12, 18]) {
       final x = hour * size.width / 24;
       for (double y = 2; y < axisY - 1; y += 3.5) {

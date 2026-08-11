@@ -239,25 +239,32 @@ class HomeCalendarSection extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Fill means "you are looking at this day"; the greyscale ring
+            // means "this is today". They compose: today selected shows both.
             Container(
               width: 40,
               height: 40,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: selected
-                    ? context.c.accent
-                    : isToday
-                        ? context.c.accentMuted
-                        : null,
+                color: selected ? context.c.accent : null,
                 shape: BoxShape.circle,
-                border:
-                    selected ? Border.all(color: context.c.textPrimary) : null,
+                border: isToday
+                    ? Border.all(
+                        color: selected
+                            ? context.c.textPrimary
+                            : context.c.textSecondary,
+                        width: 1.5,
+                      )
+                    : null,
               ),
               child: Text(
                 '${day.day}',
                 style: TextStyle(
-                  color:
-                      enabled ? context.c.textPrimary : context.c.textTertiary,
+                  color: !enabled
+                      ? context.c.textTertiary
+                      : selected
+                          ? Colors.black87
+                          : context.c.textPrimary,
                   fontWeight: selected || isToday ? FontWeight.bold : null,
                 ),
               ),

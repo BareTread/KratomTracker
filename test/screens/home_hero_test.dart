@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kratom_tracker_plus/providers/kratom_provider.dart';
 import 'package:kratom_tracker_plus/providers/theme_provider.dart';
@@ -20,14 +21,15 @@ void main() {
     );
 
     await _pumpCard(tester, provider, focusedDay: DateUtils.dateOnly(now));
-    await tester.pumpAndSettle();
 
     // Sub-line names the strain code and amount for the last dose.
-    expect(find.textContaining('since TEST'), findsOneWidget);
+    expect(
+      find.textContaining('since TEST', findRichText: true),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('hero slot switches to the day span for a past date',
-      (tester) async {
+  testWidgets('hero slot shows the day total for a past date', (tester) async {
     final now = DateTime.now();
     final past = DateUtils.dateOnly(now).subtract(const Duration(days: 2));
     final provider = await _provider(
@@ -40,10 +42,25 @@ void main() {
     await _pumpCard(tester, provider, focusedDay: past);
     await tester.pumpAndSettle();
 
-    // Past-day hero describes the first-to-last span of that day's doses.
-    expect(find.textContaining('span'), findsOneWidget);
-    // The now-fact "since <code>" must not appear for a past day.
-    expect(find.textContaining('since TEST'), findsNothing);
+    // Past-day hero is the day's total; the first-to-last window stays quiet.
+    expect(find.text('5g'), findsOneWidget);
+    // Build the expected window with DateFormat so intl's exact spacing
+    // (narrow no-break space before AM/PM) is not hardcoded.
+    String at(int hour, int minute) => DateFormat.jm()
+        .format(DateTime(past.year, past.month, past.day, hour, minute));
+    expect(
+      find.textContaining(
+        '2 doses · ${at(7, 4)} – ${at(20, 32)}',
+        findRichText: true,
+      ),
+      findsOneWidget,
+    );
+    // The span hero is gone, and "since <code>" must not appear for a past day.
+    expect(find.textContaining('span', findRichText: true), findsNothing);
+    expect(
+      find.textContaining('since TEST', findRichText: true),
+      findsNothing,
+    );
   });
 }
 

@@ -42,7 +42,7 @@ class HomeDayCard extends StatelessWidget {
     };
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -59,8 +59,7 @@ class HomeDayCard extends StatelessWidget {
               totalForDate: provider.totalForDate,
             ),
           ),
-          // Same external rhythm the dose rows use between cards.
-          const SizedBox(height: 8),
+          const SizedBox(height: 14),
           Container(
             key: const Key('home-status-card-surface'),
             decoration: BoxDecoration(
@@ -73,13 +72,11 @@ class HomeDayCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
                   child: _SummaryBlock(
                     isToday: isToday,
-                    day: day,
                     dayDoses: dayDoses,
                     allDoses: provider.dosages,
-                    strainsById: strainsById,
                     provider: provider,
                   ),
                 ),
@@ -96,18 +93,14 @@ class HomeDayCard extends StatelessWidget {
 class _SummaryBlock extends StatelessWidget {
   const _SummaryBlock({
     required this.isToday,
-    required this.day,
     required this.dayDoses,
     required this.allDoses,
-    required this.strainsById,
     required this.provider,
   });
 
   final bool isToday;
-  final DateTime day;
   final List<Dosage> dayDoses;
   final List<Dosage> allDoses;
-  final Map<String, Strain> strainsById;
   final KratomProvider provider;
 
   @override
@@ -116,12 +109,16 @@ class _SummaryBlock extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(child: _hero(context)),
-        const SizedBox(width: 16),
-        _secondary(context),
+        if (isToday && dayDoses.isNotEmpty) ...[
+          const SizedBox(width: 16),
+          _todayTotals(context),
+        ],
       ],
     );
   }
 
+  /// The number this app is opened for: how long since the last dose. The
+  /// strain that produced it sits underneath, named in its own colour.
   Widget _hero(BuildContext context) {
     if (isToday) {
       final last = allDoses.isEmpty
@@ -130,68 +127,86 @@ class _SummaryBlock extends StatelessWidget {
               (a, b) => a.timestamp.isAfter(b.timestamp) ? a : b,
             );
       if (last == null) {
-        return _Hero(
+        return const _Hero(
           value: 'No doses yet',
-          sub: 'Tap the button below to log one',
-          valueColor: context.c.textPrimary,
+          sub: [TextSpan(text: 'Tap + below to log one')],
         );
       }
       final elapsed = DateTime.now().difference(last.timestamp);
       final strain = provider.getStrain(last.strainId);
       final code = strain?.code ?? 'Unknown strain';
+      final codeColor = strain == null
+          ? context.c.textTertiary
+          : legibleStrainColor(
+              Color(strain.color),
+              Theme.of(context).brightness,
+            );
       return _Hero(
         value: _elapsedText(elapsed),
-        sub: 'since $code · ${_formatAmount(last.amount)}g',
-        valueColor: context.c.textPrimary,
+        sub: [
+          TextSpan(
+            text: 'since ',
+            style: TextStyle(color: context.c.textTertiary),
+          ),
+          TextSpan(
+            text: code,
+            style: TextStyle(color: codeColor, fontWeight: FontWeight.w700),
+          ),
+          TextSpan(
+            text: ' · ${_formatAmount(last.amount)}g',
+            style: TextStyle(color: context.c.textTertiary),
+          ),
+        ],
       );
     }
-    // Past day: show the span of that day's doses, first-to-last.
+    // Past day: the day's total is the fact that matters; the first-to-last
+    // window stays as quiet context on the sub-line.
     if (dayDoses.isEmpty) {
-      return _Hero(
+      return const _Hero(
         value: 'No doses',
-        sub: 'nothing logged this day',
-        valueColor: context.c.textPrimary,
+        sub: [TextSpan(text: 'nothing logged this day')],
       );
     }
-    final first = dayDoses.first.timestamp;
-    final last = dayDoses.last.timestamp;
-    final span = last.difference(first);
+    final total = dayDoses.fold<double>(0, (sum, dose) => sum + dose.amount);
+    final count = dayDoses.length;
+    final window =
+        '${DateFormat.jm().format(dayDoses.first.timestamp)} – ${DateFormat.jm().format(dayDoses.last.timestamp)}';
     return _Hero(
-      value: _spanText(span),
-      sub: '${DateFormat.jm().format(first)} – ${DateFormat.jm().format(last)}',
-      valueColor: context.c.textPrimary,
+      value: '${_formatAmount(total)}g',
+      sub: [
+        TextSpan(text: '$count ${count == 1 ? 'dose' : 'doses'} · $window'),
+      ],
     );
   }
 
-  Widget _secondary(BuildContext context) {
-    final dayTotal =
-        dayDoses.fold<double>(0, (sum, dose) => sum + dose.amount);
+  /// Today's running total, kept secondary to the elapsed hero.
+  Widget _todayTotals(BuildContext context) {
+    final total = dayDoses.fold<double>(0, (sum, dose) => sum + dose.amount);
     final count = dayDoses.length;
-    final dayLine =
-        '${_formatAmount(dayTotal)}g · $count ${count == 1 ? 'dose' : 'doses'}';
-    if (isToday) {
-      final today = DateUtils.dateOnly(DateTime.now());
-      final week = List.generate(
-        7,
-        (i) => provider.totalForDate(today.subtract(Duration(days: 6 - i))),
-      );
-      final previous = List.generate(
-        7,
-        (i) => provider.totalForDate(today.subtract(Duration(days: 13 - i))),
-      );
-      final weekTotal = week.fold<double>(0, (a, b) => a + b);
-      final previousTotal = previous.fold<double>(0, (a, b) => a + b);
-      final change = previousTotal == 0
-          ? 0.0
-          : (weekTotal - previousTotal) / previousTotal * 100;
-      return _Secondary(
-        primaryLine: dayLine,
-        secondaryLine: '${_formatAmount(weekTotal)}g week ${_trendText(change)}',
-      );
-    }
-    // Same two-line structure as today so the card does not restructure
-    // when swiping between days — secondary stays quiet textTertiary empty.
-    return _Secondary(primaryLine: dayLine, secondaryLine: ' ');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '${_formatAmount(total)}g',
+          textAlign: TextAlign.right,
+          style: TextStyle(
+            color: context.c.textPrimary,
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          '$count ${count == 1 ? 'dose' : 'doses'}',
+          textAlign: TextAlign.right,
+          style: TextStyle(
+            color: context.c.textTertiary,
+            fontSize: 12,
+          ),
+        ),
+      ],
+    );
   }
 
   String _elapsedText(Duration elapsed) {
@@ -204,20 +219,6 @@ class _SummaryBlock extends StatelessWidget {
     return elapsed.inMinutes < 1 ? 'now' : '${elapsed.inMinutes}m';
   }
 
-  String _spanText(Duration span) {
-    if (span.inHours > 0) {
-      return '${span.inHours}h ${span.inMinutes % 60}m span';
-    }
-    return '${span.inMinutes}m span';
-  }
-
-  String _trendText(double change) {
-    final abs = change.abs().toStringAsFixed(0);
-    if (change > 10) return '↑ $abs%';
-    if (change < -10) return '↓ $abs%';
-    return '→ $abs%';
-  }
-
   String _formatAmount(double value) {
     if (value == value.roundToDouble()) return value.toStringAsFixed(0);
     return value.toStringAsFixed(1);
@@ -225,15 +226,10 @@ class _SummaryBlock extends StatelessWidget {
 }
 
 class _Hero extends StatelessWidget {
-  const _Hero({
-    required this.value,
-    required this.sub,
-    required this.valueColor,
-  });
+  const _Hero({required this.value, required this.sub});
 
   final String value;
-  final String sub;
-  final Color valueColor;
+  final List<InlineSpan> sub;
 
   @override
   Widget build(BuildContext context) {
@@ -244,60 +240,19 @@ class _Hero extends StatelessWidget {
         Text(
           value,
           style: TextStyle(
-            color: valueColor,
-            fontSize: 28,
+            color: context.c.textPrimary,
+            fontSize: 34,
             fontWeight: FontWeight.w700,
             height: 1.05,
-            letterSpacing: -0.5,
+            letterSpacing: -1,
           ),
         ),
-        if (sub.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          Text(
-            sub,
-            style: TextStyle(
-              color: context.c.textTertiary,
-              fontSize: 13,
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _Secondary extends StatelessWidget {
-  const _Secondary({
-    required this.primaryLine,
-    required this.secondaryLine,
-  });
-
-  final String primaryLine;
-  final String secondaryLine;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          primaryLine,
-          textAlign: TextAlign.right,
-          style: TextStyle(
-            color: context.c.textSecondary,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 3),
-        // Always reserve the second line so today/past share the same height.
-        Text(
-          secondaryLine,
-          textAlign: TextAlign.right,
+        const SizedBox(height: 6),
+        Text.rich(
+          TextSpan(children: sub),
           style: TextStyle(
             color: context.c.textTertiary,
-            fontSize: 12,
+            fontSize: 13.5,
           ),
         ),
       ],
@@ -305,8 +260,8 @@ class _Secondary extends StatelessWidget {
   }
 }
 
-/// 24h timeline as the status card's base edge — no panel chrome. Ticks and
-/// marks draw flush across the content width, ambient under the hero numbers.
+/// 24h timeline as the status card's base edge — full card width, flush with
+/// the card's bottom, no panel chrome. Pure texture under the hero numbers.
 class _TimelineEdge extends StatelessWidget {
   const _TimelineEdge({required this.dosages, required this.strainsById});
 
@@ -328,15 +283,12 @@ class _TimelineEdge extends StatelessWidget {
         ),
     ];
     return SizedBox(
-      height: 36,
+      height: 30,
       width: double.infinity,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
-        child: CustomPaint(
-          painter: TimelinePainter(
-            dividerColor: context.c.hairline,
-            dosages: timeline,
-          ),
+      child: CustomPaint(
+        painter: TimelinePainter(
+          dividerColor: context.c.hairline,
+          dosages: timeline,
         ),
       ),
     );
