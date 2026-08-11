@@ -152,22 +152,22 @@ void main() {
     test('legacy icon names map to their documented shape', () {
       final ok = parseBackup(legacyExport()) as BackupOk;
       final byId = {for (final s in ok.payload.strains) s.id: s};
-      // 'leaf' -> single, 'flower' -> broad (case-insensitive legacy map).
-      expect(byId['s-green']!.icon, 'single');
-      expect(byId['s-red']!.icon, 'broad');
+      // 'leaf' -> lance, 'flower' -> spathe (case-insensitive legacy map).
+      expect(byId['s-green']!.icon, 'lance');
+      expect(byId['s-red']!.icon, 'spathe');
     });
 
     test('a new canonical name round-trips unchanged', () {
       final source = jsonDecode(legacyExport()) as Map<String, dynamic>;
       final strains =
           (source['strains'] as List).cast<Map<String, dynamic>>();
-      strains[0]['icon'] = 'vine';
-      strains[1]['icon'] = 'furl';
+      strains[0]['icon'] = 'palmate';
+      strains[1]['icon'] = 'capsule';
 
       final ok = parseBackup(jsonEncode(source)) as BackupOk;
       final byId = {for (final s in ok.payload.strains) s.id: s};
-      expect(byId['s-green']!.icon, 'vine');
-      expect(byId['s-red']!.icon, 'furl');
+      expect(byId['s-green']!.icon, 'palmate');
+      expect(byId['s-red']!.icon, 'capsule');
     });
 
     test('an unknown icon value falls back deterministically from the code', () {

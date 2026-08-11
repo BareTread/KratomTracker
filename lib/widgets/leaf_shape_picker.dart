@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import 'strain_mark.dart';
 
-/// Compact picker for a strain's [LeafShape]. Renders all six shapes at real
-/// size in the strain's currently selected colour, so what is picked is what
-/// will be seen on the tile. Shapes already taken for that colour by another
-/// strain are marked, and the currently selected pair is highlighted.
+/// Compact picker for a strain's [LeafShape]. Renders all ten ribbed-stroke
+/// marks at real size in the strain's currently selected colour, so what is
+/// picked is what will be seen on the tile. Shapes already taken for that
+/// colour by another strain are marked, and the currently selected pair is
+/// highlighted.
 ///
 /// It sits inside an existing form, so it stays small: a wrapping row of
 /// 48x48 tiles. The collision warning that names the owning strain lives in

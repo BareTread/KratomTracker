@@ -3,18 +3,18 @@ import 'package:kratom_tracker_plus/widgets/strain_mark.dart';
 
 void main() {
   group('resolveLeafShape legacy names', () {
+    // One-to-one: every legacy Material icon name maps to its own silhouette.
     const cases = <(String, LeafShape)>[
-      // documented legacy → new mapping
-      ('Leaf', LeafShape.single),
-      ('Herb', LeafShape.single),
-      ('Natural', LeafShape.sprout),
-      ('Yard', LeafShape.sprout),
-      ('Organic', LeafShape.trefoil),
-      ('Plant', LeafShape.broad),
-      ('Flower', LeafShape.broad),
-      ('Nature', LeafShape.broad),
-      ('Park', LeafShape.furl),
-      ('Forest', LeafShape.vine),
+      ('Leaf', LeafShape.lance),
+      ('Plant', LeafShape.palmate),
+      ('Natural', LeafShape.oval),
+      ('Organic', LeafShape.cordate),
+      ('Flower', LeafShape.spathe),
+      ('Herb', LeafShape.trifol),
+      ('Forest', LeafShape.paired),
+      ('Nature', LeafShape.toothed),
+      ('Park', LeafShape.capsule),
+      ('Yard', LeafShape.oblique),
     ];
 
     for (final (legacy, expected) in cases) {
@@ -23,11 +23,18 @@ void main() {
       });
     }
 
+    test('all ten legacy names resolve to ten distinct shapes', () {
+      final shapes = {
+        for (final (legacy, _) in cases) resolveLeafShape(legacy, 'CODE'),
+      };
+      expect(shapes.length, LeafShape.values.length);
+    });
+
     test('legacy names match case-insensitively (original app wrote lowercase)', () {
       // The original app wrote lowercase icon names in its exports.
-      expect(resolveLeafShape('leaf', 'CODE'), LeafShape.single);
-      expect(resolveLeafShape('FLOWER', 'CODE'), LeafShape.broad);
-      expect(resolveLeafShape('Forest', 'CODE'), LeafShape.vine);
+      expect(resolveLeafShape('leaf', 'CODE'), LeafShape.lance);
+      expect(resolveLeafShape('FLOWER', 'CODE'), LeafShape.spathe);
+      expect(resolveLeafShape('Forest', 'CODE'), LeafShape.paired);
     });
 
     test('new canonical names resolve directly', () {
@@ -35,6 +42,15 @@ void main() {
         expect(resolveLeafShape(shape.name, 'CODE'), shape);
         expect(resolveLeafShape(shape.name.toUpperCase(), 'CODE'), shape);
       }
+    });
+
+    test('prior six-shape names still resolve (already-migrated libraries)', () {
+      expect(resolveLeafShape('single', 'CODE'), LeafShape.lance);
+      expect(resolveLeafShape('sprout', 'CODE'), LeafShape.paired);
+      expect(resolveLeafShape('trefoil', 'CODE'), LeafShape.trifol);
+      expect(resolveLeafShape('broad', 'CODE'), LeafShape.oval);
+      expect(resolveLeafShape('furl', 'CODE'), LeafShape.capsule);
+      expect(resolveLeafShape('vine', 'CODE'), LeafShape.spathe);
     });
   });
 
@@ -47,7 +63,7 @@ void main() {
 
     test('different codes can map to different shapes', () {
       final shapes = <LeafShape>{};
-      for (final code in ['GMD', 'RB', 'TH', 'MD', 'BI', 'GM']) {
+      for (final code in ['GMD', 'RB', 'TH', 'MD', 'BI', 'GM', 'WG', 'YB', 'RG', 'WB']) {
         shapes.add(resolveLeafShape('unknown', code));
       }
       // A 30-strain library should spread across more than one shape; this
@@ -75,39 +91,39 @@ void main() {
 
     test('detects a duplicate colour+shape pair and names the owning strain', () {
       final strains = [
-        ref('s1', 'Green Maeng Da', 0xFF4CAF50, LeafShape.single),
-        ref('s2', 'Red Bali', 0xFFE53935, LeafShape.trefoil),
+        ref('s1', 'Green Maeng Da', 0xFF4CAF50, LeafShape.lance),
+        ref('s2', 'Red Bali', 0xFFE53935, LeafShape.trifol),
       ];
 
-      final result = markCollision(strains, 0xFF4CAF50, LeafShape.single);
+      final result = markCollision(strains, 0xFF4CAF50, LeafShape.lance);
 
       expect(result.ownerId, 's1');
       expect(result.ownerName, 'Green Maeng Da');
-      expect(result.takenForColor, contains(LeafShape.single));
+      expect(result.takenForColor, contains(LeafShape.lance));
     });
 
     test('reports no owner when the pair is free', () {
       final strains = [
-        ref('s1', 'Green Maeng Da', 0xFF4CAF50, LeafShape.single),
+        ref('s1', 'Green Maeng Da', 0xFF4CAF50, LeafShape.lance),
       ];
 
-      final result = markCollision(strains, 0xFF4CAF50, LeafShape.trefoil);
+      final result = markCollision(strains, 0xFF4CAF50, LeafShape.trifol);
 
       expect(result.ownerId, isNull);
       expect(result.ownerName, isNull);
-      expect(result.takenForColor, contains(LeafShape.single));
-      expect(result.takenForColor, isNot(contains(LeafShape.trefoil)));
+      expect(result.takenForColor, contains(LeafShape.lance));
+      expect(result.takenForColor, isNot(contains(LeafShape.trifol)));
     });
 
     test('excludeId skips the strain being edited', () {
       final strains = [
-        ref('s1', 'Green Maeng Da', 0xFF4CAF50, LeafShape.single),
+        ref('s1', 'Green Maeng Da', 0xFF4CAF50, LeafShape.lance),
       ];
 
       final result = markCollision(
         strains,
         0xFF4CAF50,
-        LeafShape.single,
+        LeafShape.lance,
         excludeId: 's1',
       );
 
@@ -118,15 +134,15 @@ void main() {
 
     test('only counts strains sharing the selected colour', () {
       final strains = [
-        ref('s1', 'Green Maeng Da', 0xFF4CAF50, LeafShape.single),
-        ref('s2', 'Red Bali', 0xFFE53935, LeafShape.single),
+        ref('s1', 'Green Maeng Da', 0xFF4CAF50, LeafShape.lance),
+        ref('s2', 'Red Bali', 0xFFE53935, LeafShape.lance),
       ];
 
-      final result = markCollision(strains, 0xFF4CAF50, LeafShape.single);
+      final result = markCollision(strains, 0xFF4CAF50, LeafShape.lance);
 
       expect(result.ownerId, 's1');
-      // Red's single is not taken-for-green.
-      expect(result.takenForColor, contains(LeafShape.single));
+      // Red's lance is not taken-for-green.
+      expect(result.takenForColor, contains(LeafShape.lance));
       expect(result.takenForColor.length, 1);
     });
   });

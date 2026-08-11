@@ -16,7 +16,7 @@ class _AddStrainFormState extends State<AddStrainForm> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _codeController = TextEditingController();
-  LeafShape _selectedShape = LeafShape.single;
+  LeafShape _selectedShape = LeafShape.lance;
 
   // Updated color palette with more distinct shades
   final Map<String, List<_ColorOption>> _strainTypes = {

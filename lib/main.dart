@@ -128,17 +128,26 @@ class _MainScreenState extends State<MainScreen> {
           selectedItemColor: Theme.of(context).colorScheme.primary,
           unselectedItemColor: Colors.grey,
           items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+            // Outline when inactive, filled when active — same Material
+            // family and optical weight across all four tabs.
             BottomNavigationBarItem(
-              icon: Icon(Icons.local_florist),
+              icon: Icon(Icons.home_outlined),
+              activeIcon: Icon(Icons.home),
+              label: 'Home',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.spa_outlined),
+              activeIcon: Icon(Icons.spa),
               label: 'Strains',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.bar_chart),
+              icon: Icon(Icons.bar_chart_outlined),
+              activeIcon: Icon(Icons.bar_chart),
               label: 'Stats',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.settings),
+              icon: Icon(Icons.tune_outlined),
+              activeIcon: Icon(Icons.tune),
               label: 'Manage',
             ),
           ],
