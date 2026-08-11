@@ -5,15 +5,23 @@ import 'package:table_calendar/table_calendar.dart';
 
 import '../../theme/app_theme.dart';
 
+/// Calendar content (week strip + per-day grams bars + month picker) intended
+/// to be embedded inside [HomeDayCard]. Owns no card chrome — the surrounding
+/// card supplies the surface, border, and radius.
 class HomeCalendarSection extends StatelessWidget {
   const HomeCalendarSection({
     super.key,
     required this.focusedDay,
     required this.onDaySelected,
+    this.totalForDate,
   });
 
   final DateTime focusedDay;
   final ValueChanged<DateTime> onDaySelected;
+
+  /// Per-day grams totals used to draw the bars under each date. Defaults to
+  /// zero so the widget renders standalone (e.g. in tests) without a provider.
+  final double Function(DateTime date)? totalForDate;
 
   bool _sameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
@@ -27,146 +35,180 @@ class HomeCalendarSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final today = DateUtils.dateOnly(DateTime.now());
     final onToday = _sameDay(focusedDay, today);
-    return Container(
-      key: const Key('home-calendar-surface'),
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 2),
-      decoration: BoxDecoration(
-        color: context.c.surfaceRaised,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: context.c.hairline),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TableCalendar<void>(
-            firstDay: DateTime.utc(2020),
-            lastDay: today,
-            focusedDay: focusedDay.isAfter(today) ? today : focusedDay,
-            currentDay: today,
-            calendarFormat: CalendarFormat.week,
-            availableCalendarFormats: const {CalendarFormat.week: 'Week'},
-            startingDayOfWeek: StartingDayOfWeek.monday,
-            rowHeight: 48,
-            daysOfWeekHeight: 24,
-            headerStyle: HeaderStyle(
-              formatButtonVisible: false,
-              titleCentered: true,
-              leftChevronIcon: Icon(
-                Icons.chevron_left,
-                color: context.c.textSecondary,
-              ),
-              rightChevronIcon: Icon(
-                Icons.chevron_right,
-                color: context.c.textSecondary,
-              ),
-              headerPadding: const EdgeInsets.symmetric(vertical: 4),
+    final totalFor = totalForDate ?? (_) => 0.0;
+    final monday = DateUtils.dateOnly(focusedDay)
+        .subtract(Duration(days: focusedDay.weekday - 1));
+    final weekTotals = List<double>.generate(
+      7,
+      (i) => totalFor(monday.add(Duration(days: i))),
+    );
+    final weekMax = weekTotals.fold<double>(0, (a, b) => a > b ? a : b);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TableCalendar<void>(
+          firstDay: DateTime.utc(2020),
+          lastDay: today,
+          focusedDay: focusedDay.isAfter(today) ? today : focusedDay,
+          currentDay: today,
+          calendarFormat: CalendarFormat.week,
+          availableCalendarFormats: const {CalendarFormat.week: 'Week'},
+          startingDayOfWeek: StartingDayOfWeek.monday,
+          rowHeight: 58,
+          daysOfWeekHeight: 24,
+          headerStyle: HeaderStyle(
+            formatButtonVisible: false,
+            titleCentered: true,
+            leftChevronIcon: Icon(
+              Icons.chevron_left,
+              color: context.c.textSecondary,
             ),
-            calendarStyle: CalendarStyle(
-              defaultTextStyle: TextStyle(color: context.c.textPrimary),
-              weekendTextStyle: TextStyle(color: context.c.textPrimary),
-              outsideTextStyle: TextStyle(color: context.c.textTertiary),
-              disabledTextStyle: TextStyle(color: context.c.textTertiary),
-              todayDecoration: BoxDecoration(
-                color: context.c.accentMuted,
-                shape: BoxShape.circle,
-              ),
-              selectedDecoration: BoxDecoration(
-                color: context.c.accent,
-                shape: BoxShape.circle,
-              ),
-              selectedTextStyle: TextStyle(color: context.c.textPrimary),
+            rightChevronIcon: Icon(
+              Icons.chevron_right,
+              color: context.c.textSecondary,
             ),
-            daysOfWeekStyle: DaysOfWeekStyle(
-              weekdayStyle: TextStyle(color: context.c.textTertiary),
-              weekendStyle: TextStyle(color: context.c.textTertiary),
-            ),
-            calendarBuilders: CalendarBuilders<void>(
-              headerTitleBuilder: (context, day) => Center(
-                child: InkWell(
-                  onTap: () async {
-                    final picked = await _showMonthPicker(context, day);
-                    if (picked != null) _select(picked);
-                  },
-                  borderRadius: BorderRadius.circular(12),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(minHeight: 48),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          DateFormat.yMMMM().format(day),
-                          style: TextStyle(
-                            color: context.c.textPrimary,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        Icon(
-                          Icons.arrow_drop_down,
-                          color: context.c.accent,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              defaultBuilder: _semanticDay,
-              todayBuilder: _semanticDay,
-              selectedBuilder: _semanticDay,
-              outsideBuilder: (context, day, focused) => _semanticDay(
-                context,
-                day,
-                focused,
-                enabled: false,
-              ),
-              disabledBuilder: (context, day, focused) => _semanticDay(
-                context,
-                day,
-                focused,
-                enabled: false,
-              ),
-            ),
-            onDaySelected: (day, _) {
-              if (!_sameDay(day, focusedDay) && !day.isAfter(today)) {
-                _select(day);
-              }
-            },
-            selectedDayPredicate: (day) => _sameDay(focusedDay, day),
+            headerPadding: const EdgeInsets.symmetric(vertical: 4),
           ),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  onToday
-                      ? 'Today, ${DateFormat('d MMM').format(focusedDay)}'
-                      : DateFormat('d MMM').format(focusedDay),
-                  style: TextStyle(
-                    color: context.c.textSecondary,
-                    fontSize: 14,
+          calendarStyle: CalendarStyle(
+            defaultTextStyle: TextStyle(color: context.c.textPrimary),
+            weekendTextStyle: TextStyle(color: context.c.textPrimary),
+            outsideTextStyle: TextStyle(color: context.c.textTertiary),
+            disabledTextStyle: TextStyle(color: context.c.textTertiary),
+            todayDecoration: BoxDecoration(
+              color: context.c.accentMuted,
+              shape: BoxShape.circle,
+            ),
+            selectedDecoration: BoxDecoration(
+              color: context.c.accent,
+              shape: BoxShape.circle,
+            ),
+            selectedTextStyle: TextStyle(color: context.c.textPrimary),
+          ),
+          daysOfWeekStyle: DaysOfWeekStyle(
+            weekdayStyle: TextStyle(color: context.c.textTertiary),
+            weekendStyle: TextStyle(color: context.c.textTertiary),
+          ),
+          calendarBuilders: CalendarBuilders<void>(
+            headerTitleBuilder: (context, day) => Center(
+              child: InkWell(
+                onTap: () async {
+                  final picked = await _showMonthPicker(context, day);
+                  if (picked != null) _select(picked);
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 48),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        DateFormat.yMMMM().format(day),
+                        style: TextStyle(
+                          color: context.c.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      Icon(
+                        Icons.arrow_drop_down,
+                        color: context.c.accent,
+                      ),
+                    ],
                   ),
                 ),
-                if (!onToday) ...[
-                  const SizedBox(width: 8),
-                  _TodayButton(onTap: () => _select(today)),
-                ],
+              ),
+            ),
+            defaultBuilder: (context, day, focused) => _semanticDay(
+              context,
+              day,
+              weekTotals: weekTotals,
+              weekMax: weekMax,
+              monday: monday,
+              today: today,
+            ),
+            todayBuilder: (context, day, focused) => _semanticDay(
+              context,
+              day,
+              weekTotals: weekTotals,
+              weekMax: weekMax,
+              monday: monday,
+              today: today,
+            ),
+            selectedBuilder: (context, day, focused) => _semanticDay(
+              context,
+              day,
+              weekTotals: weekTotals,
+              weekMax: weekMax,
+              monday: monday,
+              today: today,
+              enabled: true,
+            ),
+            outsideBuilder: (context, day, focused) => _semanticDay(
+              context,
+              day,
+              weekTotals: weekTotals,
+              weekMax: weekMax,
+              monday: monday,
+              today: today,
+              enabled: false,
+            ),
+            disabledBuilder: (context, day, focused) => _semanticDay(
+              context,
+              day,
+              weekTotals: weekTotals,
+              weekMax: weekMax,
+              monday: monday,
+              today: today,
+              enabled: false,
+            ),
+          ),
+          onDaySelected: (day, _) {
+            if (!_sameDay(day, focusedDay) && !day.isAfter(today)) {
+              _select(day);
+            }
+          },
+          selectedDayPredicate: (day) => _sameDay(focusedDay, day),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                onToday
+                    ? 'Today, ${DateFormat('d MMM').format(focusedDay)}'
+                    : DateFormat('d MMM').format(focusedDay),
+                style: TextStyle(
+                  color: context.c.textSecondary,
+                  fontSize: 14,
+                ),
+              ),
+              if (!onToday) ...[
+                const SizedBox(width: 8),
+                _TodayButton(onTap: () => _select(today)),
               ],
-            ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   Widget _semanticDay(
     BuildContext context,
-    DateTime day,
-    DateTime focused, {
+    DateTime day, {
+    required List<double> weekTotals,
+    required double weekMax,
+    required DateTime monday,
+    required DateTime today,
     bool enabled = true,
   }) {
     final selected = enabled && _sameDay(day, focusedDay);
-    final today = _sameDay(day, DateTime.now());
+    final isToday = _sameDay(day, today);
+    final dayIndex = day.difference(monday).inDays;
+    final total = (dayIndex >= 0 && dayIndex < 7) ? weekTotals[dayIndex] : 0.0;
+    final hasDoses = total > 0 && !day.isAfter(today);
     return Semantics(
       label:
           '${DateFormat.yMMMMEEEEd().format(day)}${selected ? ', selected' : ''}',
@@ -174,26 +216,41 @@ class HomeCalendarSection extends StatelessWidget {
       enabled: enabled,
       selected: selected,
       child: Center(
-        child: Container(
-          width: 40,
-          height: 40,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: selected
-                ? context.c.accent
-                : today
-                    ? context.c.accentMuted
-                    : null,
-            shape: BoxShape.circle,
-            border: selected ? Border.all(color: context.c.textPrimary) : null,
-          ),
-          child: Text(
-            '${day.day}',
-            style: TextStyle(
-              color: enabled ? context.c.textPrimary : context.c.textTertiary,
-              fontWeight: selected || today ? FontWeight.bold : null,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected
+                    ? context.c.accent
+                    : isToday
+                        ? context.c.accentMuted
+                        : null,
+                shape: BoxShape.circle,
+                border:
+                    selected ? Border.all(color: context.c.textPrimary) : null,
+              ),
+              child: Text(
+                '${day.day}',
+                style: TextStyle(
+                  color:
+                      enabled ? context.c.textPrimary : context.c.textTertiary,
+                  fontWeight: selected || isToday ? FontWeight.bold : null,
+                ),
+              ),
             ),
-          ),
+            const SizedBox(height: 3),
+            _DayBar(
+              key: ValueKey('home-day-bar-${day.year}-${day.month}-${day.day}'),
+              total: total,
+              weekMax: weekMax,
+              hasDoses: hasDoses,
+              selected: selected,
+            ),
+          ],
         ),
       ),
     );
@@ -326,6 +383,53 @@ class HomeCalendarSection extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// A small bar under a calendar date whose height encodes that day's total
+/// grams, scaled against the largest day in the visible week. Days with no
+/// doses show a faint dot so the column still reads as a unit.
+class _DayBar extends StatelessWidget {
+  const _DayBar({
+    super.key,
+    required this.total,
+    required this.weekMax,
+    required this.hasDoses,
+    required this.selected,
+  });
+
+  final double total;
+  final double weekMax;
+  final bool hasDoses;
+  final bool selected;
+
+  static const _maxHeight = 10.0;
+  static const _minHeight = 3.0;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!hasDoses) {
+      return Container(
+        width: 3,
+        height: 3,
+        decoration: BoxDecoration(
+          color: context.c.textTertiary.withValues(alpha: 0.35),
+          shape: BoxShape.circle,
+        ),
+      );
+    }
+    final fraction = weekMax > 0 ? (total / weekMax).clamp(0.0, 1.0) : 0.0;
+    final height = _minHeight + (_maxHeight - _minHeight) * fraction;
+    return Container(
+      width: 10,
+      height: height,
+      decoration: BoxDecoration(
+        color: selected
+            ? context.c.accent
+            : context.c.textTertiary.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(2),
       ),
     );
   }
