@@ -44,6 +44,76 @@ void main() {
     expect(result.map((point) => point.value), [2, 3, 5, 7, 8]);
   });
 
+  test('an unfinished today does not break the streak or count as rest', () {
+    final now = DateTime(2025, 2, 4, 9);
+    final rangeToToday = DateTimeRange(
+      start: DateTime(2025, 2, 1),
+      end: DateTime(2025, 2, 4),
+    );
+    // Three dosed days, then a today with nothing logged yet.
+    final doses = [
+      _dose('1', 1, DateTime(2025, 2, 1, 8)),
+      _dose('2', 2, DateTime(2025, 2, 2, 8)),
+      _dose('3', 3, DateTime(2025, 2, 3, 8)),
+    ];
+
+    final stats = computeDoseStats(doses, rangeToToday, now: now);
+
+    expect(stats.currentStreakDays, 3, reason: 'today is not yet a rest day');
+    expect(stats.longestRestStreak, 0);
+    expect(stats.restDays, 0);
+    expect(stats.avgPerDay, 2, reason: '6g over 3 closed days, not 4');
+  });
+
+  test('once today has a dose it counts as an ordinary day', () {
+    final now = DateTime(2025, 2, 4, 9);
+    final rangeToToday = DateTimeRange(
+      start: DateTime(2025, 2, 1),
+      end: DateTime(2025, 2, 4),
+    );
+    final doses = [
+      _dose('1', 1, DateTime(2025, 2, 1, 8)),
+      _dose('2', 2, DateTime(2025, 2, 2, 8)),
+      _dose('3', 3, DateTime(2025, 2, 3, 8)),
+      _dose('4', 4, DateTime(2025, 2, 4, 8)),
+    ];
+
+    final stats = computeDoseStats(doses, rangeToToday, now: now);
+
+    expect(stats.currentStreakDays, 4);
+    expect(stats.avgPerDay, 2.5);
+  });
+
+  test('a genuine rest day before today still breaks the streak', () {
+    final now = DateTime(2025, 2, 4, 9);
+    final rangeToToday = DateTimeRange(
+      start: DateTime(2025, 2, 1),
+      end: DateTime(2025, 2, 4),
+    );
+    // Feb 2 is a real, completed zero day.
+    final doses = [
+      _dose('1', 1, DateTime(2025, 2, 1, 8)),
+      _dose('3', 3, DateTime(2025, 2, 3, 8)),
+    ];
+
+    final stats = computeDoseStats(doses, rangeToToday, now: now);
+
+    expect(stats.currentStreakDays, 1);
+    expect(stats.longestRestStreak, 1);
+    expect(stats.restDays, 1);
+  });
+
+  test('hour histogram bins UTC timestamps by local hour', () {
+    final local = DateTime(2025, 2, 1, 7, 30);
+    final asUtc = local.toUtc();
+    expect(asUtc.isUtc, isTrue);
+
+    final histogram = hourHistogram([_dose('u', 1, asUtc)]);
+
+    expect(histogram[local.hour], 1, reason: 'binned by the local wall clock');
+    expect(histogram.reduce((a, b) => a + b), 1);
+  });
+
   test('date ranges are half-open at the day after end', () {
     final doses = [
       _dose('in-start', 1, DateTime(2025, 2, 1)),

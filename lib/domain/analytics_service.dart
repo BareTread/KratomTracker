@@ -30,8 +30,27 @@ class DoseStats {
   });
 }
 
-DoseStats computeDoseStats(List<Dosage> dosages, DateTimeRange range) {
+/// [now] is injectable so the partial-day rule below is testable; it defaults
+/// to the wall clock.
+DoseStats computeDoseStats(
+  List<Dosage> dosages,
+  DateTimeRange range, {
+  DateTime? now,
+}) {
   final daily = dailyTotals(dosages, range);
+
+  // A today that hasn't finished yet is not a completed rest day. Counted as
+  // one it zeroed `currentStreakDays` every morning before the first dose,
+  // padded `longestRestStreak`, and deflated `avgPerDay`. Drop it from the
+  // closed-day metrics only while it is still empty and still the last day in
+  // range; the moment it has a dose it counts like any other day.
+  final closed = Map<DateTime, double>.from(daily);
+  if (closed.isNotEmpty) {
+    final today = startOfDay(now ?? DateTime.now());
+    if (closed[today] == 0 && closed.keys.last == today) {
+      closed.remove(today);
+    }
+  }
   final filtered = dosages
       .where((dose) => inRangeInclusive(dose.timestamp, range.start, range.end))
       .toList()
@@ -57,14 +76,14 @@ DoseStats computeDoseStats(List<Dosage> dosages, DateTimeRange range) {
   }
 
   var currentStreak = 0;
-  for (final grams in daily.values.toList().reversed) {
+  for (final grams in closed.values.toList().reversed) {
     if (grams <= 0) break;
     currentStreak++;
   }
 
   var longestRest = 0;
   var runningRest = 0;
-  for (final grams in daily.values) {
+  for (final grams in closed.values) {
     if (grams == 0) {
       runningRest++;
       if (runningRest > longestRest) longestRest = runningRest;
@@ -76,12 +95,12 @@ DoseStats computeDoseStats(List<Dosage> dosages, DateTimeRange range) {
   return DoseStats(
     totalDoses: filtered.length,
     totalGrams: totalGrams,
-    avgPerDay: daily.isEmpty ? 0 : totalGrams / daily.length,
+    avgPerDay: closed.isEmpty ? 0 : totalGrams / closed.length,
     avgDoseSize: filtered.isEmpty ? 0 : totalGrams / filtered.length,
     avgGapBetweenDoses: averageGap,
     peakHour: peakCount == 0 ? null : histogram.indexOf(peakCount),
     activeDays: activeDays,
-    restDays: daily.length - activeDays,
+    restDays: closed.length - activeDays,
     currentStreakDays: currentStreak,
     longestRestStreak: longestRest,
   );
@@ -112,7 +131,10 @@ Map<DateTime, double> dailyTotals(List<Dosage> d, DateTimeRange range) {
 List<int> hourHistogram(List<Dosage> dosages) {
   final result = List<int>.filled(24, 0);
   for (final dose in dosages) {
-    result[dose.timestamp.hour]++;
+    // Localise first, like every other helper here: a UTC timestamp — which
+    // an import can carry — reports the UTC hour and lands in the wrong bin.
+    final t = dose.timestamp;
+    result[(t.isUtc ? t.toLocal() : t).hour]++;
   }
   return result;
 }

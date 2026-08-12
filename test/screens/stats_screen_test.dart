@@ -27,11 +27,12 @@ void main() {
     await provider.addStrain('Maeng Da', 'MD', 0xFF00ACC1, 'Leaf');
     final strainId = provider.strains.first.id;
 
-    // Empty 30d range: current streak 0, longest rest streak 30.
+    // Empty 30d range: current streak 0, longest rest streak 29 — today has
+    // not finished, so it is not yet a completed rest day.
     await tester.pumpWidget(_harness(provider));
     await tester.pumpAndSettle();
     expect(find.text('0 days'), findsOneWidget);
-    expect(find.text('30 days'), findsOneWidget);
+    expect(find.text('29 days'), findsOneWidget);
 
     // A single dose today: currentStreak = 1, longestRest = 29.
     final now = DateTime.now();
