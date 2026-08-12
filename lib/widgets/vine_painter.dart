@@ -184,19 +184,22 @@ class VineRhythm {
     // walk the body of a phone without clustering under the day card.
     final double maxRowCap;
     final double maxGapCap;
-    final double maxNowCap;
-    if (rows <= 2) {
+    if (rows == 1) {
+      // A lone dose has one node and one strip. Stretching the row just
+      // drops the leaf ~50px below where it sits on every other day, so the
+      // row stays at base and the strip — one continuous line — takes the
+      // slack. Without this the day reads as broken rather than sparse.
+      maxRowCap = baseRow;
+      maxGapCap = 420;
+    } else if (rows == 2) {
       maxRowCap = 200;
       maxGapCap = 160;
-      maxNowCap = 140;
     } else if (rows <= 3) {
       maxRowCap = maxRow;
       maxGapCap = maxGap;
-      maxNowCap = maxNow;
     } else {
       maxRowCap = baseRow * 1.18;
       maxGapCap = baseGap * 1.45;
-      maxNowCap = baseNow * 1.15;
     }
 
     var leftover = available - total();
@@ -218,18 +221,14 @@ class VineRhythm {
       leftover -= take;
     }
 
-    if (nows > 0 && leftover > 0) {
-      final room = (maxNowCap - now).clamp(0.0, double.infinity);
-      final take = math.min(leftover, room);
-      now += take;
-    }
-
-    // Final clamp uses the dose-aware caps (not the static max*) so 1–2
-    // dose days can actually reach the higher ceilings above.
+    // NOW keeps its base band. _NowRow centres a [baseNow]-tall band inside
+    // whatever pitch it is given, so surplus here is unpainted space that
+    // severs the vine just above the node — visible as a broken dash run on
+    // a 1-dose day. Every path that reaches this point has a dose above NOW.
     return VineRhythm(
       rowPitch: row.clamp(minRow, maxRowCap),
       gapStrip: gap.clamp(minGap, maxGapCap),
-      nowPitch: now.clamp(minNow, maxNowCap),
+      nowPitch: now,
     );
   }
 

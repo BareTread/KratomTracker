@@ -87,17 +87,18 @@ void main() {
       expect(content, greaterThan(viewportPhone * 0.7));
     });
 
-    test('1 dose today expands, stays within low-count caps', () {
+    test('1 dose today fills via the dashed strip, not the row or NOW', () {
       final r = VineRhythm.compute(
         viewportHeight: viewportPhone,
         doseCount: 1,
         showNow: true,
       );
-      // 1–2 dose ceilings: row ≤ 200, gap ≤ 160, now ≤ 140.
-      expect(r.rowPitch, lessThanOrEqualTo(200));
-      expect(r.gapStrip, lessThanOrEqualTo(160));
-      expect(r.nowPitch, lessThanOrEqualTo(140));
-      expect(r.rowPitch, greaterThanOrEqualTo(VineRhythm.baseRow));
+      // The leaf must land where it lands on every other day, and the NOW
+      // band must stay base — _NowRow centres a baseNow band in its pitch,
+      // so a taller pitch leaves unpainted space that breaks the vine.
+      expect(r.rowPitch, VineRhythm.baseRow);
+      expect(r.nowPitch, VineRhythm.baseNow);
+      // All the slack lands on the one continuous dashed run.
       expect(r.gapStrip, greaterThan(VineRhythm.baseGap));
       final content = r.contentHeight(doseCount: 1, showNow: true);
       final target =
