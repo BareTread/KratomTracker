@@ -33,22 +33,29 @@ class HomeDayCard extends StatelessWidget {
     final isToday = day == today;
     final dayDoses = provider.getDosagesForDate(day);
 
+    // Two left edges only: the card at 16, and the status line + its rule at
+    // 12 — the vine's own grid (see _HomeDayPage's horizontal padding). The
+    // rule then caps the timeline at exactly the timeline's width instead of
+    // stopping short of it.
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            key: const Key('home-day-card-surface'),
-            decoration: BoxDecoration(
-              color: context.c.surfaceRaised,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: context.c.hairline),
-            ),
-            child: HomeCalendarSection(
-              focusedDay: focusedDay,
-              onDaySelected: onDaySelected,
-              totalForDate: provider.totalForDate,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Container(
+              key: const Key('home-day-card-surface'),
+              decoration: BoxDecoration(
+                color: context.c.surfaceRaised,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: context.c.hairline),
+              ),
+              child: HomeCalendarSection(
+                focusedDay: focusedDay,
+                onDaySelected: onDaySelected,
+                totalForDate: provider.totalForDate,
+              ),
             ),
           ),
           const SizedBox(height: 10),
@@ -83,7 +90,7 @@ class _QuietStatusLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      padding: const EdgeInsets.symmetric(vertical: 2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -172,8 +179,9 @@ class _QuietStatusLine extends StatelessWidget {
   }
 }
 
-/// 156×1 rule under the quiet status line. Fades out at both ends via a
-/// linear gradient rather than a hard divider edge.
+/// Full-width 1px rule under the quiet status line, spanning the vine's grid.
+/// Fades symmetrically at both ends via a linear gradient rather than stopping
+/// on a hard divider edge.
 class _StatusRule extends StatelessWidget {
   const _StatusRule();
 
@@ -189,9 +197,10 @@ class _StatusRule extends StatelessWidget {
             colors: [
               border.withValues(alpha: 0),
               border,
+              border,
               border.withValues(alpha: 0),
             ],
-            stops: const [0, 0.06, 1],
+            stops: const [0, 0.1, 0.9, 1],
           ),
         ),
       ),

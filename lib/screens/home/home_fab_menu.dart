@@ -153,11 +153,21 @@ class _CircularFab extends StatelessWidget {
                 Color.lerp(accent, muted, 0.45)!,
               ],
             ),
+            // Two layers, not one glow: a tight neutral contact shadow does
+            // the lifting, and a wider, dimmer cyan bloom sits under it. A
+            // lone cyan glow made the disc look like it was emitting light
+            // rather than resting above the page.
             boxShadow: [
               BoxShadow(
-                color: accent.withValues(alpha: 0.28),
-                blurRadius: 14,
-                offset: const Offset(0, 5),
+                color: Colors.black.withValues(alpha: 0.5),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+              BoxShadow(
+                color: accent.withValues(alpha: 0.2),
+                blurRadius: 22,
+                spreadRadius: -2,
+                offset: const Offset(0, 7),
               ),
             ],
           ),
@@ -167,7 +177,7 @@ class _CircularFab extends StatelessWidget {
               duration: reduced ? Duration.zero : AppMotion.fast,
               child: Icon(
                 open ? Icons.close : Icons.add,
-                size: 28,
+                size: 24,
                 color: context.c.textPrimary,
               ),
             ),

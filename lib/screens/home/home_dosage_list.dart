@@ -459,33 +459,38 @@ class _GapRow extends StatelessWidget {
     // The elapsed figure belongs in the time gutter beside the clock times,
     // not punched through the stem: boxed on the vine it had to shrink to fit
     // the 72px band and came out an illegible smudge across a broken stem.
-    // The live gap (last dose → NOW) stays unlabelled — the status line above
-    // already carries that figure.
+    //
+    // Every interval on the vine is labelled, including the live one. Leaving
+    // the last gap blank left a hole in the timeline's own grammar at exactly
+    // the interval that matters most. It reads brighter and heavier than a
+    // settled gap because it is the one number still moving; the status line
+    // above keeps saying it too, so the figure survives being scrolled off on
+    // a long day.
     return SizedBox(
       height: gapStrip,
       child: Row(
         children: [
           SizedBox(
             width: VineGeometry.timeGutter,
-            child: toNow
-                ? null
-                : Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        _gapLabel(gap),
-                        style: TextStyle(
-                          color: context.c.textTertiary,
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w500,
-                          height: 1.1,
-                          letterSpacing: 0.42, // ~0.04em at 10.5px
-                          fontFeatures: _tabular,
-                        ),
-                      ),
-                    ),
+            child: Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  _gapLabel(gap),
+                  style: TextStyle(
+                    color: toNow
+                        ? context.c.textSecondary
+                        : context.c.textTertiary,
+                    fontSize: 10.5,
+                    fontWeight: toNow ? FontWeight.w600 : FontWeight.w500,
+                    height: 1.1,
+                    letterSpacing: 0.42, // ~0.04em at 10.5px
+                    fontFeatures: _tabular,
                   ),
+                ),
+              ),
+            ),
           ),
           SizedBox(
             width: VineGeometry.vineBand,

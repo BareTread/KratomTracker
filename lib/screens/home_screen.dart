@@ -171,11 +171,12 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-        // Circular FAB, bottom-right above the nav bar. Status line above
-        // carries the day total — no bottom summary bar.
+        // Circular FAB, bottom-right above the nav bar. Right edge aligns
+        // with the calendar card; the bottom sits at 24 so the disc and its
+        // bloom clear the nav bar instead of crowding "Manage".
         Positioned(
           right: 16,
-          bottom: 16,
+          bottom: 24,
           child: HomeFabMenu(
             key: _fabKey,
             onAddDose: _openAddDose,
