@@ -44,11 +44,10 @@ class _AddDosageFormState extends State<AddDosageForm> {
   Widget build(BuildContext context) {
     final provider = context.watch<KratomProvider>();
     final strains = provider.strains;
-    final maxHeight = MediaQuery.sizeOf(context).height * 0.9;
 
     if (strains.isEmpty) {
       return SizedBox(
-        height: maxHeight * 0.5,
+        height: MediaQuery.sizeOf(context).height * 0.45,
         child: _buildEmptyStrainsState(),
       );
     }
@@ -56,60 +55,61 @@ class _AddDosageFormState extends State<AddDosageForm> {
     final reduced = AppMotion.reduced(context);
     final duration = reduced ? Duration.zero : AppMotion.normal;
 
-    return SizedBox(
-      height: maxHeight,
-      child: AnimatedSwitcher(
-        duration: duration,
-        switchInCurve: AppMotion.emphasized,
-        switchOutCurve: AppMotion.emphasized,
-        layoutBuilder: (currentChild, previousChildren) {
-          return Stack(
-            alignment: Alignment.topCenter,
-            children: <Widget>[
-              ...previousChildren,
-              if (currentChild != null) currentChild,
-            ],
-          );
-        },
-        transitionBuilder: (child, animation) {
-          final offset = _forward
-              ? Tween<Offset>(
-                  begin: const Offset(0.06, 0),
-                  end: Offset.zero,
-                ).animate(animation)
-              : Tween<Offset>(
-                  begin: const Offset(-0.06, 0),
-                  end: Offset.zero,
-                ).animate(animation);
-          return FadeTransition(
-            opacity: animation,
-            child: SlideTransition(position: offset, child: child),
-          );
-        },
-        child: _strainSelected
-            ? _DosageDetailsForm(
-                key: const ValueKey('details'),
-                strainId: _selectedStrainId!,
-                openedAt: _openedAt,
-                onBack: () {
-                  setState(() {
-                    _forward = false;
-                    _strainSelected = false;
-                  });
-                },
-              )
-            : _StrainSelectionView(
-                key: const ValueKey('select'),
-                onStrainSelected: (strainId) {
-                  HapticFeedback.selectionClick();
-                  setState(() {
-                    _forward = true;
-                    _selectedStrainId = strainId;
-                    _strainSelected = true;
-                  });
-                },
-              ),
-      ),
+    // No outer height. Each step sizes itself: the picker claims 90% through
+    // its DraggableScrollableSheet, the details step takes only the height its
+    // fields need. Both are bottom-anchored, so the sheet grows and shrinks
+    // from the top and the visible content never jumps between steps.
+    return AnimatedSwitcher(
+      duration: duration,
+      switchInCurve: AppMotion.emphasized,
+      switchOutCurve: AppMotion.emphasized,
+      layoutBuilder: (currentChild, previousChildren) {
+        return Stack(
+          alignment: Alignment.bottomCenter,
+          children: <Widget>[
+            ...previousChildren,
+            if (currentChild != null) currentChild,
+          ],
+        );
+      },
+      transitionBuilder: (child, animation) {
+        final offset = _forward
+            ? Tween<Offset>(
+                begin: const Offset(0.06, 0),
+                end: Offset.zero,
+              ).animate(animation)
+            : Tween<Offset>(
+                begin: const Offset(-0.06, 0),
+                end: Offset.zero,
+              ).animate(animation);
+        return FadeTransition(
+          opacity: animation,
+          child: SlideTransition(position: offset, child: child),
+        );
+      },
+      child: _strainSelected
+          ? _DosageDetailsForm(
+              key: const ValueKey('details'),
+              strainId: _selectedStrainId!,
+              openedAt: _openedAt,
+              onBack: () {
+                setState(() {
+                  _forward = false;
+                  _strainSelected = false;
+                });
+              },
+            )
+          : _StrainSelectionView(
+              key: const ValueKey('select'),
+              onStrainSelected: (strainId) {
+                HapticFeedback.selectionClick();
+                setState(() {
+                  _forward = true;
+                  _selectedStrainId = strainId;
+                  _strainSelected = true;
+                });
+              },
+            ),
     );
   }
 
@@ -194,37 +194,51 @@ class _StrainSelectionView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.c;
-    return Consumer<KratomProvider>(
-      builder: (context, provider, child) {
-        final usage = provider.strainUsage;
+    // The list is handed the sheet's own ScrollController, so a downward drag
+    // started anywhere — including on a strain row — pulls the sheet down once
+    // the list is at the top, and an upward drag scrolls it as usual. Reaching
+    // minChildSize makes the enclosing BottomSheet close itself
+    // (shouldCloseOnMinExtent), so no dismissal wiring is needed here.
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.9,
+      minChildSize: 0.6,
+      maxChildSize: 0.9,
+      snap: true,
+      builder: (context, scrollController) {
+        final c = context.c;
+        return Consumer<KratomProvider>(
+          builder: (context, provider, child) {
+            final usage = provider.strainUsage;
 
-        return Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
-                child: Text(
-                  'Select Strain',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: c.textPrimary,
+            return Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
+                    child: Text(
+                      'Select Strain',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: c.textPrimary,
+                      ),
+                    ),
                   ),
-                ),
+                  Expanded(
+                    child: _buildList(c, provider, usage, scrollController),
+                  ),
+                ],
               ),
-              Expanded(
-                child: _buildList(c, provider, usage),
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -234,6 +248,7 @@ class _StrainSelectionView extends StatelessWidget {
     AppColors c,
     KratomProvider provider,
     List<StrainUsage> usage,
+    ScrollController scrollController,
   ) {
     // Stock is a partition applied AFTER the frozen ranking: in-stock strains
     // keep their relative order, then out-of-stock ones keep theirs.
@@ -247,6 +262,7 @@ class _StrainSelectionView extends StatelessWidget {
       // Day-one state: every strain in stock — no divider, no header, no
       // visual change from the pre-stock picker.
       return ListView.builder(
+        controller: scrollController,
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         itemCount: inStockItems.length,
         itemBuilder: (context, index) {
@@ -267,6 +283,7 @@ class _StrainSelectionView extends StatelessWidget {
 
     final totalCount = inStockItems.length + 1 + outOfStockItems.length;
     return ListView.builder(
+      controller: scrollController,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       itemCount: totalCount,
       itemBuilder: (context, index) {
