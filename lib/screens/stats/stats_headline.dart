@@ -34,7 +34,9 @@ String? driftDetail(DriftReading drift) {
           ? 'Bigger doses, not more of them.'
           : 'Smaller doses, same number of them.';
     case IntakeDriver.both:
-      return up ? 'More doses and bigger ones.' : 'Fewer doses and smaller ones.';
+      return up
+          ? 'More doses and bigger ones.'
+          : 'Fewer doses and smaller ones.';
     case IntakeDriver.none:
       if (drift.direction == DriftDirection.unknown && drift.level.doses > 0) {
         return 'Around ${formatAmount(drift.level.gramsPerDay)}g/day so far.';

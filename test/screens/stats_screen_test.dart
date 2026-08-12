@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kratom_tracker_plus/domain/date_utils.dart';
 import 'package:kratom_tracker_plus/providers/kratom_provider.dart';
 import 'package:kratom_tracker_plus/providers/theme_provider.dart';
+import 'package:kratom_tracker_plus/screens/stats/stats_headline.dart';
 import 'package:kratom_tracker_plus/screens/stats_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -107,10 +108,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Holding steady around 10g/day'), findsOneWidget);
-    // G = F × A, laid out as the equation it is.
-    expect(find.text('10'), findsOneWidget);
-    expect(find.text('4'), findsOneWidget);
-    expect(find.text('2.5'), findsOneWidget);
+    // G = F × A, laid out as the equation it is. Scoped to the equation:
+    // the Totals section further down restates several of these figures, so
+    // a bare find.text would match twice and say nothing about the headline.
+    Finder inEquation(String text) => find.descendant(
+          of: find.byType(IntakeEquation),
+          matching: find.text(text),
+        );
+    expect(inEquation('10'), findsOneWidget);
+    expect(inEquation('4'), findsOneWidget);
+    expect(inEquation('2.5'), findsOneWidget);
     expect(find.text('grams a day'), findsOneWidget);
     expect(find.text('doses a day'), findsOneWidget);
     expect(find.text('grams a dose'), findsOneWidget);

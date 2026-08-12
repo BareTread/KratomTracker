@@ -243,8 +243,8 @@ List<({double x, double value})> _bucket(
 /// Round the axis ceiling up to a number a person would have picked.
 double _niceCeiling(double value) {
   if (!value.isFinite || value <= 0) return 1;
-  final magnitude = math.pow(10, (math.log(value) / math.ln10).floor())
-      .toDouble();
+  final magnitude =
+      math.pow(10, (math.log(value) / math.ln10).floor()).toDouble();
   for (final multiple in const [1.0, 2.0, 2.5, 5.0]) {
     if (value <= multiple * magnitude) return multiple * magnitude;
   }

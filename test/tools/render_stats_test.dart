@@ -12,6 +12,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kratom_tracker_plus/domain/insights_service.dart';
 import 'package:kratom_tracker_plus/providers/kratom_provider.dart';
 import 'package:kratom_tracker_plus/providers/theme_provider.dart';
 import 'package:kratom_tracker_plus/screens/stats_screen.dart';
@@ -95,6 +96,27 @@ Future<void> _shoot(WidgetTester tester, String tab) async {
   final provider = await KratomProvider.create(
     await SharedPreferences.getInstance(),
   );
+
+  if (tab == '30d') {
+    final all = provider.dosages;
+    final gap = computeGapCompression(all, now: now);
+    final cycle = computeReturnCycle(all, now: now);
+    final breadth = computeRotationBreadth(all, now: now);
+    final first = computeFirstDoseDrift(all, now: now);
+    debugPrint(
+        'GAP      ${gap == null ? "silent" : "${gap.recent} vs ${gap.previous} "
+            "delta ${gap.delta} material=${gap.isMaterial}"}');
+    debugPrint('CYCLE    ${cycle == null ? "silent" : "${cycle.median} over "
+        "${cycle.events} returns across ${cycle.strains} strains, "
+        "delta ${cycle.delta} material=${cycle.isMaterial}"}');
+    debugPrint(
+        'BREADTH  ${breadth == null ? "silent" : "${breadth.observed} observed, "
+            "effective ${breadth.effective.toStringAsFixed(2)}, narrow=${breadth.isNarrow}"}');
+    debugPrint(
+        'FIRST    ${first == null ? "silent" : "${first.recentMinute} vs "
+            "${first.previousMinute} delta ${first.deltaMinutes}m "
+            "material=${first.isMaterial}"}');
+  }
 
   tester.view.physicalSize = const Size(_width, _height);
   tester.view.devicePixelRatio = 1;

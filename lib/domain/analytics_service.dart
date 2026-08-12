@@ -446,9 +446,7 @@ DriftReading computeDrift(
 }) {
   final facts = closedDayFacts(dosages, range, now: now);
   final level = IntakeFactors.of(
-    facts.length <= levelDays
-        ? facts
-        : facts.sublist(facts.length - levelDays),
+    facts.length <= levelDays ? facts : facts.sublist(facts.length - levelDays),
   );
 
   final dosedDays = facts.where((fact) => fact.doses > 0).length;
@@ -490,8 +488,7 @@ DriftReading computeDrift(
         ? DriftDirection.steady
         : (gramsPercent > 0 ? DriftDirection.up : DriftDirection.down);
   } else if (gramsFit != null && gramsFit.slope != 0) {
-    direction =
-        gramsFit.slope > 0 ? DriftDirection.up : DriftDirection.down;
+    direction = gramsFit.slope > 0 ? DriftDirection.up : DriftDirection.down;
   } else {
     direction = DriftDirection.steady;
   }
@@ -640,7 +637,8 @@ class RotationSummary {
   /// One strain carrying a quarter of everything is the shape tolerance
   /// builds in. Two strains at 30 doses each is rotation; one at 60 is not.
   bool get concentrated =>
-      rows.isNotEmpty && rows.first.strainId != null &&
+      rows.isNotEmpty &&
+      rows.first.strainId != null &&
       rows.first.share >= rotationConcentrationShare;
 }
 
@@ -723,6 +721,239 @@ RotationSummary rotationSummary(
     tail: tail,
     strainCount: ranked.length,
     totalGrams: totalGrams,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Totals
+// ---------------------------------------------------------------------------
+
+/// Everything ever logged, independent of the selected range.
+///
+/// [daysTracked] counts calendar days from the first dose to today inclusive,
+/// so it is the span he has been keeping records over — not the number of days
+/// he dosed, which is [activeDays]. The two differ by his rest days, and the
+/// gap between them is the point of showing both.
+class GrandTotals {
+  final double grams;
+  final int doses;
+  final int daysTracked;
+  final int activeDays;
+  final int strainsUsed;
+  final DateTime? firstDose;
+  final DateTime? lastDose;
+
+  const GrandTotals({
+    required this.grams,
+    required this.doses,
+    required this.daysTracked,
+    required this.activeDays,
+    required this.strainsUsed,
+    required this.firstDose,
+    required this.lastDose,
+  });
+
+  static const none = GrandTotals(
+    grams: 0,
+    doses: 0,
+    daysTracked: 0,
+    activeDays: 0,
+    strainsUsed: 0,
+    firstDose: null,
+    lastDose: null,
+  );
+
+  /// Mean grams on the days he actually dosed. Distinct from
+  /// [IntakeFactors.gramsPerDay], which spreads the same grams across rest
+  /// days too and therefore always reads lower.
+  double get gramsPerActiveDay => activeDays == 0 ? 0 : grams / activeDays;
+
+  double get dosesPerActiveDay => activeDays == 0 ? 0 : doses / activeDays;
+
+  double get gramsPerDose => doses == 0 ? 0 : grams / doses;
+}
+
+GrandTotals grandTotals(List<Dosage> dosages, {DateTime? now}) {
+  if (dosages.isEmpty) return GrandTotals.none;
+
+  var grams = 0.0;
+  DateTime? first;
+  DateTime? last;
+  final activeDays = <DateTime>{};
+  final strains = <String>{};
+  for (final dose in dosages) {
+    grams += dose.amount;
+    final local =
+        dose.timestamp.isUtc ? dose.timestamp.toLocal() : dose.timestamp;
+    if (first == null || local.isBefore(first)) first = local;
+    if (last == null || local.isAfter(last)) last = local;
+    activeDays.add(startOfDay(local));
+    strains.add(dose.strainId);
+  }
+
+  // An import can carry a dose dated ahead of the wall clock; clamp so the
+  // span never reads as negative.
+  final today = startOfDay(now ?? DateTime.now());
+  final end = last!.isAfter(today) ? startOfDay(last) : today;
+
+  return GrandTotals(
+    grams: grams,
+    doses: dosages.length,
+    daysTracked: daysBetween(first!, end) + 1,
+    activeDays: activeDays.length,
+    strainsUsed: strains.length,
+    firstDose: first,
+    lastDose: last,
+  );
+}
+
+/// The same factors as [IntakeFactors.of], but over dosed days only.
+IntakeFactors activeDayFactors(List<DayFacts> facts) => IntakeFactors.of([
+      for (final f in facts)
+        if (f.doses > 0) f,
+    ]);
+
+// ---------------------------------------------------------------------------
+// Weekday
+// ---------------------------------------------------------------------------
+
+/// Mean grams per weekday, indexed [DateTime.monday] - 1 .. [DateTime.sunday] - 1.
+///
+/// Averaged per occurrence, never summed: a 30-day window holds five of some
+/// weekdays and four of others, so totals would crown whichever weekday the
+/// window happened to contain more of.
+class WeekdayRhythm {
+  final List<double> gramsByWeekday;
+  final List<int> daysByWeekday;
+
+  /// Null until every weekday has been seen [minOccurrences] times. A 30-day
+  /// window holds four or five of each weekday, which is not enough for the
+  /// heaviest one to mean anything — the winner changes week to week. At a
+  /// full quarter it starts to hold still.
+  final int? busiest;
+  final int? quietest;
+
+  static const minOccurrences = 12;
+
+  const WeekdayRhythm({
+    required this.gramsByWeekday,
+    required this.daysByWeekday,
+    required this.busiest,
+    required this.quietest,
+  });
+
+  static const none = WeekdayRhythm(
+    gramsByWeekday: [0, 0, 0, 0, 0, 0, 0],
+    daysByWeekday: [0, 0, 0, 0, 0, 0, 0],
+    busiest: null,
+    quietest: null,
+  );
+}
+
+WeekdayRhythm computeWeekdayRhythm(List<DayFacts> facts) {
+  if (facts.isEmpty) return WeekdayRhythm.none;
+
+  final totals = List<double>.filled(7, 0);
+  final counts = List<int>.filled(7, 0);
+  for (final fact in facts) {
+    final index = fact.day.weekday - 1;
+    totals[index] += fact.grams;
+    counts[index]++;
+  }
+
+  final means = [
+    for (var i = 0; i < 7; i++) counts[i] == 0 ? 0.0 : totals[i] / counts[i],
+  ];
+
+  final enough = counts.every((count) => count >= WeekdayRhythm.minOccurrences);
+  int? busiest;
+  int? quietest;
+  if (enough) {
+    for (var i = 0; i < 7; i++) {
+      if (busiest == null || means[i] > means[busiest]) busiest = i;
+      if (quietest == null || means[i] < means[quietest]) quietest = i;
+    }
+    // A flat week has no busiest day worth naming.
+    if (means[busiest!] - means[quietest!] < means[busiest] * 0.08) {
+      busiest = null;
+      quietest = null;
+    }
+  }
+
+  return WeekdayRhythm(
+    gramsByWeekday: means,
+    daysByWeekday: counts,
+    busiest: busiest,
+    quietest: quietest,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Spacing
+// ---------------------------------------------------------------------------
+
+/// How far apart doses sit, counting only pairs inside the same calendar day.
+///
+/// The naive version — every consecutive pair across the whole range — folds
+/// the overnight break into the average and converges on `24h / dosesPerDay`
+/// regardless of how the day is actually shaped. That number looks like a
+/// spacing measurement and is really just the dose count in disguise. Same-day
+/// pairs measure the thing the name promises.
+class DoseSpacing {
+  final Duration? median;
+  final Duration? shortest;
+
+  /// Same-day consecutive pairs seen, and the days they came from. The days
+  /// are the effective sample size — see [computeDoseSpacing].
+  final int samples;
+  final int days;
+
+  const DoseSpacing({
+    required this.median,
+    required this.shortest,
+    required this.samples,
+    required this.days,
+  });
+
+  static const none =
+      DoseSpacing(median: null, shortest: null, samples: 0, days: 0);
+}
+
+DoseSpacing computeDoseSpacing(List<Dosage> dosages, DateTimeRange range) {
+  final byDay = <DateTime, List<DateTime>>{};
+  for (final dose in dosages) {
+    if (!inRangeInclusive(dose.timestamp, range.start, range.end)) continue;
+    final local =
+        dose.timestamp.isUtc ? dose.timestamp.toLocal() : dose.timestamp;
+    (byDay[startOfDay(local)] ??= []).add(local);
+  }
+
+  // Each day contributes its own median, and the answer is the median of
+  // those. Pooling every gap instead would let a six-dose day outvote a
+  // two-dose day five to one, so the figure would drift toward whatever the
+  // busiest days looked like rather than the typical day.
+  final dailyMedians = <double>[];
+  var shortest = double.infinity;
+  var pairs = 0;
+  for (final times in byDay.values) {
+    if (times.length < 2) continue;
+    times.sort();
+    final gaps = <double>[];
+    for (var i = 1; i < times.length; i++) {
+      final seconds = times[i].difference(times[i - 1]).inSeconds.toDouble();
+      gaps.add(seconds);
+      if (seconds < shortest) shortest = seconds;
+    }
+    pairs += gaps.length;
+    dailyMedians.add(_median(gaps));
+  }
+  if (dailyMedians.isEmpty) return DoseSpacing.none;
+
+  return DoseSpacing(
+    median: Duration(seconds: _median(dailyMedians).round()),
+    shortest: Duration(seconds: shortest.round()),
+    samples: pairs,
+    days: dailyMedians.length,
   );
 }
 

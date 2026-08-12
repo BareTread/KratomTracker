@@ -83,7 +83,12 @@ class _HoursPainter extends CustomPainter {
   final Color labelColor;
 
   static const double _bottomPad = 16;
-  static const Map<int, String> _ticks = {0: '12a', 6: '6a', 12: '12p', 18: '6p'};
+  static const Map<int, String> _ticks = {
+    0: '12a',
+    6: '6a',
+    12: '12p',
+    18: '6p',
+  };
 
   @override
   void paint(Canvas canvas, Size size) {

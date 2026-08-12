@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/analytics_service.dart';
+import '../../domain/insights_service.dart';
 import '../../domain/date_utils.dart';
 import '../../models/strain.dart';
 import '../../providers/kratom_provider.dart';
@@ -53,6 +54,21 @@ class StatsBundle {
   final DoseStats stats;
   final Map<String, Strain> strainsById;
 
+  /// The plain readout. [rangeFactors] spreads the range's grams over every
+  /// closed day, [activeFactors] over the dosed ones only; showing both is the
+  /// point, since the gap between them is what rest days are worth.
+  final IntakeFactors rangeFactors;
+  final IntakeFactors activeFactors;
+  final DoseSpacing spacing;
+  final WeekdayRhythm weekday;
+  final GrandTotals totals;
+
+  /// The insight tier. Each is null until it has enough history to speak.
+  final GapCompression? gapCompression;
+  final ReturnCycle? returnCycle;
+  final RotationBreadth? breadth;
+  final FirstDoseDrift? firstDoseDrift;
+
   /// Any dose ever logged, versus any dose inside the selected range. An
   /// empty 30d window on top of a year of history is a different page from a
   /// brand new install.
@@ -70,6 +86,15 @@ class StatsBundle {
     required this.rotation,
     required this.stats,
     required this.strainsById,
+    required this.rangeFactors,
+    required this.activeFactors,
+    required this.spacing,
+    required this.weekday,
+    required this.totals,
+    required this.gapCompression,
+    required this.returnCycle,
+    required this.breadth,
+    required this.firstDoseDrift,
     required this.hasHistory,
     required this.hasDataInRange,
   });
@@ -108,7 +133,9 @@ class StatsBundle {
     // window — but never past the first dose he ever logged, where there is
     // no history to reach into and zeros would drag the line down.
     var chartStart = addDays(range.start, -(trajectoryWindowDays - 1));
-    if (earliest != null && chartStart.isBefore(earliest)) chartStart = earliest;
+    if (earliest != null && chartStart.isBefore(earliest)) {
+      chartStart = earliest;
+    }
     if (chartStart.isAfter(range.start)) chartStart = range.start;
 
     final chartFacts = closedDayFacts(
@@ -124,11 +151,15 @@ class StatsBundle {
     final days = <DateTime>[];
     final dailyGrams = <double>[];
     final trend = <double>[];
+    // The warm-up days ahead of the left edge feed the median but must not
+    // reach the totals, or the range picker would stop meaning anything.
+    final rangeFacts = <DayFacts>[];
     for (var i = 0; i < chartFacts.length; i++) {
       if (chartFacts[i].day.isBefore(range.start)) continue;
       days.add(chartFacts[i].day);
       dailyGrams.add(chartFacts[i].grams);
       trend.add(medians[i].value);
+      rangeFacts.add(chartFacts[i]);
     }
 
     final rotation = rotationSummary(dosages, range);
@@ -144,6 +175,18 @@ class StatsBundle {
       rotation: rotation,
       stats: computeDoseStats(dosages, range, now: now),
       strainsById: {for (final strain in provider.strains) strain.id: strain},
+      rangeFactors: IntakeFactors.of(rangeFacts),
+      activeFactors: activeDayFactors(rangeFacts),
+      spacing: computeDoseSpacing(dosages, range),
+      weekday: computeWeekdayRhythm(rangeFacts),
+      totals: grandTotals(dosages, now: now),
+      // Insights read all of history, not the selected range: they are
+      // comparisons between fixed windows and the range picker must not be
+      // able to reshape them.
+      gapCompression: computeGapCompression(dosages, now: now),
+      returnCycle: computeReturnCycle(dosages, now: now),
+      breadth: computeRotationBreadth(dosages, now: now),
+      firstDoseDrift: computeFirstDoseDrift(dosages, now: now),
       hasHistory: dosages.isNotEmpty,
       hasDataInRange: rotation.totalGrams > 0,
     );

@@ -7,8 +7,10 @@ import 'report_screen.dart';
 import 'stats/stats_bundle.dart';
 import 'stats/stats_common.dart';
 import 'stats/stats_headline.dart';
+import 'stats/stats_insights.dart';
 import 'stats/stats_rest.dart';
 import 'stats/stats_rotation.dart';
+import 'stats/stats_totals.dart';
 import 'stats/stats_trajectory.dart';
 import 'stats/stats_when.dart';
 
@@ -19,9 +21,15 @@ import 'stats/stats_when.dart';
 ///   * `G = F × A`, so a rise says whether it came from more doses or bigger
 ///     ones, which are different problems;
 ///   * the trajectory, as evidence for the sentence;
-///   * when the doses land, how the rotation is spread, how the rest days sit.
+///   * when the doses land, how the rotation is spread;
+///   * an insight tier — the handful of things eighteen months of timestamps
+///     can say that a total cannot, each silent until it has the observations
+///     to back it;
+///   * then the plain numbers: totals for the range, rest, and all time.
 ///
-/// No totals, no averages-for-their-own-sake, no legends.
+/// The order is deliberate. Everything above the fold argues a case; the
+/// totals sit underneath as the material it was argued from, for when the
+/// question is simply "how much".
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
 
@@ -88,6 +96,12 @@ class _StatsScreenState extends State<StatsScreen> {
     if (!bundle.hasHistory) {
       return const [_NothingYet()];
     }
+    final insights = InsightsSection(
+      gap: bundle.gapCompression,
+      cycle: bundle.returnCycle,
+      breadth: bundle.breadth,
+      firstDose: bundle.firstDoseDrift,
+    );
     return [
       StatsHeadline(bundle: bundle),
       if (bundle.hasDataInRange) ...[
@@ -106,8 +120,22 @@ class _StatsScreenState extends State<StatsScreen> {
             strainsById: bundle.strainsById,
           ),
         ),
+        if (insights.hasAny) StatsSection(label: 'Insights', child: insights),
+        StatsSection(
+          label: 'Totals',
+          child: TotalsSection(
+            range: bundle.rangeFactors,
+            active: bundle.activeFactors,
+            spacing: bundle.spacing,
+            weekday: bundle.weekday,
+          ),
+        ),
       ],
       StatsSection(label: 'Rest', child: RestLine(stats: bundle.stats)),
+      StatsSection(
+        label: 'All time',
+        child: AllTimeSection(totals: bundle.totals),
+      ),
     ];
   }
 
