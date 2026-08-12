@@ -567,7 +567,6 @@ class ReportScreen extends StatelessWidget {
       await shareDosagesCsv(
         dosages: provider.dosages,
         strains: provider.strains,
-        effects: provider.effects,
       );
       messenger.showSnackBar(
         const SnackBar(content: Text('CSV export ready to share')),

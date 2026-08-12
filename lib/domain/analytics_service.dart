@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../models/dosage.dart';
-import '../models/effect.dart';
 import 'date_utils.dart';
 
 class DoseStats {
@@ -195,9 +194,6 @@ class StrainInsight {
   final double totalGrams;
   final double avgDoseSize;
   final ({double p25, double median, double p75})? doseSpread;
-  final Map<EffectMetric, double> avgEffects;
-  final int effectSampleCount;
-  final Duration? avgReportedDuration;
   final DateTime? firstUsed;
   final DateTime? lastUsed;
 
@@ -207,9 +203,6 @@ class StrainInsight {
     required this.totalGrams,
     required this.avgDoseSize,
     required this.doseSpread,
-    required this.avgEffects,
-    required this.effectSampleCount,
-    required this.avgReportedDuration,
     required this.firstUsed,
     required this.lastUsed,
   });
@@ -218,34 +211,11 @@ class StrainInsight {
 StrainInsight computeStrainInsight(
   String strainId,
   List<Dosage> all,
-  List<Effect> effects,
 ) {
   final doses = all.where((dose) => dose.strainId == strainId).toList()
     ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-  final doseIds = doses.map((dose) => dose.id).toSet();
-  final matchingEffects = effects
-      .where((effect) => doseIds.contains(effect.dosageId))
-      .toList(growable: false);
   final totalGrams = doses.fold<double>(0, (sum, dose) => sum + dose.amount);
   final sortedAmounts = doses.map((dose) => dose.amount).toList()..sort();
-  final averages = <EffectMetric, double>{};
-
-  for (final metric in EffectMetric.values) {
-    final values = matchingEffects
-        .map(metric.valueOf)
-        .whereType<int>()
-        .toList(growable: false);
-    if (values.isNotEmpty) {
-      averages[metric] = values.reduce((a, b) => a + b) / values.length;
-    }
-  }
-
-  final durations = matchingEffects
-      .map((effect) => effect.duration)
-      .whereType<Duration>()
-      .toList(growable: false);
-  final totalDuration =
-      durations.fold<int>(0, (sum, d) => sum + d.inMicroseconds);
 
   return StrainInsight(
     strainId: strainId,
@@ -259,11 +229,6 @@ StrainInsight computeStrainInsight(
             median: _percentile(sortedAmounts, 0.5),
             p75: _percentile(sortedAmounts, 0.75),
           ),
-    avgEffects: averages,
-    effectSampleCount: matchingEffects.length,
-    avgReportedDuration: durations.isEmpty
-        ? null
-        : Duration(microseconds: (totalDuration / durations.length).round()),
     firstUsed: doses.isEmpty ? null : doses.first.timestamp,
     lastUsed: doses.isEmpty ? null : doses.last.timestamp,
   );

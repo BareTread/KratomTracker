@@ -129,7 +129,6 @@ Future<KratomProvider> _provider({List<Map<String, Object?>>? dosages}) async {
       },
     ]),
     'dosages': jsonEncode(dosages ?? const []),
-    'effects': '[]',
   });
   return KratomProvider.create(await SharedPreferences.getInstance());
 }

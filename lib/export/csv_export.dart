@@ -7,7 +7,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/dosage.dart';
-import '../models/effect.dart';
 import '../models/strain.dart';
 
 /// One row per dose, oldest first. UTF-8 with a BOM so Excel opens it
@@ -17,13 +16,8 @@ import '../models/strain.dart';
 String exportDosagesCsv({
   required List<Dosage> dosages,
   required List<Strain> strains,
-  required List<Effect> effects,
 }) {
   final strainById = {for (final s in strains) s.id: s};
-  final effectByDosage = <String, Effect>{};
-  for (final effect in effects) {
-    effectByDosage.putIfAbsent(effect.dosageId, () => effect);
-  }
 
   final ordered = [...dosages]
     ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
@@ -34,18 +28,16 @@ String exportDosagesCsv({
 
   for (final dose in ordered) {
     final strain = strainById[dose.strainId];
-    final effect = effectByDosage[dose.id];
-    buffer.writeln(_row(dose, strain, effect));
+    buffer.writeln(_row(dose, strain));
   }
 
   return buffer.toString();
 }
 
 const _header =
-    'date,time,iso_timestamp,strain_code,strain_name,amount_g,notes,'
-    'energy,mood,pain_relief,focus,anxiety,duration_min,effect_notes';
+    'date,time,iso_timestamp,strain_code,strain_name,amount_g,notes';
 
-String _row(Dosage dose, Strain? strain, Effect? effect) {
+String _row(Dosage dose, Strain? strain) {
   final fields = <String>[
     DateFormat('yyyy-MM-dd').format(dose.timestamp),
     DateFormat('HH:mm').format(dose.timestamp),
@@ -54,13 +46,6 @@ String _row(Dosage dose, Strain? strain, Effect? effect) {
     strain?.name ?? 'Unknown strain',
     _formatAmount(dose.amount),
     dose.notes ?? '',
-    effect?.energy.toString() ?? '',
-    effect?.mood.toString() ?? '',
-    effect?.painRelief.toString() ?? '',
-    effect?.focus?.toString() ?? '',
-    effect?.anxiety?.toString() ?? '',
-    effect?.duration?.inMinutes.toString() ?? '',
-    effect?.notes ?? '',
   ];
   return fields.map(_quote).join(',');
 }
@@ -87,12 +72,10 @@ String _quote(String field) {
 Future<String> shareDosagesCsv({
   required List<Dosage> dosages,
   required List<Strain> strains,
-  required List<Effect> effects,
 }) async {
   final csv = exportDosagesCsv(
     dosages: dosages,
     strains: strains,
-    effects: effects,
   );
 
   final stamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());

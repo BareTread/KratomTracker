@@ -131,7 +131,6 @@ void main() {
           },
           // C never used → highest rotation priority
         ]),
-        'effects': '[]',
       });
 
       final prefs = await SharedPreferences.getInstance();
@@ -194,7 +193,6 @@ void main() {
                 now.subtract(const Duration(days: 5)).toIso8601String(),
           },
         ]),
-        'effects': '[]',
       });
       final provider =
           await KratomProvider.create(await SharedPreferences.getInstance());
@@ -424,7 +422,6 @@ Future<KratomProvider> searchSeed() async {
             now.subtract(const Duration(days: 4)).toIso8601String(),
       },
     ]),
-    'effects': '[]',
   });
   return KratomProvider.create(await SharedPreferences.getInstance());
 }
@@ -448,7 +445,6 @@ Future<KratomProvider> _seededProvider() async {
       },
     ]),
     'dosages': '[]',
-    'effects': '[]',
   });
   return KratomProvider.create(await SharedPreferences.getInstance());
 }

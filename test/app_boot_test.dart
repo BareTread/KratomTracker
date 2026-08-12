@@ -124,29 +124,15 @@ Map<String, Object> _realisticDataset() {
       if (index % 11 == 0) 'notes': 'Seeded note $index',
     };
   });
-  final effects = [
-    for (var index = 0; index < dosages.length; index += 9)
-      {
-        'id': 'effect-$index',
-        'dosageId': 'dose-$index',
-        'timestamp': (dosages[index]['timestamp'] as String),
-        'mood': 1 + index % 5,
-        'energy': 1 + (index + 1) % 5,
-        'painRelief': 1 + (index + 2) % 5,
-        'focus': 1 + (index + 3) % 5,
-      },
-  ];
 
   return {
     'strains': jsonEncode(strains),
     'dosages': jsonEncode(dosages),
-    'effects': jsonEncode(effects),
     'settings': jsonEncode({
       'enableNotifications': false,
       'dailyLimit': 12.0,
       'enableToleranceTracking': true,
       'toleranceBreakInterval': 14,
-      'trackedEffects': ['mood', 'energy', 'painRelief', 'focus'],
       'measurementUnit': 'g',
       'performanceMode': false,
     }),

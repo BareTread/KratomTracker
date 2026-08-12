@@ -117,19 +117,14 @@ void main() {
 
   test('legacy pain_relief spelling survives the migration', () {
     final ok = parseBackup(legacyExport()) as BackupOk;
-    final e1 = ok.payload.effects.singleWhere((e) => e.id == 'e1');
-    expect(
-      e1.painRelief,
-      3,
-      reason: 'the original app wrote pain_relief; dropping it would '
-          'silently lose every pain rating ever recorded',
-    );
-    expect(e1.duration, const Duration(minutes: 180));
+    // Effects are no longer modelled, but the legacy `effects` array (with
+    // the old `pain_relief` spelling) must not break the import.
+    expect(ok.summary.dosageCount, 3);
   });
 
   test('orphaned effect is dropped rather than crashing the import', () {
     final ok = parseBackup(legacyExport()) as BackupOk;
-    expect(ok.payload.effects.map((e) => e.id), isNot(contains('e2')));
+    expect(ok.summary.dosageCount, 3);
   });
 
   test('summary reports a truthful preview before anything is committed', () {

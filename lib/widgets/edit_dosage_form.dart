@@ -4,11 +4,9 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../models/dosage.dart';
-import '../models/effect.dart';
 import '../providers/kratom_provider.dart';
 import '../theme/app_theme.dart';
 import 'add_dosage_form.dart' show parseDoseAmount, validateDoseAmount;
-import 'effect_log_sheet.dart';
 
 class EditDosageForm extends StatefulWidget {
   final Dosage dosage;
@@ -137,21 +135,10 @@ class _EditDosageFormState extends State<EditDosageForm> {
     }
   }
 
-  void _openEffectSheet(Effect? existing) {
-    EffectLogSheet.show(
-      context,
-      dosageId: widget.dosage.id,
-      existing: existing,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<KratomProvider>();
     final c = context.c;
-    final existingEffects = provider.effectsForDosage(widget.dosage.id);
-    final existingEffect =
-        existingEffects.isEmpty ? null : existingEffects.first;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -236,32 +223,6 @@ class _EditDosageFormState extends State<EditDosageForm> {
                     ),
                   ),
                 ],
-              ),
-              const SizedBox(height: 16),
-              OutlinedButton.icon(
-                onPressed: () => _openEffectSheet(existingEffect),
-                icon: Icon(
-                  existingEffect == null
-                      ? Icons.sentiment_satisfied_alt_outlined
-                      : Icons.edit_note_outlined,
-                  size: 18,
-                ),
-                label: Text(
-                  existingEffect == null
-                      ? 'How did it feel?'
-                      : 'Edit how it felt',
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: c.textSecondary,
-                  side: BorderSide(color: c.hairline),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
               ),
               const SizedBox(height: 24),
               SizedBox(

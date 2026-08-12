@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import '../models/_coerce.dart';
 import '../models/dosage.dart';
-import '../models/effect.dart';
 import '../models/settings.dart';
 import '../models/strain.dart';
 
@@ -13,7 +12,6 @@ class BackupPayload {
   final DateTime? createdAt;
   final List<Strain> strains;
   final List<Dosage> dosages;
-  final List<Effect> effects;
   final UserSettings? settings;
   final String? userName;
 
@@ -22,7 +20,6 @@ class BackupPayload {
     required this.createdAt,
     required this.strains,
     required this.dosages,
-    required this.effects,
     required this.settings,
     required this.userName,
   });
@@ -31,7 +28,6 @@ class BackupPayload {
 class BackupSummary {
   final int strainCount;
   final int dosageCount;
-  final int effectCount;
   final DateTime? earliestDose;
   final DateTime? latestDose;
   final double totalGrams;
@@ -40,7 +36,6 @@ class BackupSummary {
   const BackupSummary({
     required this.strainCount,
     required this.dosageCount,
-    required this.effectCount,
     required this.earliestDose,
     required this.latestDose,
     required this.totalGrams,
@@ -115,22 +110,6 @@ BackupParseResult parseBackup(String jsonText) {
     );
   }
 
-  final rawEffects = _parseEffects(root?['effects'], warnings);
-  final dosageIds = dosages.map((dose) => dose.id).toSet();
-  final orphanedEffectCount =
-      rawEffects.where((effect) => !dosageIds.contains(effect.dosageId)).length;
-  final effects = rawEffects
-      .where((effect) => dosageIds.contains(effect.dosageId))
-      .toList(growable: false);
-  if (orphanedEffectCount > 0) {
-    warnings.add(
-      '$orphanedEffectCount '
-      '${_plural(orphanedEffectCount, 'effect', 'effects')} referenced a '
-      'missing dosage and '
-      '${_plural(orphanedEffectCount, 'was', 'were')} dropped',
-    );
-  }
-
   if (strains.isEmpty && dosages.isEmpty) {
     return BackupError(
       'Backup contained no recoverable strains or dosages',
@@ -156,14 +135,12 @@ BackupParseResult parseBackup(String jsonText) {
     createdAt: createdAt,
     strains: List.unmodifiable(strains),
     dosages: List.unmodifiable(dosages),
-    effects: List.unmodifiable(effects),
     settings: settings,
     userName: _optionalString(root?['userName'] ?? root?['user_name']),
   );
   final summary = BackupSummary(
     strainCount: strains.length,
     dosageCount: dosages.length,
-    effectCount: effects.length,
     earliestDose: sortedDates.isEmpty ? null : sortedDates.first,
     latestDose: sortedDates.isEmpty ? null : sortedDates.last,
     totalGrams: dosages.fold(0, (sum, dose) => sum + dose.amount),
@@ -230,34 +207,6 @@ List<Dosage> _parseDosages(dynamic value, List<String> warnings) {
       '$malformed ${_plural(malformed, 'malformed dosage was', 'malformed '
           'dosages were')} skipped',
     );
-  }
-  return result;
-}
-
-List<Effect> _parseEffects(dynamic value, List<String> warnings) {
-  if (value == null) return const [];
-  if (value is! List) {
-    warnings.add('Effects were not a list and were skipped');
-    return const [];
-  }
-  var malformed = 0;
-  final result = <Effect>[];
-  for (final item in value) {
-    if (item is! Map) {
-      malformed++;
-      continue;
-    }
-    final map = _stringMap(item);
-    if (asString(map['id']).isEmpty ||
-        asString(map['dosageId']).isEmpty ||
-        DateTime.tryParse(asString(map['timestamp'])) == null) {
-      malformed++;
-      continue;
-    }
-    result.add(Effect.fromJson(map));
-  }
-  if (malformed > 0) {
-    warnings.add('$malformed malformed effects were skipped');
   }
   return result;
 }

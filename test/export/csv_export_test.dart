@@ -3,20 +3,18 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kratom_tracker_plus/export/csv_export.dart';
 import 'package:kratom_tracker_plus/models/dosage.dart';
-import 'package:kratom_tracker_plus/models/effect.dart';
 import 'package:kratom_tracker_plus/models/strain.dart';
 
 void main() {
   group('exportDosagesCsv', () {
     test('emits a UTF-8 BOM and the exact header row', () {
-      final csv = exportDosagesCsv(dosages: [], strains: [], effects: []);
+      final csv = exportDosagesCsv(dosages: [], strains: []);
       expect(csv.startsWith('\uFEFF'), isTrue);
       final lines = const LineSplitter().convert(csv);
       final firstLine = lines.first.replaceFirst('\uFEFF', '');
       expect(
         firstLine,
-        'date,time,iso_timestamp,strain_code,strain_name,amount_g,notes,'
-        'energy,mood,pain_relief,focus,anxiety,duration_min,effect_notes',
+        'date,time,iso_timestamp,strain_code,strain_name,amount_g,notes',
       );
     });
 
@@ -39,7 +37,6 @@ void main() {
             icon: 'Leaf',
           ),
         ],
-        effects: [],
       );
 
       // The note field must be wrapped in quotes, with the embedded quote
@@ -75,20 +72,6 @@ void main() {
           notes: 'comma, note',
         ),
       ];
-      final effects = [
-        Effect(
-          id: 'e1',
-          dosageId: 'd2',
-          timestamp: DateTime(2025, 3, 2, 10),
-          mood: 4,
-          energy: 3,
-          painRelief: 2,
-          anxiety: 5,
-          focus: 3,
-          notes: 'felt good',
-          duration: const Duration(minutes: 120),
-        ),
-      ];
       final csv = exportDosagesCsv(
         dosages: doses,
         strains: [
@@ -100,13 +83,12 @@ void main() {
             icon: 'Leaf',
           ),
         ],
-        effects: effects,
       );
 
       // Parse the CSV respecting quoted fields, then verify column counts.
       final records = _parseCsv(csv);
       final header = records.first;
-      expect(header, hasLength(14));
+      expect(header, hasLength(7));
       for (final row in records.skip(1)) {
         expect(row, hasLength(header.length), reason: 'row: $row');
       }
@@ -144,7 +126,6 @@ void main() {
             icon: 'Leaf',
           ),
         ],
-        effects: [],
       );
       final records = _parseCsv(csv);
       final ids = records.skip(1).map((r) => r[2]).toList(); // iso_timestamp
@@ -166,7 +147,6 @@ void main() {
       final csv = exportDosagesCsv(
         dosages: [dose],
         strains: const [],
-        effects: [],
       );
       expect(csv, isNot(throwsA(anything)));
       final records = _parseCsv(csv);

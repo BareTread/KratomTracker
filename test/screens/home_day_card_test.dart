@@ -111,7 +111,6 @@ Future<KratomProvider> _provider() async {
       },
     ]),
     'dosages': '[]',
-    'effects': '[]',
   });
   return KratomProvider.create(await SharedPreferences.getInstance());
 }

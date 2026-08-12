@@ -3,14 +3,10 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
 
 import '../../models/dosage.dart';
-import '../../models/effect.dart';
 import '../../models/strain.dart';
-import '../../providers/kratom_provider.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/effect_log_sheet.dart';
 import '../../widgets/strain_mark.dart';
 import '../../widgets/vine_painter.dart';
 import 'home_dose_actions.dart';
@@ -242,23 +238,11 @@ class _DoseRow extends StatelessWidget {
     final shape = resolveLeafShape(strain?.icon ?? '', strain?.code ?? '');
     final xOff = VineGeometry.offsetFor(nodeIndex);
 
-    context.select<KratomProvider, int>(
-      (p) => Object.hashAll(p.effectsForDosage(dosage.id)),
-    );
-    final effect = context
-        .read<KratomProvider>()
-        .effectsForDosage(dosage.id)
-        .firstOrNull;
-    // Only show the effects sub-line when something is logged. The empty
-    // "Log how it felt" placeholder was a nag repeated down the column;
-    // logging stays reachable via the row's tap / long-press actions.
-
     final hour = DateFormat('h:mm').format(dosage.timestamp);
     final ampm = DateFormat('a').format(dosage.timestamp).toUpperCase();
 
     final semantics =
-        '$hour $ampm, $code, ${dosage.amount} grams'
-        '${effect == null ? '' : ', effect logged'}';
+        '$hour $ampm, $code, ${dosage.amount} grams';
 
     // Stem colour above/below the leaf so segments join with neighbours.
     final above = prevColor ?? leafColor;
@@ -351,9 +335,9 @@ class _DoseRow extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.only(left: 10, right: 4),
                   child: Row(
-                    // Code and amount share a baseline, so a row carrying an
-                    // effects sub-line still reads as one line across the
-                    // width rather than two blocks at different heights.
+                    // Code and amount share a baseline so the row reads as
+                    // one line across the width rather than two blocks at
+                    // different heights.
                     crossAxisAlignment: CrossAxisAlignment.baseline,
                     textBaseline: TextBaseline.alphabetic,
                     children: [
@@ -372,10 +356,6 @@ class _DoseRow extends StatelessWidget {
                                 height: 1.1,
                               ),
                             ),
-                            if (effect != null) ...[
-                              const SizedBox(height: 4),
-                              _EffectAffordance(dosage: dosage, effect: effect),
-                            ],
                           ],
                         ),
                       ),
@@ -677,8 +657,8 @@ class _NowRow extends StatelessWidget {
                           letterSpacing: 1.4,
                         ),
                       ),
-                      // Mirrors the effects sub-line on a dose row, so the
-                      // empty state sits on the same grid as a real one.
+                      // Mirrors the dose row's sub-line, so the empty
+                      // state sits on the same grid as a real one.
                       if (empty) ...[
                         const SizedBox(height: 5),
                         Text(
@@ -803,50 +783,6 @@ class _LiveNowStemState extends State<_LiveNowStem>
           );
         },
       ),
-    );
-  }
-}
-
-// ── Effect affordance ─────────────────────────────────────────────────────
-
-/// Effects summary under the amount. Only built when an effect is already
-/// logged — the empty placeholder was removed; logging stays on the row.
-class _EffectAffordance extends StatelessWidget {
-  const _EffectAffordance({required this.dosage, required this.effect});
-
-  final Dosage dosage;
-  final Effect effect;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () =>
-          EffectLogSheet.show(context, dosageId: dosage.id, existing: effect),
-      child: _EffectSummary(effect: effect),
-    );
-  }
-}
-
-class _EffectSummary extends StatelessWidget {
-  const _EffectSummary({required this.effect});
-
-  final Effect effect;
-
-  @override
-  Widget build(BuildContext context) {
-    final parts = <String>[
-      'E${effect.energy}',
-      'M${effect.mood}',
-      'P${effect.painRelief}',
-    ];
-    if (effect.duration != null) {
-      final hours = effect.duration!.inHours;
-      parts.add(hours >= 1 ? '${hours}h' : '${effect.duration!.inMinutes}m');
-    }
-    return Text(
-      parts.join(' · '),
-      style: TextStyle(color: context.c.textTertiary, fontSize: 11),
     );
   }
 }

@@ -60,51 +60,10 @@ void main() {
       );
     });
   });
-
-  group('effect affordance', () {
-    testWidgets('doses without logged effects show no effects sub-line',
-        (tester) async {
-      final now = DateTime.now();
-      final provider = await _provider(
-        dosages: [
-          _dose('recent', now.subtract(const Duration(minutes: 20)), 1),
-          _dose('older', now.subtract(const Duration(minutes: 90)), 2),
-        ],
-      );
-      await _pumpList(tester, provider, doseIds: ['recent', 'older']);
-
-      // Placeholder removed; nothing is printed until an effect is logged.
-      expect(find.text('Log how it felt'), findsNothing);
-    });
-
-    testWidgets('a dose with a logged effect shows the summary',
-        (tester) async {
-      final now = DateTime.now();
-      final ts = now.subtract(const Duration(minutes: 90));
-      final provider = await _provider(
-        dosages: [_dose('dose-eff', ts, 2)],
-        effects: [
-          {
-            'id': 'eff-1',
-            'dosageId': 'dose-eff',
-            'timestamp': ts.toIso8601String(),
-            'mood': 3,
-            'energy': 4,
-            'painRelief': 2,
-          },
-        ],
-      );
-      await _pumpList(tester, provider, doseIds: ['dose-eff']);
-
-      expect(find.text('Log how it felt'), findsNothing);
-      expect(find.text('E4 · M3 · P2'), findsOneWidget);
-    });
-  });
 }
 
 Future<KratomProvider> _provider({
   List<Map<String, Object?>>? dosages,
-  List<Map<String, Object?>>? effects,
 }) async {
   SharedPreferences.setMockInitialValues({
     'strains': jsonEncode([
@@ -117,7 +76,6 @@ Future<KratomProvider> _provider({
       },
     ]),
     'dosages': jsonEncode(dosages ?? const []),
-    'effects': jsonEncode(effects ?? const []),
   });
   return KratomProvider.create(await SharedPreferences.getInstance());
 }

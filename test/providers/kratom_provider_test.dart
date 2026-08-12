@@ -8,14 +8,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  test('deleting a strain cascades to its dosages and effects', () async {
+  test('deleting a strain cascades to its dosages', () async {
     final provider = await _providerWithFixture();
 
     await provider.deleteStrain('strain-1');
 
     expect(provider.strains, isEmpty);
     expect(provider.dosages, isEmpty);
-    expect(provider.effects, isEmpty);
   });
 
   test('getStrain immediately returns an updated strain', () async {
@@ -69,7 +68,6 @@ void main() {
 
     expect(provider.strains.map((s) => s.id), ['strain-2']);
     expect(provider.dosages.map((d) => d.id), ['dose-2']);
-    expect(provider.effects, isEmpty);
   });
 
   test('merge import unions by id and existing records win', () async {
@@ -144,16 +142,6 @@ Future<KratomProvider> _providerWithFixture() async {
         'timestamp': '2025-01-01T08:00:00.000',
       },
     ]),
-    'effects': jsonEncode([
-      {
-        'id': 'effect-1',
-        'dosageId': 'dose-1',
-        'timestamp': '2025-01-01T09:00:00.000',
-        'mood': 3,
-        'energy': 3,
-        'painRelief': 3,
-      },
-    ]),
   });
   return KratomProvider.create(await SharedPreferences.getInstance());
 }
@@ -188,5 +176,4 @@ String _importJson({required bool includeExistingId}) => jsonEncode({
           'timestamp': '2025-01-02T08:00:00.000',
         },
       ],
-      'effects': [],
     });

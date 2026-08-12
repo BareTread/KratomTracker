@@ -1,10 +1,8 @@
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../domain/analytics_service.dart';
-import '../models/effect.dart';
 import '../models/strain.dart';
 import '../providers/kratom_provider.dart';
 import '../theme/app_theme.dart';
@@ -25,7 +23,6 @@ class StrainDetailsView extends StatelessWidget {
         final insight = computeStrainInsight(
           strain.id,
           provider.dosages,
-          provider.effects,
         );
 
         return SingleChildScrollView(
@@ -52,10 +49,6 @@ class StrainDetailsView extends StatelessWidget {
                       _SectionTitle(strain: strain, text: 'Dose size spread'),
                       const SizedBox(height: 12),
                       _DoseSpread(insight: insight),
-                      const SizedBox(height: 20),
-                      _SectionTitle(strain: strain, text: 'Effect profile'),
-                      const SizedBox(height: 12),
-                      _EffectProfile(insight: insight),
                     ],
                   ),
                 ),
@@ -215,23 +208,8 @@ class _StatsGrid extends StatelessWidget {
           icon: Icons.access_time,
           color: color,
         ),
-        if (insight.avgReportedDuration != null)
-          _StatChip(
-            title: 'Avg reported duration',
-            value: _formatDuration(insight.avgReportedDuration!),
-            icon: Icons.timer_outlined,
-            color: color,
-          ),
       ],
     );
-  }
-
-  String _formatDuration(Duration d) {
-    if (d.inHours >= 1) {
-      final m = d.inMinutes % 60;
-      return m > 0 ? '${d.inHours}h ${m}m' : '${d.inHours}h';
-    }
-    return '${d.inMinutes}m';
   }
 }
 
@@ -372,106 +350,6 @@ class _DoseSpread extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                   color: c.textPrimary,
                 ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EffectProfile extends StatelessWidget {
-  const _EffectProfile({required this.insight});
-
-  final StrainInsight insight;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.c;
-    if (insight.effectSampleCount < 3) {
-      return Text(
-        'Not enough logged effects yet '
-        '(${insight.effectSampleCount} of 3 needed) to show a profile.',
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: c.textTertiary,
-            ),
-      );
-    }
-
-    final metrics = EffectMetric.values
-        .where((m) => insight.avgEffects.containsKey(m))
-        .toList();
-    if (metrics.isEmpty) {
-      return Text(
-        'No effect ratings logged for this strain yet.',
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: c.textTertiary,
-            ),
-      );
-    }
-
-    final summary = metrics
-        .map((m) => '${m.label} ${insight.avgEffects[m]!.toStringAsFixed(1)}')
-        .join(', ');
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          height: 200,
-          child: Semantics(
-            container: true,
-            label: 'Effect profile radar chart across ${metrics.length} '
-                'metrics, averaged from ${insight.effectSampleCount} logs.',
-            child: _EffectRadar(metrics: metrics, insight: insight),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Averaged from ${insight.effectSampleCount} logged effect(s). '
-          '$summary.',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: c.textSecondary,
-              ),
-        ),
-      ],
-    );
-  }
-}
-
-class _EffectRadar extends StatelessWidget {
-  const _EffectRadar({required this.metrics, required this.insight});
-
-  final List<EffectMetric> metrics;
-  final StrainInsight insight;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.c;
-    return RadarChart(
-      RadarChartData(
-        radarBackgroundColor: c.surfaceSunken,
-        radarBorderData: BorderSide(color: c.hairline, width: 1),
-        tickBorderData: BorderSide(color: c.hairline, width: 1),
-        gridBorderData: BorderSide(color: c.hairline, width: 1),
-        tickCount: 4,
-        ticksTextStyle: const TextStyle(color: Colors.transparent, fontSize: 0),
-        titleTextStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: c.textSecondary,
-              fontSize: 11,
-            ),
-        getTitle: (index, angle) {
-          if (index >= metrics.length) return const RadarChartTitle(text: '');
-          return RadarChartTitle(text: metrics[index].label, angle: angle);
-        },
-        dataSets: [
-          RadarDataSet(
-            fillColor: c.accent.withValues(alpha: 0.25),
-            borderColor: c.accent,
-            borderWidth: 2,
-            dataEntries: [
-              for (final m in metrics)
-                RadarEntry(value: insight.avgEffects[m] ?? 0),
-            ],
           ),
         ],
       ),

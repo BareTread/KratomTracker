@@ -9,7 +9,6 @@ import '../data/backup_codec.dart';
 import '../domain/date_utils.dart';
 import '../domain/strain_usage.dart';
 import '../models/dosage.dart';
-import '../models/effect.dart';
 import '../models/settings.dart';
 import '../models/strain.dart';
 
@@ -21,7 +20,6 @@ class KratomProvider with ChangeNotifier {
   static const int currentBackupVersion = 1;
   static const _strainsKey = 'strains';
   static const _dosagesKey = 'dosages';
-  static const _effectsKey = 'effects';
   static const _settingsKey = 'settings';
   static const _userNameKey = 'user_name';
   static const _tempPrefix = '_kratom_tracker_tmp_';
@@ -30,11 +28,9 @@ class KratomProvider with ChangeNotifier {
   final Uuid _uuid = const Uuid();
   List<Strain> _strains = [];
   List<Dosage> _dosages = [];
-  List<Effect> _effects = [];
   UserSettings _settings = const UserSettings(
     enableNotifications: false,
     toleranceBreakInterval: 7,
-    trackedEffects: [],
   );
   DateTime _selectedDate = DateTime.now();
   String? _userName;
@@ -56,7 +52,6 @@ class KratomProvider with ChangeNotifier {
   bool get isLoading => !_isReady;
   List<Strain> get strains => UnmodifiableListView(_strains);
   List<Dosage> get dosages => UnmodifiableListView(_dosages);
-  List<Effect> get effects => UnmodifiableListView(_effects);
   UserSettings get settings => _settings;
   String? get userName => _userName;
   DateTime get selectedDate => _selectedDate;
@@ -101,10 +96,6 @@ class KratomProvider with ChangeNotifier {
     }
     return UnmodifiableListView(_strainUsageCache!);
   }
-
-  List<Effect> effectsForDosage(String dosageId) => _effects
-      .where((effect) => effect.dosageId == dosageId)
-      .toList(growable: false);
 
   void setSelectedDate(DateTime date) {
     _selectedDate = startOfDay(date);
@@ -180,24 +171,18 @@ class KratomProvider with ChangeNotifier {
     if (!_strains.any((strain) => strain.id == id)) {
       throw ArgumentError.value(id, 'id', 'unknown strain');
     }
-    final dosageIds = _dosages
-        .where((dose) => dose.strainId == id)
-        .map((dose) => dose.id)
-        .toSet();
     _strains.removeWhere((strain) => strain.id == id);
     _dosages.removeWhere((dose) => dose.strainId == id);
-    _effects.removeWhere((effect) => dosageIds.contains(effect.dosageId));
     _invalidateComputedData();
     await _save({
       _strainsKey: _encodeStrains(),
       _dosagesKey: _encodeDosages(),
-      _effectsKey: _encodeEffects(),
     });
     _notifyMutation();
   }
 
-  /// Returns the created dosage so callers can act on it (e.g. offer to log
-  /// its effects) without having to diff the list to find the new id.
+  /// Returns the created dosage so callers can act on it without having to
+  /// diff the list to find the new id.
   Future<Dosage> addDosage(
     String strainId,
     double amount,
@@ -246,40 +231,10 @@ class KratomProvider with ChangeNotifier {
       throw ArgumentError.value(id, 'id', 'unknown dosage');
     }
     _dosages.removeWhere((dose) => dose.id == id);
-    _effects.removeWhere((effect) => effect.dosageId == id);
     _invalidateComputedData();
     await _save({
       _dosagesKey: _encodeDosages(),
-      _effectsKey: _encodeEffects(),
     });
-    _notifyMutation();
-  }
-
-  Future<void> addEffect(Effect e) async {
-    if (_effects.any((effect) => effect.id == e.id)) {
-      throw ArgumentError.value(e.id, 'e.id', 'duplicate effect');
-    }
-    _validateEffect(e);
-    _effects.add(e);
-    await _save({_effectsKey: _encodeEffects()});
-    _notifyMutation();
-  }
-
-  Future<void> updateEffect(Effect e) async {
-    final index = _effects.indexWhere((effect) => effect.id == e.id);
-    if (index < 0) throw ArgumentError.value(e.id, 'e.id', 'unknown effect');
-    _validateEffect(e);
-    _effects[index] = e;
-    await _save({_effectsKey: _encodeEffects()});
-    _notifyMutation();
-  }
-
-  Future<void> deleteEffect(String id) async {
-    if (!_effects.any((effect) => effect.id == id)) {
-      throw ArgumentError.value(id, 'id', 'unknown effect');
-    }
-    _effects.removeWhere((effect) => effect.id == id);
-    await _save({_effectsKey: _encodeEffects()});
     _notifyMutation();
   }
 
@@ -315,7 +270,6 @@ class KratomProvider with ChangeNotifier {
       'timestamp': DateTime.now().toIso8601String(),
       'strains': _strains.map((strain) => strain.toJson()).toList(),
       'dosages': _dosages.map((dose) => dose.toJson()).toList(),
-      'effects': _effects.map((effect) => effect.toJson()).toList(),
       'settings': _settings.toJson(),
       if (_userName != null) 'userName': _userName,
     });
@@ -342,9 +296,6 @@ class KratomProvider with ChangeNotifier {
     final nextDosages = mode == ImportMode.replace
         ? List<Dosage>.of(p.dosages)
         : _mergeById(_dosages, p.dosages, (dose) => dose.id);
-    final nextEffects = mode == ImportMode.replace
-        ? List<Effect>.of(p.effects)
-        : _mergeById(_effects, p.effects, (effect) => effect.id);
     final nextSettings =
         mode == ImportMode.merge ? _settings : p.settings ?? _settings;
     final nextUserName =
@@ -353,7 +304,6 @@ class KratomProvider with ChangeNotifier {
     final previousUserName = _userName;
     _strains = nextStrains;
     _dosages = nextDosages;
-    _effects = nextEffects;
     _settings = nextSettings;
     _userName = nextUserName;
     _invalidateComputedData();
@@ -361,7 +311,6 @@ class KratomProvider with ChangeNotifier {
     final values = {
       _strainsKey: jsonEncode(nextStrains.map((e) => e.toJson()).toList()),
       _dosagesKey: jsonEncode(nextDosages.map((e) => e.toJson()).toList()),
-      _effectsKey: jsonEncode(nextEffects.map((e) => e.toJson()).toList()),
       _settingsKey: jsonEncode(nextSettings.toJson()),
     };
     await _save(values);
@@ -383,7 +332,6 @@ class KratomProvider with ChangeNotifier {
     await _save({
       _strainsKey: '[]',
       _dosagesKey: '[]',
-      _effectsKey: '[]',
       _settingsKey: jsonEncode(settings.toJson()),
     });
     // The name is user data too — leaving it behind meant it survived a
@@ -391,59 +339,10 @@ class KratomProvider with ChangeNotifier {
     await _prefs.remove(_userNameKey);
     _strains = [];
     _dosages = [];
-    _effects = [];
     _settings = settings;
     _userName = null;
     _invalidateComputedData();
     _notifyMutation();
-  }
-
-  List<Strain> getRecommendedStrains({
-    required Map<String, int> desiredEffects,
-    int limit = 3,
-  }) {
-    if (limit < 0) throw ArgumentError.value(limit, 'limit');
-    const weights = {
-      EffectMetric.energy: 0.3,
-      EffectMetric.mood: 0.3,
-      EffectMetric.painRelief: 0.2,
-      EffectMetric.focus: 0.2,
-      EffectMetric.anxiety: 0.25,
-    };
-    final dosageById = {for (final dose in _dosages) dose.id: dose};
-    final scores = <String, double>{};
-
-    for (final strain in _strains) {
-      final strainEffects = _effects.where((effect) {
-        final dose = dosageById[effect.dosageId];
-        return dose != null && dose.strainId == strain.id;
-      }).toList(growable: false);
-      if (strainEffects.isEmpty) continue;
-
-      var score = 0.0;
-      for (final desired in desiredEffects.entries) {
-        final normalizedKey =
-            desired.key == 'pain_relief' ? 'painRelief' : desired.key;
-        final metric = EffectMetric.values
-            .where((candidate) => candidate.key == normalizedKey)
-            .firstOrNull;
-        if (metric == null) continue;
-        final values = strainEffects
-            .map(metric.valueOf)
-            .whereType<int>()
-            .toList(growable: false);
-        if (values.isEmpty) continue;
-        final average = values.reduce((a, b) => a + b) / values.length;
-        score += (5 - (average - desired.value).abs()) * weights[metric]!;
-      }
-      scores[strain.id] = score;
-    }
-
-    final sorted = _strains
-        .where((strain) => scores.containsKey(strain.id))
-        .toList()
-      ..sort((a, b) => scores[b.id]!.compareTo(scores[a.id]!));
-    return sorted.take(limit).toList();
   }
 
   Future<void> refreshData() async {
@@ -455,7 +354,6 @@ class KratomProvider with ChangeNotifier {
   Future<void> _loadData() async {
     _strains = _decodeList(_readStored(_strainsKey), Strain.fromJson);
     _dosages = _decodeList(_readStored(_dosagesKey), Dosage.fromJson);
-    _effects = _decodeList(_readStored(_effectsKey), Effect.fromJson);
     final settingsJson = _readStored(_settingsKey);
     if (settingsJson != null) {
       try {
@@ -528,8 +426,6 @@ class KratomProvider with ChangeNotifier {
       jsonEncode(_strains.map((strain) => strain.toJson()).toList());
   String _encodeDosages() =>
       jsonEncode(_dosages.map((dose) => dose.toJson()).toList());
-  String _encodeEffects() =>
-      jsonEncode(_effects.map((effect) => effect.toJson()).toList());
 
   void _validateDosage(String strainId, double amount) {
     if (!_strains.any((strain) => strain.id == strainId)) {
@@ -541,25 +437,6 @@ class KratomProvider with ChangeNotifier {
         'amount',
         'must be finite, greater than zero, and at most 1000',
       );
-    }
-  }
-
-  void _validateEffect(Effect effect) {
-    if (!_dosages.any((dose) => dose.id == effect.dosageId)) {
-      throw ArgumentError.value(effect.dosageId, 'effect.dosageId');
-    }
-    final ratings = [
-      effect.mood,
-      effect.energy,
-      effect.painRelief,
-      effect.anxiety,
-      effect.focus,
-    ];
-    if (ratings.whereType<int>().any((value) => value < 1 || value > 5)) {
-      throw ArgumentError('Effect ratings must be between 1 and 5');
-    }
-    if (effect.duration != null && effect.duration!.isNegative) {
-      throw ArgumentError.value(effect.duration, 'effect.duration');
     }
   }
 
@@ -579,14 +456,6 @@ class KratomProvider with ChangeNotifier {
           dose.amount > 1000 ||
           payload.strains.isNotEmpty && !strainIds.contains(dose.strainId)) {
         throw ArgumentError('Imported dosage data is invalid');
-      }
-    }
-    final effectIds = <String>{};
-    for (final effect in payload.effects) {
-      if (effect.id.isEmpty ||
-          !effectIds.add(effect.id) ||
-          !dosageIds.contains(effect.dosageId)) {
-        throw ArgumentError('Imported effect data is invalid');
       }
     }
   }

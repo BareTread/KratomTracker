@@ -9,7 +9,6 @@ class UserSettings {
   final double dailyLimit;
   final bool enableToleranceTracking;
   final int toleranceBreakInterval;
-  final List<String> trackedEffects;
   final String measurementUnit;
   final bool performanceMode;
 
@@ -20,7 +19,6 @@ class UserSettings {
     this.dailyLimit = 0,
     this.enableToleranceTracking = false,
     this.toleranceBreakInterval = 30,
-    this.trackedEffects = const ['mood', 'energy', 'painRelief'],
     this.measurementUnit = 'g',
     this.performanceMode = false,
   });
@@ -32,7 +30,6 @@ class UserSettings {
     double? dailyLimit,
     bool? enableToleranceTracking,
     int? toleranceBreakInterval,
-    List<String>? trackedEffects,
     String? measurementUnit,
     bool? performanceMode,
     bool clearMorningReminder = false,
@@ -49,7 +46,6 @@ class UserSettings {
           enableToleranceTracking ?? this.enableToleranceTracking,
       toleranceBreakInterval:
           toleranceBreakInterval ?? this.toleranceBreakInterval,
-      trackedEffects: trackedEffects ?? this.trackedEffects,
       measurementUnit: measurementUnit ?? this.measurementUnit,
       performanceMode: performanceMode ?? this.performanceMode,
     );
@@ -64,7 +60,6 @@ class UserSettings {
         'dailyLimit': dailyLimit,
         'enableToleranceTracking': enableToleranceTracking,
         'toleranceBreakInterval': toleranceBreakInterval,
-        'trackedEffects': trackedEffects,
         'measurementUnit': measurementUnit,
         'performanceMode': performanceMode,
       };
@@ -78,11 +73,6 @@ class UserSettings {
       return TimeOfDay(hour: hour, minute: minute);
     }
 
-    final rawEffects = json['trackedEffects'];
-    final effects = rawEffects is List
-        ? rawEffects.whereType<String>().toList(growable: false)
-        : const ['mood', 'energy', 'painRelief'];
-
     return UserSettings(
       enableNotifications: json['enableNotifications'] is bool
           ? json['enableNotifications'] as bool
@@ -95,7 +85,6 @@ class UserSettings {
           : false,
       toleranceBreakInterval:
           asInt(json['toleranceBreakInterval'], fallback: 30),
-      trackedEffects: effects,
       measurementUnit: asString(json['measurementUnit'], fallback: 'g'),
       performanceMode: json['performanceMode'] is bool
           ? json['performanceMode'] as bool
@@ -113,7 +102,6 @@ class UserSettings {
           dailyLimit == other.dailyLimit &&
           enableToleranceTracking == other.enableToleranceTracking &&
           toleranceBreakInterval == other.toleranceBreakInterval &&
-          _listEquals(trackedEffects, other.trackedEffects) &&
           measurementUnit == other.measurementUnit &&
           performanceMode == other.performanceMode;
 
@@ -125,16 +113,7 @@ class UserSettings {
         dailyLimit,
         enableToleranceTracking,
         toleranceBreakInterval,
-        Object.hashAll(trackedEffects),
         measurementUnit,
         performanceMode,
       );
-}
-
-bool _listEquals(List<Object?> a, List<Object?> b) {
-  if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i++) {
-    if (a[i] != b[i]) return false;
-  }
-  return true;
 }

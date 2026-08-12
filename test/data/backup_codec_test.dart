@@ -16,12 +16,27 @@ void main() {
     final ok = result as BackupOk;
     expect(ok.summary.strainCount, 1);
     expect(ok.summary.dosageCount, 1);
-    expect(ok.summary.effectCount, 1);
     expect(ok.summary.totalGrams, 1.5);
-    expect(
-      jsonDecode(jsonEncode(ok.payload.effects.single.toJson())),
-      source['effects']!.first,
-    );
+  });
+
+  test('an old backup with effects and trackedEffects imports cleanly', () {
+    // Backups written by earlier versions carry a populated `effects` array
+    // and a `trackedEffects` settings field. Both keys are now unknown to the
+    // codec and must be silently ignored — no throw, no warning.
+    final source = _backup();
+    source['settings'] = <String, dynamic>{
+      'performanceMode': true,
+      'trackedEffects': ['mood', 'energy', 'painRelief', 'focus'],
+    };
+
+    final result = parseBackup(jsonEncode(source));
+
+    expect(result, isA<BackupOk>());
+    final ok = result as BackupOk;
+    expect(ok.summary.warnings, isEmpty,
+        reason: 'legacy effects and trackedEffects keys must not warn',);
+    expect(ok.payload.settings, isNotNull);
+    expect(ok.summary.dosageCount, 1);
   });
 
   test('strain inStock round-trips through the codec', () {
@@ -62,13 +77,10 @@ void main() {
   test('accepts legacy pain_relief and numeric string amount', () {
     final source = _backup();
     source['dosages']!.first['amount'] = '1.5';
-    final effect = source['effects']!.first;
-    effect['pain_relief'] = effect.remove('painRelief');
 
     final ok = parseBackup(jsonEncode(source)) as BackupOk;
 
     expect(ok.payload.dosages.single.amount, 1.5);
-    expect(ok.payload.effects.single.painRelief, 4);
   });
 
   test('accepts integer amounts and a missing effects key', () {
@@ -79,7 +91,6 @@ void main() {
     final ok = parseBackup(jsonEncode(source)) as BackupOk;
 
     expect(ok.payload.dosages.single.amount, 2.0);
-    expect(ok.payload.effects, isEmpty);
   });
 
   test('accepts a bare top-level dosage array', () {
@@ -91,7 +102,10 @@ void main() {
     expect(ok.payload.dosages.single.id, 'dose-1');
   });
 
-  test('drops an orphaned effect and reports a warning', () {
+  test('drops an orphaned effect silently (legacy backups keep effects)', () {
+    // Backups written by older versions carry an `effects` array. The codec
+    // no longer models effects, so the whole key must be ignored without
+    // throwing or emitting a warning — an unknown key is not a problem.
     final source = _backup();
     final effects = source['effects']! as List;
     final original = Map<String, dynamic>.from(effects.first as Map);
@@ -103,8 +117,9 @@ void main() {
 
     final ok = parseBackup(jsonEncode(source)) as BackupOk;
 
-    expect(ok.payload.effects, hasLength(1));
-    expect(ok.summary.warnings.join(' '), contains('missing dosage'));
+    expect(ok.summary.warnings, isEmpty,
+        reason: 'an unknown effects key should not produce a warning',);
+    expect(ok.summary.dosageCount, 1);
   });
 
   test('rejects malformed JSON', () {
@@ -117,13 +132,12 @@ void main() {
     SharedPreferences.setMockInitialValues({
       'strains': jsonEncode(_backup()['strains']),
       'dosages': jsonEncode(_backup()['dosages']),
-      'effects': jsonEncode(_backup()['effects']),
       'settings': jsonEncode(_backup()['settings']),
     });
     final prefs = await SharedPreferences.getInstance();
     final provider = await KratomProvider.create(prefs);
     final before = {
-      for (final key in ['strains', 'dosages', 'effects', 'settings'])
+      for (final key in ['strains', 'dosages', 'settings'])
         key: prefs.getString(key),
     };
 

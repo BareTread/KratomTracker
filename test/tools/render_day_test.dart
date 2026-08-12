@@ -93,7 +93,6 @@ Future<ui.Image> _shoot(WidgetTester tester, int count) async {
       },
     ]),
     'dosages': jsonEncode(entries),
-    'effects': '[]',
   });
   final provider = await KratomProvider.create(
     await SharedPreferences.getInstance(),
