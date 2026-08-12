@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../models/dosage.dart';
@@ -138,9 +140,17 @@ List<int> hourHistogram(List<Dosage> dosages) {
   return result;
 }
 
-List<({DateTime day, double value})> rollingAverage(
+/// A trailing window over [daily], summarised by [reduce].
+///
+/// Trailing, never centred. A centred window borrows from days that have not
+/// happened yet, so its right-hand end — the part actually being read, "where
+/// am I now" — is computed from a truncated, half-width sample and lags or
+/// overshoots the present. Every point here answers "this day and the
+/// [windowDays] - 1 before it", which is a claim the data can support.
+List<({DateTime day, double value})> trailingWindow(
   Map<DateTime, double> daily,
   int windowDays,
+  double Function(List<double>) reduce,
 ) {
   if (windowDays <= 0) {
     throw ArgumentError.value(
@@ -151,24 +161,37 @@ List<({DateTime day, double value})> rollingAverage(
   }
   final entries = daily.entries.toList()
     ..sort((a, b) => a.key.compareTo(b.key));
-  final before = (windowDays - 1) ~/ 2;
-  final after = windowDays ~/ 2;
 
   return [
     for (var i = 0; i < entries.length; i++)
       (
         day: entries[i].key,
-        value: _mean(
-          entries
-              .sublist(
-                (i - before).clamp(0, entries.length),
-                (i + after + 1).clamp(0, entries.length),
-              )
-              .map((entry) => entry.value),
+        value: reduce(
+          [
+            for (var j = math.max(0, i - windowDays + 1); j <= i; j++)
+              entries[j].value,
+          ],
         ),
       ),
   ];
 }
+
+List<({DateTime day, double value})> rollingAverage(
+  Map<DateTime, double> daily,
+  int windowDays,
+) =>
+    trailingWindow(daily, windowDays, (window) => _mean(window));
+
+/// Trailing median of daily grams — the trajectory line.
+///
+/// Median rather than mean: one 20g day is a story about that day, not about
+/// the month, and a mean lets it bend the trend for the whole width of the
+/// window. The median moves only when the middle of the distribution moves.
+List<({DateTime day, double value})> trailingMedian(
+  Map<DateTime, double> daily,
+  int windowDays,
+) =>
+    trailingWindow(daily, windowDays, _median);
 
 Map<String, Map<DateTime, double>> strainDailyTotals(
   List<Dosage> d,
@@ -234,7 +257,484 @@ StrainInsight computeStrainInsight(
   );
 }
 
+// ---------------------------------------------------------------------------
+// Daily facts — the backbone every drift number is derived from
+// ---------------------------------------------------------------------------
+
+/// Grams and dose count for one calendar day.
+typedef DayFacts = ({DateTime day, double grams, int doses});
+
+/// One row per calendar day in [range], with the unfinished-today rule from
+/// [computeDoseStats] applied: a today that is still empty and still the last
+/// day in range has not had its chance to happen, so it is not a closed day
+/// and is left out. Counting it drags every average down every morning.
+List<DayFacts> closedDayFacts(
+  List<Dosage> dosages,
+  DateTimeRange range, {
+  DateTime? now,
+}) {
+  final start = startOfDay(range.start);
+  final end = startOfDay(range.end);
+  if (end.isBefore(start)) {
+    throw ArgumentError('Date range end must not precede start');
+  }
+
+  final grams = <DateTime, double>{};
+  final counts = <DateTime, int>{};
+  for (var day = start; !day.isAfter(end); day = _nextDay(day)) {
+    grams[day] = 0;
+    counts[day] = 0;
+  }
+  for (final dose in dosages) {
+    if (!inRangeInclusive(dose.timestamp, start, end)) continue;
+    final day = startOfDay(dose.timestamp);
+    grams[day] = (grams[day] ?? 0) + dose.amount;
+    counts[day] = (counts[day] ?? 0) + 1;
+  }
+
+  if (grams[end] == 0 && end == startOfDay(now ?? DateTime.now())) {
+    grams.remove(end);
+    counts.remove(end);
+  }
+
+  final days = grams.keys.toList()..sort();
+  return [
+    for (final day in days) (day: day, grams: grams[day]!, doses: counts[day]!),
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// G = F × A
+// ---------------------------------------------------------------------------
+
+/// Daily grams split into its two factors: how often, and how much each time.
+/// `gramsPerDay == dosesPerDay * gramsPerDose` exactly, by construction. The
+/// split is the whole point — the same rise in [gramsPerDay] means something
+/// different depending on which factor moved.
+class IntakeFactors {
+  final double gramsPerDay; // G
+  final double dosesPerDay; // F
+  final double gramsPerDose; // A
+  final double grams;
+  final int doses;
+  final int days;
+
+  const IntakeFactors({
+    required this.gramsPerDay,
+    required this.dosesPerDay,
+    required this.gramsPerDose,
+    required this.grams,
+    required this.doses,
+    required this.days,
+  });
+
+  static const none = IntakeFactors(
+    gramsPerDay: 0,
+    dosesPerDay: 0,
+    gramsPerDose: 0,
+    grams: 0,
+    doses: 0,
+    days: 0,
+  );
+
+  factory IntakeFactors.of(List<DayFacts> facts) {
+    if (facts.isEmpty) return none;
+    var grams = 0.0;
+    var doses = 0;
+    for (final fact in facts) {
+      grams += fact.grams;
+      doses += fact.doses;
+    }
+    return IntakeFactors(
+      gramsPerDay: grams / facts.length,
+      dosesPerDay: doses / facts.length,
+      gramsPerDose: doses == 0 ? 0 : grams / doses,
+      grams: grams,
+      doses: doses,
+      days: facts.length,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Drift
+// ---------------------------------------------------------------------------
+
+enum DriftDirection { up, down, steady, unknown }
+
+/// Which factor of `G = F × A` carries a drift.
+enum IntakeDriver { none, frequency, size, both }
+
+/// A straight line fitted to a day series.
+typedef Fit = ({double slope, double intercept});
+
+/// Theil–Sen: slope is the median of every pairwise slope, intercept the
+/// median residual. Least squares would let a single 20g day tilt the whole
+/// line; a median of pairwise slopes barely notices it. That robustness is
+/// what makes the drift verb trustworthy enough to print as a sentence.
+Fit? theilSen(List<({double x, double y})> points) {
+  if (points.length < 2) return null;
+  final slopes = <double>[];
+  for (var i = 0; i < points.length; i++) {
+    for (var j = i + 1; j < points.length; j++) {
+      final dx = points[j].x - points[i].x;
+      if (dx == 0) continue;
+      slopes.add((points[j].y - points[i].y) / dx);
+    }
+  }
+  if (slopes.isEmpty) return null;
+  final slope = _median(slopes);
+  return (
+    slope: slope,
+    intercept: _median([for (final p in points) p.y - slope * p.x]),
+  );
+}
+
+/// The headline: which way intake is moving, by how much, and driven by what.
+class DriftReading {
+  final DriftDirection direction;
+
+  /// Signed percent change in daily grams across [windowDays], from the
+  /// robust fit. Null when the window starts at all but zero, where a
+  /// percentage would be meaningless rather than merely large.
+  final double? changePercent;
+  final double? dosesChangePercent;
+  final double? sizeChangePercent;
+  final IntakeDriver driver;
+
+  /// Where he is *now* — the most recent [IntakeFactors.days] closed days.
+  /// Deliberately independent of the selected range: how far back you look
+  /// changes the trend, not the present.
+  final IntakeFactors level;
+
+  /// Closed days the trend was fitted over.
+  final int windowDays;
+
+  const DriftReading({
+    required this.direction,
+    required this.changePercent,
+    required this.dosesChangePercent,
+    required this.sizeChangePercent,
+    required this.driver,
+    required this.level,
+    required this.windowDays,
+  });
+}
+
+/// Days of recent history the "now" level is averaged over. Four weeks: long
+/// enough that a heavy weekend does not move it, short enough to be current.
+const int driftLevelDays = 28;
+
+/// Below this the trend is called steady. Four to six doses a day wobble by
+/// a few percent on their own; naming that a trend would invite a correction
+/// to noise.
+const double driftSteadyBandPercent = 8;
+
+/// Fewer closed days than this and there is nothing honest to say.
+const int driftMinDays = 10;
+
+/// A month of days is not a month of data if only two of them have a dose in
+/// them. A trend needs days that actually happened.
+const int driftMinDosedDays = 5;
+
+DriftReading computeDrift(
+  List<Dosage> dosages,
+  DateTimeRange range, {
+  DateTime? now,
+  int levelDays = driftLevelDays,
+  double steadyBandPercent = driftSteadyBandPercent,
+}) {
+  final facts = closedDayFacts(dosages, range, now: now);
+  final level = IntakeFactors.of(
+    facts.length <= levelDays
+        ? facts
+        : facts.sublist(facts.length - levelDays),
+  );
+
+  final dosedDays = facts.where((fact) => fact.doses > 0).length;
+  if (facts.length < driftMinDays ||
+      dosedDays < driftMinDosedDays ||
+      level.doses == 0) {
+    return DriftReading(
+      direction: DriftDirection.unknown,
+      changePercent: null,
+      dosesChangePercent: null,
+      sizeChangePercent: null,
+      driver: IntakeDriver.none,
+      level: level,
+      windowDays: facts.length,
+    );
+  }
+
+  final origin = facts.first.day;
+  double x(DayFacts fact) => daysBetween(origin, fact.day).toDouble();
+  final span = x(facts.last);
+
+  final gramsFit = theilSen([for (final f in facts) (x: x(f), y: f.grams)]);
+  final dosesFit =
+      theilSen([for (final f in facts) (x: x(f), y: f.doses.toDouble())]);
+  // Dose size is undefined on a rest day — a zero there would read as
+  // "shrinking doses" when he simply did not take any.
+  final sizeFit = theilSen([
+    for (final f in facts)
+      if (f.doses > 0) (x: x(f), y: f.grams / f.doses),
+  ]);
+
+  final gramsPercent = _fitChangePercent(gramsFit, span);
+  final dosesPercent = _fitChangePercent(dosesFit, span);
+  final sizePercent = _fitChangePercent(sizeFit, span);
+
+  final DriftDirection direction;
+  if (gramsPercent != null) {
+    direction = gramsPercent.abs() < steadyBandPercent
+        ? DriftDirection.steady
+        : (gramsPercent > 0 ? DriftDirection.up : DriftDirection.down);
+  } else if (gramsFit != null && gramsFit.slope != 0) {
+    direction =
+        gramsFit.slope > 0 ? DriftDirection.up : DriftDirection.down;
+  } else {
+    direction = DriftDirection.steady;
+  }
+
+  return DriftReading(
+    direction: direction,
+    changePercent: gramsPercent,
+    dosesChangePercent: dosesPercent,
+    sizeChangePercent: sizePercent,
+    driver: _driverOf(direction, dosesPercent, sizePercent),
+    level: level,
+    windowDays: facts.length,
+  );
+}
+
+IntakeDriver _driverOf(
+  DriftDirection direction,
+  double? dosesPercent,
+  double? sizePercent,
+) {
+  if (direction != DriftDirection.up && direction != DriftDirection.down) {
+    return IntakeDriver.none;
+  }
+  final frequency = (dosesPercent ?? 0).abs();
+  final size = (sizePercent ?? 0).abs();
+  final largest = math.max(frequency, size);
+  if (largest == 0) return IntakeDriver.none;
+  final agree = dosesPercent != null &&
+      sizePercent != null &&
+      (dosesPercent >= 0) == (sizePercent >= 0);
+  // "Both" only when the two factors genuinely share the load; otherwise
+  // naming one of them is the more useful sentence.
+  if (agree && math.min(frequency, size) >= 0.45 * largest) {
+    return IntakeDriver.both;
+  }
+  return frequency >= size ? IntakeDriver.frequency : IntakeDriver.size;
+}
+
+double? _fitChangePercent(Fit? fit, double span) {
+  if (fit == null || span <= 0) return null;
+  final start = fit.intercept;
+  // Percent change off a baseline of essentially zero is a divide-by-noise,
+  // not a large number. Say nothing rather than "+4000%".
+  if (start <= 0.05) return null;
+  return ((start + fit.slope * span) - start) / start * 100;
+}
+
+// ---------------------------------------------------------------------------
+// Rhythm — when the doses land
+// ---------------------------------------------------------------------------
+
+class DayRhythm {
+  /// 24 counts, one per local hour.
+  final List<int> hours;
+  final int? peakHour;
+
+  /// Median minute-of-day of the first and last dose of a dosed day, so the
+  /// span reads as "most days run 8am to 10pm" rather than as two extremes.
+  final int? medianFirstMinute;
+  final int? medianLastMinute;
+  final int dosedDays;
+
+  const DayRhythm({
+    required this.hours,
+    required this.peakHour,
+    required this.medianFirstMinute,
+    required this.medianLastMinute,
+    required this.dosedDays,
+  });
+}
+
+DayRhythm computeDayRhythm(List<Dosage> dosages, DateTimeRange range) {
+  final inRange = dosages
+      .where((dose) => inRangeInclusive(dose.timestamp, range.start, range.end))
+      .toList(growable: false);
+  final hours = hourHistogram(inRange);
+  final peakCount = hours.fold<int>(0, (best, n) => n > best ? n : best);
+
+  final firsts = <DateTime, int>{};
+  final lasts = <DateTime, int>{};
+  for (final dose in inRange) {
+    final local =
+        dose.timestamp.isUtc ? dose.timestamp.toLocal() : dose.timestamp;
+    final day = startOfDay(local);
+    final minute = local.hour * 60 + local.minute;
+    firsts[day] = math.min(firsts[day] ?? minute, minute);
+    lasts[day] = math.max(lasts[day] ?? minute, minute);
+  }
+
+  return DayRhythm(
+    hours: hours,
+    peakHour: peakCount == 0 ? null : hours.indexOf(peakCount),
+    medianFirstMinute: firsts.isEmpty
+        ? null
+        : _median(firsts.values.map((m) => m.toDouble()).toList()).round(),
+    medianLastMinute: lasts.isEmpty
+        ? null
+        : _median(lasts.values.map((m) => m.toDouble()).toList()).round(),
+    dosedDays: firsts.length,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Rotation
+// ---------------------------------------------------------------------------
+
+/// One strain's slice of the range, or the folded tail when [strainId] is null.
+class StrainShare {
+  final String? strainId;
+
+  /// How many strains this row stands for — 1, or the size of the tail.
+  final int strainCount;
+  final double grams;
+  final int doses;
+  final int daysUsed;
+
+  /// 0–1 of the range's total grams.
+  final double share;
+
+  const StrainShare({
+    required this.strainId,
+    required this.strainCount,
+    required this.grams,
+    required this.doses,
+    required this.daysUsed,
+    required this.share,
+  });
+}
+
+class RotationSummary {
+  /// Top strains by grams, then the folded tail last when there is one.
+  final List<StrainShare> rows;
+  final StrainShare? tail;
+  final int strainCount;
+  final double totalGrams;
+
+  const RotationSummary({
+    required this.rows,
+    required this.tail,
+    required this.strainCount,
+    required this.totalGrams,
+  });
+
+  double get topShare => rows.isEmpty ? 0 : rows.first.share;
+
+  /// One strain carrying a quarter of everything is the shape tolerance
+  /// builds in. Two strains at 30 doses each is rotation; one at 60 is not.
+  bool get concentrated =>
+      rows.isNotEmpty && rows.first.strainId != null &&
+      rows.first.share >= rotationConcentrationShare;
+}
+
+const int rotationTopCount = 8;
+const double rotationConcentrationShare = 0.25;
+
+RotationSummary rotationSummary(
+  List<Dosage> dosages,
+  DateTimeRange range, {
+  int topCount = rotationTopCount,
+}) {
+  final grams = <String, double>{};
+  final doses = <String, int>{};
+  final days = <String, Set<DateTime>>{};
+  var totalGrams = 0.0;
+
+  for (final dose in dosages) {
+    if (!inRangeInclusive(dose.timestamp, range.start, range.end)) continue;
+    grams[dose.strainId] = (grams[dose.strainId] ?? 0) + dose.amount;
+    doses[dose.strainId] = (doses[dose.strainId] ?? 0) + 1;
+    (days[dose.strainId] ??= <DateTime>{}).add(startOfDay(dose.timestamp));
+    totalGrams += dose.amount;
+  }
+
+  if (grams.isEmpty) {
+    return const RotationSummary(
+      rows: [],
+      tail: null,
+      strainCount: 0,
+      totalGrams: 0,
+    );
+  }
+
+  final ranked = grams.keys.toList()
+    ..sort((a, b) {
+      final byGrams = grams[b]!.compareTo(grams[a]!);
+      // Stable, so a redraw cannot shuffle two strains that tie.
+      return byGrams != 0 ? byGrams : a.compareTo(b);
+    });
+
+  double shareOf(double g) => totalGrams <= 0 ? 0 : g / totalGrams;
+
+  final head = ranked.take(topCount).toList();
+  final rows = [
+    for (final id in head)
+      StrainShare(
+        strainId: id,
+        strainCount: 1,
+        grams: grams[id]!,
+        doses: doses[id]!,
+        daysUsed: days[id]!.length,
+        share: shareOf(grams[id]!),
+      ),
+  ];
+
+  StrainShare? tail;
+  final rest = ranked.skip(topCount).toList();
+  if (rest.isNotEmpty) {
+    var tailGrams = 0.0;
+    var tailDoses = 0;
+    final tailDays = <DateTime>{};
+    for (final id in rest) {
+      tailGrams += grams[id]!;
+      tailDoses += doses[id]!;
+      tailDays.addAll(days[id]!);
+    }
+    tail = StrainShare(
+      strainId: null,
+      strainCount: rest.length,
+      grams: tailGrams,
+      doses: tailDoses,
+      daysUsed: tailDays.length,
+      share: shareOf(tailGrams),
+    );
+    rows.add(tail);
+  }
+
+  return RotationSummary(
+    rows: rows,
+    tail: tail,
+    strainCount: ranked.length,
+    totalGrams: totalGrams,
+  );
+}
+
 DateTime _nextDay(DateTime day) => addDays(day, 1);
+
+double _median(List<double> values) {
+  if (values.isEmpty) return 0;
+  final sorted = List<double>.from(values)..sort();
+  final middle = sorted.length ~/ 2;
+  if (sorted.length.isOdd) return sorted[middle];
+  return (sorted[middle - 1] + sorted[middle]) / 2;
+}
 
 double _mean(Iterable<double> values) {
   var count = 0;

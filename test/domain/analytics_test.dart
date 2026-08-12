@@ -30,7 +30,11 @@ void main() {
     expect(stats.longestRestStreak, 1);
   });
 
-  test('rolling average is centred and uses available edge days', () {
+  // Was [2, 3, 5, 7, 8] when the window was centred. The window is trailing
+  // now: a centred window computes the newest points — the ones actually read
+  // as "where am I today" — from a half-width sample and from days that have
+  // not happened, so the line lied precisely where it mattered most.
+  test('rolling average trails: a point never sees a later day', () {
     final daily = {
       DateTime(2025, 2, 1): 1.0,
       DateTime(2025, 2, 2): 3.0,
@@ -41,7 +45,7 @@ void main() {
 
     final result = rollingAverage(daily, 3);
 
-    expect(result.map((point) => point.value), [2, 3, 5, 7, 8]);
+    expect(result.map((point) => point.value), [1, 2, 3, 5, 7]);
   });
 
   test('an unfinished today does not break the streak or count as rest', () {

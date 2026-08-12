@@ -58,96 +58,123 @@ class StrainUsageTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 72),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: strainColor.withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Center(
-                      child: StrainMark(
-                        shape: resolveLeafShape(strain.icon, strain.code),
-                        color: strainColor,
-                        size: 22,
+            child: Stack(
+              children: [
+                // The month's load, underlining the recency line on the text
+                // grid so it costs no height and reads as a measure of that
+                // line rather than as a divider between rows. Scanning down the
+                // list shows which strains the rotation is leaning on.
+                if (usage.relativeLoad > 0)
+                  Positioned(
+                    left: 64,
+                    right: 12,
+                    bottom: 9,
+                    height: 2,
+                    child: FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: usage.relativeLoad.clamp(0.0, 1.0),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: strainColor.withValues(
+                            alpha: inStock ? 0.38 : 0.18,
+                          ),
+                          borderRadius: BorderRadius.circular(1),
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Opacity(
-                      opacity: contentOpacity,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Row(
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: strainColor.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Center(
+                          child: StrainMark(
+                            shape: resolveLeafShape(strain.icon, strain.code),
+                            color: strainColor,
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Opacity(
+                          opacity: contentOpacity,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Flexible(
-                                child: Row(
-                                  children: [
-                                    Flexible(
-                                      child: Text(
-                                        strain.code,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w600,
-                                          color: c.textPrimary,
-                                        ),
-                                      ),
-                                    ),
-                                    if (showName) ...[
-                                      const SizedBox(width: 8),
-                                      Flexible(
-                                        flex: 2,
-                                        child: Text(
-                                          strain.name,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w400,
-                                            color: c.textSecondary,
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Row(
+                                      children: [
+                                        Flexible(
+                                          child: Text(
+                                            strain.code,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w600,
+                                              color: c.textPrimary,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                    ],
+                                        if (showName) ...[
+                                          const SizedBox(width: 8),
+                                          Flexible(
+                                            flex: 2,
+                                            child: Text(
+                                              strain.name,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w400,
+                                                color: c.textSecondary,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                  if (isTopPick) ...[
+                                    const SizedBox(width: 8),
+                                    _RotationPickMarker(color: strainColor),
                                   ],
+                                ],
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                recency,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  height: 1.25,
+                                  color: c.textSecondary,
                                 ),
                               ),
-                              if (isTopPick) ...[
-                                const SizedBox(width: 8),
-                                _RotationPickMarker(color: strainColor),
-                              ],
                             ],
                           ),
-                          const SizedBox(height: 3),
-                          Text(
-                            recency,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12,
-                              height: 1.25,
-                              color: c.textSecondary,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
+                      if (!inStock && onToggleStock != null) ...[
+                        const SizedBox(width: 8),
+                        _BackInStockButton(onTap: onToggleStock!),
+                      ],
+                    ],
                   ),
-                  if (!inStock && onToggleStock != null) ...[
-                    const SizedBox(width: 8),
-                    _BackInStockButton(onTap: onToggleStock!),
-                  ],
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -155,16 +182,16 @@ class StrainUsageTile extends StatelessWidget {
     );
   }
 
+  /// Rest, then load — the same two facts the ranking is built from, so the
+  /// order of the list can be read off the rows instead of guessed at. The old
+  /// line described the last day the strain was touched, which is an arbitrary
+  /// snapshot and had nothing to do with where the row sat.
   static String _recencyLine(StrainUsage usage) {
     if (usage.lastUsed == null) return 'never used';
 
     final when = _whenLabel(usage.daysSinceLastUse);
-    final grams = _formatGrams(usage.gramsLastUsedDay);
-
-    if (usage.dosesLastUsedDay > 1) {
-      return '$when · ${usage.dosesLastUsedDay} doses · ${grams}g';
-    }
-    return '$when · 1 dose · ${grams}g';
+    if (usage.grams30d <= 0) return '$when · none this month';
+    return '$when · ${_formatGrams(usage.grams30d)}g in 30d';
   }
 
   static String _whenLabel(double daysSince) {

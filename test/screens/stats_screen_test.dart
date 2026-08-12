@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kratom_tracker_plus/domain/date_utils.dart';
 import 'package:kratom_tracker_plus/providers/kratom_provider.dart';
 import 'package:kratom_tracker_plus/providers/theme_provider.dart';
 import 'package:kratom_tracker_plus/screens/stats_screen.dart';
@@ -16,77 +19,190 @@ Widget _harness(KratomProvider provider) {
   );
 }
 
-Future<KratomProvider> _provider() async {
-  SharedPreferences.setMockInitialValues({});
+/// Seeded through mock preferences rather than [KratomProvider.addDosage] —
+/// a month of realistic history is 120 doses, and the page only says anything
+/// interesting once it has that much.
+Future<KratomProvider> _provider(List<Map<String, dynamic>> dosages) async {
+  SharedPreferences.setMockInitialValues({
+    'strains': jsonEncode([
+      {
+        'id': 'strain-1',
+        'name': 'Maeng Da',
+        'code': 'MD',
+        'color': 0xFF00ACC1,
+        'icon': 'Leaf',
+      },
+      {
+        'id': 'strain-2',
+        'name': 'Bali',
+        'code': 'BALI',
+        'color': 0xFFB388FF,
+        'icon': 'Leaf',
+      },
+    ]),
+    'dosages': jsonEncode(dosages),
+  });
   return KratomProvider.create(await SharedPreferences.getInstance());
 }
 
+/// [perDay] doses of [size] on each of the days [from]..[to] days ago. Today
+/// is never seeded: an unfinished today is excluded from closed-day metrics,
+/// so leaving it empty keeps every expectation below independent of the hour
+/// the suite happens to run at.
+List<Map<String, dynamic>> _days({
+  required int from,
+  required int to,
+  required int Function(int daysAgo) perDay,
+  double size = 2.5,
+  String strainId = 'strain-1',
+}) {
+  final today = startOfDay(DateTime.now());
+  final result = <Map<String, dynamic>>[];
+  for (var daysAgo = from; daysAgo <= to; daysAgo++) {
+    final day = addDays(today, -daysAgo);
+    for (var n = 0; n < perDay(daysAgo); n++) {
+      result.add({
+        'id': '$strainId-$daysAgo-$n',
+        'strainId': strainId,
+        'amount': size,
+        'timestamp':
+            DateTime(day.year, day.month, day.day, 8 + n * 3).toIso8601String(),
+      });
+    }
+  }
+  return result;
+}
+
 void main() {
-  testWidgets('rest-day counts pluralise for 0, 1 and many', (tester) async {
-    final provider = await _provider();
-    await provider.addStrain('Maeng Da', 'MD', 0xFF00ACC1, 'Leaf');
-    final strainId = provider.strains.first.id;
-
-    // Empty 30d range: current streak 0, longest rest streak 29 — today has
-    // not finished, so it is not yet a completed rest day.
-    await tester.pumpWidget(_harness(provider));
+  testWidgets('a fresh install says so and nothing else', (tester) async {
+    await tester.pumpWidget(_harness(await _provider(const [])));
     await tester.pumpAndSettle();
-    expect(find.text('0 days'), findsOneWidget);
-    expect(find.text('29 days'), findsOneWidget);
 
-    // A single dose today: currentStreak = 1, longestRest = 29.
-    final now = DateTime.now();
-    await provider.addDosage(
-      strainId,
-      2.5,
-      DateTime(now.year, now.month, now.day, 8),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('1 day'), findsOneWidget);
-    expect(find.text('29 days'), findsOneWidget);
+    expect(find.text('Nothing logged yet'), findsOneWidget);
+    expect(find.text('Dosage history'), findsOneWidget);
+    // No section survives an empty install — there is nothing to say.
+    expect(find.text('When'), findsNothing);
+    expect(find.text('Rotation'), findsNothing);
+    expect(find.text('Rest'), findsNothing);
+    expect(find.textContaining('NaN'), findsNothing);
   });
 
-  testWidgets('builds with zero data and shows empty states, no NaN',
+  testWidgets('a handful of doses refuses to call a trend', (tester) async {
+    final provider = await _provider(
+      _days(from: 2, to: 4, perDay: (_) => 1),
+    );
+    await tester.pumpWidget(_harness(provider));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Not enough history yet'), findsOneWidget);
+    expect(find.textContaining('NaN'), findsNothing);
+  });
+
+  testWidgets('a flat month reads as steady and decomposes into F and A',
       (tester) async {
-    final provider = await _provider();
+    final provider = await _provider(
+      _days(from: 1, to: 40, perDay: (_) => 4),
+    );
     await tester.pumpWidget(_harness(provider));
     await tester.pumpAndSettle();
 
-    // Three chart sections each show their empty state.
-    expect(find.text('No doses in this range yet.'), findsNWidgets(2));
-    expect(find.text('No strain usage in this range yet.'), findsOneWidget);
-    // Headline values render as 0.0g / 0 without throwing.
-    expect(find.text('0.0g'), findsWidgets);
-    expect(find.text('0'), findsWidgets);
+    expect(find.text('Holding steady around 10g/day'), findsOneWidget);
+    // G = F × A, laid out as the equation it is.
+    expect(find.text('10'), findsOneWidget);
+    expect(find.text('4'), findsOneWidget);
+    expect(find.text('2.5'), findsOneWidget);
+    expect(find.text('grams a day'), findsOneWidget);
+    expect(find.text('doses a day'), findsOneWidget);
+    expect(find.text('grams a dose'), findsOneWidget);
+
+    expect(find.text('When'), findsOneWidget);
+    expect(find.text('Rotation'), findsOneWidget);
+    expect(find.text('Rest'), findsOneWidget);
   });
 
-  testWidgets('builds with seeded data across a range boundary', (tester) async {
-    final provider = await _provider();
-    await provider.addStrain('Maeng Da', 'MD', 0xFF00ACC1, 'Leaf');
-    final strainId = provider.strains.first.id;
-
-    final now = DateTime.now();
-    // One dose inside the default 30d window, one well outside it.
-    await provider.addDosage(
-      strainId,
-      2.5,
-      DateTime(now.year, now.month, now.day, 8),
+  testWidgets('a rise says which factor carried it', (tester) async {
+    // Same 2.5g dose throughout; only the count climbs.
+    final provider = await _provider(
+      _days(from: 1, to: 29, perDay: (daysAgo) => 3 + (29 - daysAgo) ~/ 10),
     );
-    await provider.addDosage(
-      strainId,
-      3.0,
-      now.subtract(const Duration(days: 35)),
-    );
-
     await tester.pumpWidget(_harness(provider));
     await tester.pumpAndSettle();
 
-    // Default range is 30d: only the 2.5g dose is inside.
-    expect(find.text('2.5g'), findsWidgets);
+    expect(find.text('More doses, not bigger ones.'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Text &&
+            (widget.data ?? '').startsWith('Up ') &&
+            widget.data!.contains('over the last 30 days'),
+      ),
+      findsOneWidget,
+    );
+  });
 
-    // Switch to All: both doses are included.
+  testWidgets('the range picker changes what the headline is about',
+      (tester) async {
+    // Three months walking up from 5g a day to 10g. The last month is flat,
+    // so 30d has nothing to report and All has a climb.
+    final provider = await _provider(
+      _days(
+        from: 1,
+        to: 89,
+        perDay: (daysAgo) => daysAgo <= 29 ? 4 : (daysAgo <= 59 ? 3 : 2),
+      ),
+    );
+    await tester.pumpWidget(_harness(provider));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Holding steady around 10g/day'), findsOneWidget);
+
     await tester.tap(find.text('All'));
     await tester.pumpAndSettle();
-    expect(find.text('5.5g'), findsWidgets);
+
+    expect(find.text('Holding steady around 10g/day'), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Text &&
+            (widget.data ?? '').startsWith('Up ') &&
+            widget.data!.contains('across your whole history'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('rest days and streaks are kept, in one line', (tester) async {
+    // 29 closed days: two of them rested, the last three consecutive.
+    final provider = await _provider(
+      _days(
+        from: 1,
+        to: 29,
+        perDay: (daysAgo) => (daysAgo == 4 || daysAgo == 5) ? 0 : 4,
+      ),
+    );
+    await tester.pumpWidget(_harness(provider));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('2 rest days in 29 · on a 3-day run · longest rest 2 days'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('one strain carrying the month is called out', (tester) async {
+    final provider = await _provider([
+      ..._days(from: 1, to: 29, perDay: (_) => 4),
+      ..._days(from: 1, to: 29, perDay: (_) => 1, strainId: 'strain-2'),
+    ]);
+    await tester.pumpWidget(_harness(provider));
+    await tester.pumpAndSettle();
+
+    expect(find.text('MD'), findsOneWidget);
+    expect(find.text('BALI'), findsOneWidget);
+    expect(
+      find.text('MD is 80% of everything here — that is leaning, '
+          'not rotating.'),
+      findsOneWidget,
+    );
   });
 }
