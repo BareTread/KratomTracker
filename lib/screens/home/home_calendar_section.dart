@@ -3,7 +3,20 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 
+import '../../domain/date_utils.dart';
 import '../../theme/app_theme.dart';
+
+/// Which slot of the Monday-first week strip [day] belongs to.
+///
+/// `table_calendar` hands its builders **UTC-normalised** days while [monday]
+/// is a local midnight, so the obvious `day.difference(monday).inDays` mixes
+/// two zones and truncates. West of Greenwich the difference for the n-th day
+/// is `n days - offset hours`, which floors to `n - 1`: every square read the
+/// previous day's total and Sunday's was never read at all. [day] is a
+/// calendar label, not an instant, so it is rebuilt as one and counted in
+/// calendar days — which is also exact across a DST transition.
+int weekDayIndex(DateTime monday, DateTime day) =>
+    daysBetween(monday, DateTime(day.year, day.month, day.day));
 
 /// Calendar content (week strip + per-day dose dots + month picker) intended
 /// to live inside its own card. Owns no card chrome — the surrounding card
@@ -37,15 +50,15 @@ class HomeCalendarSection extends StatelessWidget {
     final today = DateUtils.dateOnly(DateTime.now());
     final onToday = _sameDay(focusedDay, today);
     final totalFor = totalForDate ?? (_) => 0.0;
-    final monday = DateUtils.dateOnly(focusedDay)
-        .subtract(Duration(days: focusedDay.weekday - 1));
+    // Calendar days throughout, never elapsed hours: Duration(days: n) is
+    // exactly 24h, so a week spanning a DST transition lands a day short or
+    // long — the same class of bug date_utils exists to stop.
+    final monday = addDays(focusedDay, -(focusedDay.weekday - 1));
     final weekTotals = List<double>.generate(
       7,
-      (i) => totalFor(monday.add(Duration(days: i))),
+      (i) => totalFor(addDays(monday, i)),
     );
-    final canGoForward = focusedDay
-        .add(const Duration(days: 7))
-        .isBefore(today.add(const Duration(days: 1)));
+    final canGoForward = addDays(focusedDay, 7).isBefore(addDays(today, 1));
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -57,7 +70,7 @@ class HomeCalendarSection extends StatelessWidget {
               IconButton(
                 visualDensity: VisualDensity.compact,
                 onPressed: () {
-                  final prev = focusedDay.subtract(const Duration(days: 7));
+                  final prev = addDays(focusedDay, -7);
                   _select(
                     prev.isBefore(DateTime.utc(2020))
                         ? DateTime.utc(2020)
@@ -104,7 +117,7 @@ class HomeCalendarSection extends StatelessWidget {
                 visualDensity: VisualDensity.compact,
                 onPressed: canGoForward
                     ? () {
-                        final next = focusedDay.add(const Duration(days: 7));
+                        final next = addDays(focusedDay, 7);
                         _select(next.isAfter(today) ? today : next);
                       }
                     : null,
@@ -220,7 +233,7 @@ class HomeCalendarSection extends StatelessWidget {
   }) {
     final selected = enabled && _sameDay(day, focusedDay);
     final isToday = _sameDay(day, today);
-    final dayIndex = day.difference(monday).inDays;
+    final dayIndex = weekDayIndex(monday, day);
     final total = (dayIndex >= 0 && dayIndex < 7) ? weekTotals[dayIndex] : 0.0;
     final hasDoses = total > 0 && !day.isAfter(today);
     // Selected → filled accent circle, scaffold-coloured text.
