@@ -38,7 +38,7 @@ class _EditDosageFormState extends State<EditDosageForm> {
       text: widget.dosage.notes ?? '',
     );
     _selectedStrainId = widget.dosage.strainId;
-    _selectedDateTime = widget.dosage.timestamp;
+    _selectedDateTime = widget.dosage.timestamp.toLocal();
   }
 
   static String _formatAmount(double amount) {

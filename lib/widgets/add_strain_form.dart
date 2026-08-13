@@ -216,11 +216,9 @@ class _AddStrainFormState extends State<AddStrainForm> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
+    return Material(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       child: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
@@ -300,32 +298,37 @@ class _AddStrainFormState extends State<AddStrainForm> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                for (var type in _strainTypes.entries) ...[
-                  Row(
+                RadioGroup<String>(
+                  groupValue: _selectedType,
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() {
+                      _selectedType = value;
+                      _selectedColor = _strainTypes[value]![0];
+                    });
+                  },
+                  child: Column(
                     children: [
-                      Radio<String>(
-                        value: type.key,
-                        groupValue: _selectedType,
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedType = value!;
-                            _selectedColor = _strainTypes[value]![0];
-                          });
-                        },
-                      ),
-                      Text(type.key),
+                      for (var type in _strainTypes.entries) ...[
+                        Row(
+                          children: [
+                            Radio<String>(value: type.key),
+                            Text(type.key),
+                          ],
+                        ),
+                        if (_selectedType == type.key)
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
+                            children: type.value.map((color) {
+                              return _buildColorOption(context, color);
+                            }).toList(),
+                          ),
+                        const SizedBox(height: 12),
+                      ],
                     ],
                   ),
-                  if (_selectedType == type.key)
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: type.value.map((color) {
-                        return _buildColorOption(context, color);
-                      }).toList(),
-                    ),
-                  const SizedBox(height: 12),
-                ],
+                ),
                 const SizedBox(height: 24),
                 SwitchListTile(
                   value: _inStock,

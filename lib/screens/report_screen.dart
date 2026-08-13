@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../domain/date_utils.dart';
 import '../export/csv_export.dart';
 import '../models/dosage.dart';
 import '../models/strain.dart';
@@ -129,6 +130,7 @@ class ReportScreen extends StatelessWidget {
     KratomProvider provider,
   ) {
     final c = context.c;
+    final localTimestamp = dosage.timestamp.toLocal();
     final strain = provider.getStrain(dosage.strainId) ??
         const Strain(
           id: '',
@@ -173,7 +175,7 @@ class ReportScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        DateFormat('h:mm a').format(dosage.timestamp),
+                        DateFormat('h:mm a').format(localTimestamp),
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: c.textSecondary,
                             ),
@@ -198,11 +200,7 @@ class ReportScreen extends StatelessWidget {
   Map<DateTime, List<Dosage>> _groupDosagesByDate(List<Dosage> dosages) {
     final grouped = <DateTime, List<Dosage>>{};
     for (final dosage in dosages) {
-      final date = DateTime(
-        dosage.timestamp.year,
-        dosage.timestamp.month,
-        dosage.timestamp.day,
-      );
+      final date = startOfDay(dosage.timestamp);
       grouped.putIfAbsent(date, () => []).add(dosage);
     }
     return Map.fromEntries(
@@ -220,6 +218,7 @@ class ReportScreen extends StatelessWidget {
     KratomProvider provider,
   ) {
     final c = context.c;
+    final localTimestamp = dosage.timestamp.toLocal();
     final strain = provider.getStrain(dosage.strainId) ??
         const Strain(
           id: '',
@@ -284,7 +283,7 @@ class ReportScreen extends StatelessWidget {
                               const SizedBox(height: 4),
                               Text(
                                 DateFormat('EEEE, MMMM d, y • h:mm a')
-                                    .format(dosage.timestamp),
+                                    .format(localTimestamp),
                                 style: Theme.of(context)
                                     .textTheme
                                     .bodySmall
@@ -365,7 +364,7 @@ class ReportScreen extends StatelessWidget {
       text: dosage.amount.toString(),
     );
     String selectedStrainId = dosage.strainId;
-    DateTime selectedTime = dosage.timestamp;
+    DateTime selectedTime = dosage.timestamp.toLocal();
 
     showModalBottomSheet(
       context: context,

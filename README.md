@@ -103,14 +103,6 @@ painters build gradients and path metrics inside `paint()` (`vine_painter.dart:2
 smoothness, and a fresh install can be janky for unrelated reasons (background dexopt, Play
 Protect scanning, the display dropping to 60Hz on low battery).
 
-## Housekeeping
-
-`lottie` and `flutter_svg` are declared in `pubspec.yaml` but no longer imported anywhere in
-`lib/`. They can be dropped whenever someone is touching dependencies.
-
-`MaterialApp.title` still reads "Kratom Tracker" (`lib/main.dart:47`, `:82`) while the Android
-launcher label is "Herbal Tracker+".
-
 ## Privacy
 
 Everything is stored locally in `SharedPreferences`. There is no backend, no telemetry, and
