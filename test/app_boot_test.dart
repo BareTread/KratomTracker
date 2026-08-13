@@ -14,6 +14,10 @@ void main() {
     SharedPreferences.setMockInitialValues({});
 
     await _bootAndExercise(tester);
+    expect(
+      tester.widget<MaterialApp>(find.byType(MaterialApp)).title,
+      'Herbal Tracker+',
+    );
   });
 
   testWidgets('real app boots with a realistic 18-month dataset',

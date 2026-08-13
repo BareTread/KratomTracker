@@ -154,6 +154,42 @@ void main() {
       expect(row[3], '???'); // strain_code placeholder
       expect(row[4], 'Unknown strain'); // strain_name placeholder
     });
+
+    test('UTC imports use the local wall clock in date and time columns', () {
+      final timestamp = DateTime.parse('2024-06-05T23:30:00.000Z');
+      final csv = exportDosagesCsv(
+        dosages: [
+          Dosage(
+            id: 'utc-dose',
+            strainId: 's1',
+            amount: 2,
+            timestamp: timestamp,
+          ),
+        ],
+        strains: const [
+          Strain(
+            id: 's1',
+            name: 'Test',
+            code: 'T',
+            color: 1,
+            icon: 'Leaf',
+          ),
+        ],
+      );
+
+      final row = _parseCsv(csv)[1];
+      final local = timestamp.toLocal();
+      expect(
+          row[0],
+          '${local.year.toString().padLeft(4, '0')}-'
+          '${local.month.toString().padLeft(2, '0')}-'
+          '${local.day.toString().padLeft(2, '0')}');
+      expect(
+          row[1],
+          '${local.hour.toString().padLeft(2, '0')}:'
+          '${local.minute.toString().padLeft(2, '0')}');
+      expect(row[2], timestamp.toIso8601String());
+    });
   });
 }
 

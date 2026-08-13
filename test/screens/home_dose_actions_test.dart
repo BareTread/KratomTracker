@@ -14,6 +14,22 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('long-press quick actions', () {
+    testWidgets('UTC imports display at the local wall-clock time',
+        (tester) async {
+      final timestamp = DateTime.parse('2024-06-05T23:30:00.000Z');
+      final provider = await _provider(
+        dosages: [_dose('utc-dose', timestamp, 2)],
+      );
+
+      await _pumpList(tester, provider, doseIds: ['utc-dose']);
+
+      final local = timestamp.toLocal();
+      final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
+      final minute = local.minute.toString().padLeft(2, '0');
+      expect(find.text('$hour:$minute'), findsOneWidget);
+      expect(find.text(local.hour < 12 ? 'AM' : 'PM'), findsOneWidget);
+    });
+
     testWidgets('long-press a dose row opens edit / delete / log again now',
         (tester) async {
       final now = DateTime.now();

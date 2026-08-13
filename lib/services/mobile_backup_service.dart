@@ -12,7 +12,7 @@ class BackupFileService {
 
       await Share.shareXFiles(
         [XFile(file.path)],
-        subject: 'Kratom Tracker Backup',
+        subject: 'Herbal Tracker+ Backup',
       );
     } catch (e) {
       debugPrint('Error sharing file: $e');

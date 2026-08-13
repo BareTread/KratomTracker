@@ -238,8 +238,9 @@ class _DoseRow extends StatelessWidget {
     final shape = resolveLeafShape(strain?.icon ?? '', strain?.code ?? '');
     final xOff = VineGeometry.offsetFor(nodeIndex);
 
-    final hour = DateFormat('h:mm').format(dosage.timestamp);
-    final ampm = DateFormat('a').format(dosage.timestamp).toUpperCase();
+    final localTimestamp = dosage.timestamp.toLocal();
+    final hour = DateFormat('h:mm').format(localTimestamp);
+    final ampm = DateFormat('a').format(localTimestamp).toUpperCase();
 
     final semantics =
         '$hour $ampm, $code, ${dosage.amount} grams';
@@ -525,7 +526,7 @@ class _LiveGapStemState extends State<_LiveGapStem>
   }
 
   bool _shouldAnimate(BuildContext context) {
-    if (!TickerMode.of(context)) return false;
+    if (!TickerMode.valuesOf(context).enabled) return false;
     if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) return false;
     return !AppMotion.reduced(context);
   }
@@ -719,7 +720,7 @@ class _LiveNowStemState extends State<_LiveNowStem>
   }
 
   bool _shouldAnimate(BuildContext context) {
-    if (!TickerMode.of(context)) return false;
+    if (!TickerMode.valuesOf(context).enabled) return false;
     if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) return false;
     return !AppMotion.reduced(context);
   }

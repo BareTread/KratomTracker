@@ -38,9 +38,10 @@ const _header =
     'date,time,iso_timestamp,strain_code,strain_name,amount_g,notes';
 
 String _row(Dosage dose, Strain? strain) {
+  final localTimestamp = dose.timestamp.toLocal();
   final fields = <String>[
-    DateFormat('yyyy-MM-dd').format(dose.timestamp),
-    DateFormat('HH:mm').format(dose.timestamp),
+    DateFormat('yyyy-MM-dd').format(localTimestamp),
+    DateFormat('HH:mm').format(localTimestamp),
     dose.timestamp.toIso8601String(),
     strain?.code ?? '???',
     strain?.name ?? 'Unknown strain',
@@ -79,7 +80,7 @@ Future<String> shareDosagesCsv({
   );
 
   final stamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-  final filename = 'kratom_tracker_export_$stamp.csv';
+  final filename = 'herbal_tracker_plus_export_$stamp.csv';
 
   final directory = await getTemporaryDirectory();
   final file = File('${directory.path}/$filename');
@@ -87,7 +88,7 @@ Future<String> shareDosagesCsv({
 
   await Share.shareXFiles(
     [XFile(file.path)],
-    subject: 'Kratom Tracker CSV export',
+    subject: 'Herbal Tracker+ CSV export',
   );
 
   debugPrint('CSV exported to ${file.path}');

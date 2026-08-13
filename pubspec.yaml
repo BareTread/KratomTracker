@@ -1,7 +1,7 @@
 name: kratom_tracker_plus
 description: A comprehensive herbal supplement dosage tracking application (Enhanced)
 publish_to: 'none'
-version: 2.16.0+19
+version: 2.16.1+20
 
 environment:
   sdk: ^3.5.4
@@ -22,8 +22,6 @@ dependencies:
   table_calendar: ^3.0.9
   share_plus: ^10.1.4
   file_picker: ^8.1.7
-  lottie: ^3.1.3
-  flutter_svg: ^2.0.9
   url_launcher: ^6.3.1
   path_provider: ^2.1.5
 
@@ -85,12 +83,6 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
-
-  assets:
-    - assets/animations/
-    - assets/animations/empty_doses.json
-    - assets/animations/empty_strains.json
-    - assets/animations/kratom.svg
 
 # Add this configuration section
 flutter_icons:

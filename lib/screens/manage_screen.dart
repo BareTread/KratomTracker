@@ -46,7 +46,7 @@ class _ManageScreenState extends State<ManageScreen> {
         final backupJson = await provider.exportJson();
 
         final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
-        final filename = 'kratom_tracker_backup_$timestamp.json';
+        final filename = 'herbal_tracker_plus_backup_$timestamp.json';
 
         await Share.shareXFiles(
           [
@@ -56,7 +56,7 @@ class _ManageScreenState extends State<ManageScreen> {
               mimeType: 'application/json',
             ),
           ],
-          subject: 'Kratom Tracker Backup',
+          subject: 'Herbal Tracker+ Backup',
         );
       },
       'Backup created successfully',

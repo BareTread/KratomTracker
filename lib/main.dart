@@ -44,7 +44,7 @@ class _AppBootstrapState extends State<AppBootstrap> {
           if (!snapshot.hasData) {
             return Consumer<ThemeProvider>(
               builder: (context, theme, child) => MaterialApp(
-                title: 'Kratom Tracker',
+                title: 'Herbal Tracker+',
                 theme: theme.theme,
                 home: const _LoadingScreen(),
               ),
@@ -79,7 +79,7 @@ class MyApp extends StatelessWidget {
     return Consumer2<ThemeProvider, KratomProvider>(
       builder: (context, themeProvider, kratomProvider, child) {
         return MaterialApp(
-          title: 'Kratom Tracker',
+          title: 'Herbal Tracker+',
           theme: themeProvider.theme,
           home: kratomProvider.isReady
               ? const MainScreen()

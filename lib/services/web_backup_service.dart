@@ -14,7 +14,7 @@ class BackupFileService {
       // Share the file
       await Share.shareXFiles(
         [XFile(file.path)],
-        subject: 'Kratom Tracker Backup',
+        subject: 'Herbal Tracker+ Backup',
       );
 
       // Clean up
