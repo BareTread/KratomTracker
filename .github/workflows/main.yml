@@ -48,10 +48,8 @@ jobs:
         run: flutter pub get
 
       - name: Analyze
-        # `flutter analyze` treats infos as fatal by default, so bare
-        # --fatal-warnings failed the job on info-level lints. `dart fix`
-        # cleared all but four Flutter API deprecations (Radio groupValue,
-        # TickerMode.of), which need refactors, not a red build.
+        # Keep warnings fatal while allowing non-fatal style infos. The source
+        # is expected to remain at zero analyzer issues.
         run: flutter analyze --fatal-warnings --no-fatal-infos
 
       - name: Test

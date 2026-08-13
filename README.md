@@ -1,13 +1,15 @@
 # Herbal Tracker+
 
-A private, offline Flutter app for tracking daily herbal supplement doses. Dark mode only,
-Android first. All data stays on the device — no account, no network, no analytics.
+A private, offline Flutter app for tracking daily herbal supplement doses. Android first,
+with light and dark themes. All data stays on the device — no account, no network, no
+analytics.
 
 - **Package**: `org.kratomtracker.plus`
-- **Version**: 2.12.0+14 (`pubspec.yaml`, mirrored in `lib/constants/app_version.dart` and
-  enforced by `test/app_version_test.dart`)
+- **Current release**: 2.16.1+20 (`pubspec.yaml`, mirrored in
+  `lib/constants/app_version.dart` and enforced by `test/app_version_test.dart`)
 - **Flutter**: 3.44.x stable, Dart SDK `^3.5.4`
 - **Min Android**: API 23 (6.0)
+- **Release**: [v2.16.1](https://github.com/BareTread/KratomTracker/releases/tag/v2.16.1)
 
 ## What it does
 
@@ -16,8 +18,8 @@ Android first. All data stays on the device — no account, no network, no analy
   botanical "vine": a painted stem with one leaf mark per dose, and a live dashed tail
   running from the last dose down to a NOW node so elapsed time is readable at a glance.
 - **Strains** — around thirty, each with its own colour and leaf shape. Stock tracking.
-- **Effects** — optional per-dose ratings (energy, mood, pain relief, focus, anxiety).
-- **Stats & reports** — usage trends, per-strain breakdowns, CSV/JSON export and import.
+- **Stats & reports** — range-aware totals, trajectory and rotation insights, per-strain
+  breakdowns, and CSV/JSON export and import.
 
 ## Layout
 
@@ -54,10 +56,11 @@ Four rules the UI does not break:
 
 ```bash
 flutter pub get
-flutter test                        # 23 test files
+flutter test                        # 31 test files / 214 tests at v2.16.1
 flutter analyze
 flutter run                         # debug — NOT representative of animation smoothness
 flutter build apk --release
+flutter build appbundle --release
 ```
 
 ### Release signing
@@ -67,24 +70,76 @@ committed. Copy `android/key.properties.example` and fill it in; the keystore it
 outside the repo. Without it, `flutter build apk --release` fails with an explicit message
 rather than silently producing an unsigned or debug-signed APK.
 
-Verify what you actually built, independently of the build's exit code:
+The only update-capable signing key is
+`~/.android-keystores/kratomtracker-plus.jks`; keep its off-machine backup. The local
+`android/key.properties` points to it. Losing the key means future builds cannot upgrade
+the installed Plus app.
+
+Verify what you actually built, independently of the build's exit code. The APK must report
+package `org.kratomtracker.plus`, the intended version/code, and signing certificate SHA-256
+`d6febe8e8dea5ae5d483c2145095e2ea04958353e68743be195deab55439180c`:
 
 ```bash
-/opt/android-sdk/build-tools/37.0.0/aapt2 dump badging build/app/outputs/flutter-apk/app-release.apk | head -1
-# package: name='org.kratomtracker.plus' versionCode='14' versionName='2.12.0'
+tracker_android_sdk=$(sed -n 's/^sdk.dir=//p' android/local.properties)
+$tracker_android_sdk/cmdline-tools/latest/bin/apkanalyzer manifest application-id build/app/outputs/flutter-apk/app-release.apk
+$tracker_android_sdk/cmdline-tools/latest/bin/apkanalyzer manifest version-name build/app/outputs/flutter-apk/app-release.apk
+$tracker_android_sdk/cmdline-tools/latest/bin/apkanalyzer manifest version-code build/app/outputs/flutter-apk/app-release.apk
+apksigner verify --print-certs build/app/outputs/flutter-apk/app-release.apk
+jarsigner -verify build/app/outputs/bundle/release/app-release.aab
 ```
+
+GitHub currently has no signing secrets. Actions therefore builds and labels a
+`*-unsigned-debugkey.apk` verification artifact; it is **not** a distributable release and
+the workflow cannot attach it to a GitHub Release. Build signed APK/AAB files locally,
+verify them as above, tag the exact `main` commit, and upload both manually:
+
+```bash
+git tag -a vX.Y.Z -m "Herbal Tracker+ vX.Y.Z"
+git push origin vX.Y.Z
+gh release create vX.Y.Z HerbalTrackerPlus-X.Y.Z.apk HerbalTrackerPlus-X.Y.Z.aab \
+  --title "Herbal Tracker+ vX.Y.Z" --verify-tag --notes-file RELEASE_NOTES_FILE
+```
+
+Do not publish until `flutter analyze`, the full test suite, the signed local builds, and
+both the `main` and tag Actions runs pass. Test the APK by installing it over the previous
+Plus release without uninstalling, confirming that its data remains intact.
+
+## Legacy 1.0 migration
+
+The original app and Plus are deliberately separate Android apps:
+
+- Original 1.0: `org.kratomtracker.app`, preserved on branch `legacy-1.0`
+- Herbal Tracker+ 2.x: `org.kratomtracker.plus`, released from `main`
+
+Installing Plus does not replace or delete 1.0. Export from 1.0, import into Plus, verify
+the dose count and date range, then manually uninstall 1.0. Never change either application
+ID to make them overwrite each other.
+
+## Audit state at v2.16.1
+
+The August 2026 audit re-derived the analytics calculations and found no arithmetic defect.
+It fixed calendar/DST indexing, local display of imported UTC timestamps, the Android CI
+Jetifier heap failure, Flutter API deprecations, and remaining public-facing old names.
+
+Three recovery-hardening items remain intentionally deferred; address them in a focused
+change with failure-path tests and an explicit data-recovery policy:
+
+1. Reject or bound malformed/far-future timestamps before all-range Theil–Sen work.
+2. Define rollback and UI error behavior when persistence fails after an in-memory mutation.
+3. Preserve corrupt raw stored JSON instead of allowing a later write to replace it with an
+   empty decoded list.
 
 ## Performance notes
 
 The home screen paints continuously (the live dashed tail animates on a 2.8s loop), so it is
-the first place to look if frames drop. As of 2.12.0 the animation architecture was audited
+the first place to look if frames drop. The animation architecture was audited before 2.16.1
 and is sound — record this so it is not re-litigated:
 
 - Both live tails are already isolated in their own `RepaintBoundary` + ticker
-  (`home_dosage_list.dart:588`, `:791`), so the animated tail does **not** repaint the static
+  (`home_dosage_list.dart:570`, `:773`), so the animated tail does **not** repaint the static
   vine or the leaf marks.
-- Offscreen tickers already stop — `TickerMode.of(context)` guards both controllers
-  (`home_dosage_list.dart:543`, `:737`).
+- Offscreen tickers already stop — `TickerMode.valuesOf(context).enabled` guards both controllers
+  (`home_dosage_list.dart:529`, `:723`).
 - `ListView.builder` wraps each row in a `RepaintBoundary` itself (framework default,
   `addRepaintBoundaries: true`). Do not add another by hand; grepping this repo for
   `RepaintBoundary` will not show it.
