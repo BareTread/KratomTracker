@@ -5,11 +5,11 @@ with light and dark themes. All data stays on the device — no account, no netw
 analytics.
 
 - **Package**: `org.kratomtracker.plus`
-- **Current release**: 2.16.1+20 (`pubspec.yaml`, mirrored in
+- **Current release**: 2.16.2+21 (`pubspec.yaml`, mirrored in
   `lib/constants/app_version.dart` and enforced by `test/app_version_test.dart`)
 - **Flutter**: 3.44.x stable, Dart SDK `^3.5.4`
 - **Min Android**: API 23 (6.0)
-- **Release**: [v2.16.1](https://github.com/BareTread/KratomTracker/releases/tag/v2.16.1)
+- **Release**: [v2.16.2](https://github.com/BareTread/KratomTracker/releases/tag/v2.16.2)
 
 ## What it does
 
@@ -56,7 +56,7 @@ Four rules the UI does not break:
 
 ```bash
 flutter pub get
-flutter test                        # 31 test files / 214 tests at v2.16.1
+flutter test                        # 31 test files / 217 tests at v2.16.2
 flutter analyze
 flutter run                         # debug — NOT representative of animation smoothness
 flutter build apk --release
