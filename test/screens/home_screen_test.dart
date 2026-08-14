@@ -28,6 +28,32 @@ void main() {
     expect(find.byKey(const Key('home-empty-add-dose')), findsNothing);
   });
 
+  testWidgets('elapsed labels survive a background pause/resume cycle',
+      (tester) async {
+    final now = DateTime.now();
+    final provider = await _provider(
+      dosages: [
+        _dose('am', DateTime(now.year, now.month, now.day, 8), 2),
+      ],
+    );
+    await _pumpHome(tester, provider, tall: true);
+    expect(
+      find.textContaining('since last dose', findRichText: true),
+      findsOneWidget,
+    );
+
+    // Hours in the background, then resume: the clock jumps immediately.
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('since last dose', findRichText: true),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('Add Dose FAB opens the add-dose sheet', (tester) async {
     final provider = await _provider();
     await _pumpHome(tester, provider);

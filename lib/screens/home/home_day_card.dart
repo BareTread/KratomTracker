@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -14,10 +15,15 @@ class HomeDayCard extends StatelessWidget {
     super.key,
     required this.focusedDay,
     required this.onDaySelected,
+    this.now,
   });
 
   final DateTime focusedDay;
   final ValueChanged<DateTime> onDaySelected;
+
+  /// Ticking clock the elapsed label listens to. Null (tests, static
+  /// embeds) keeps the label computed once at build, as before.
+  final ValueListenable<DateTime>? now;
 
   @override
   Widget build(BuildContext context) {
@@ -64,6 +70,7 @@ class HomeDayCard extends StatelessWidget {
             isToday: isToday,
             dayDoses: dayDoses,
             allDoses: provider.dosages,
+            now: now,
           ),
         ],
       ),
@@ -81,11 +88,15 @@ class _QuietStatusLine extends StatelessWidget {
     required this.isToday,
     required this.dayDoses,
     required this.allDoses,
+    this.now,
   });
 
   final bool isToday;
   final List<Dosage> dayDoses;
   final List<Dosage> allDoses;
+
+  /// Ticking clock so the elapsed figure advances without a dose change.
+  final ValueListenable<DateTime>? now;
 
   @override
   Widget build(BuildContext context) {
@@ -97,15 +108,13 @@ class _QuietStatusLine extends StatelessWidget {
         children: [
           Align(
             alignment: Alignment.centerLeft,
-            child: Text.rich(
-              TextSpan(children: _spans(context)),
-              style: TextStyle(
-                color: context.c.textTertiary,
-                fontSize: 13,
-                height: 1.3,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
+            // Only this Text rebuilds on a tick — never the calendar above.
+            child: now == null
+                ? _line(context, DateTime.now())
+                : ValueListenableBuilder<DateTime>(
+                    valueListenable: now!,
+                    builder: (context, tick, _) => _line(context, tick),
+                  ),
           ),
           const SizedBox(height: 8),
           // Soft hairline that fades at both ends — not a hard divider.
@@ -115,7 +124,17 @@ class _QuietStatusLine extends StatelessWidget {
     );
   }
 
-  List<InlineSpan> _spans(BuildContext context) {
+  Widget _line(BuildContext context, DateTime now) => Text.rich(
+        TextSpan(children: _spans(context, now)),
+        style: TextStyle(
+          color: context.c.textTertiary,
+          fontSize: 13,
+          height: 1.3,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      );
+
+  List<InlineSpan> _spans(BuildContext context, DateTime now) {
     if (isToday) {
       if (allDoses.isEmpty) {
         return const [TextSpan(text: 'No doses yet')];
@@ -123,7 +142,7 @@ class _QuietStatusLine extends StatelessWidget {
       final last = allDoses.reduce(
         (a, b) => a.timestamp.isAfter(b.timestamp) ? a : b,
       );
-      final elapsed = DateTime.now().difference(last.timestamp);
+      final elapsed = now.difference(last.timestamp);
       final total =
           dayDoses.fold<double>(0, (sum, dose) => sum + dose.amount);
       final count = dayDoses.length;

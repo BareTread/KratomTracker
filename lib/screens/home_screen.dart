@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -22,7 +24,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const _todayPage = 10000;
 
   late final PageController _pageController;
@@ -31,6 +33,14 @@ class _HomeScreenState extends State<HomeScreen> {
   /// State rebuilds the PageView subtree, and onPageChanged fires *during*
   /// the slide — that mid-flight rebuild was the hitch in the transition.
   late final ValueNotifier<DateTime> _focusedDay;
+
+  /// The one clock the live "time since" labels listen to. Ticks once a
+  /// minute while the app is visible and jumps the moment it resumes, so a
+  /// "2m since last dose" frozen from hours in the background can't happen.
+  /// Only the two small label subtrees rebuild on a tick, never the pages.
+  late final ValueNotifier<DateTime> _now;
+  Timer? _nowTimer;
+
   final _fabKey = GlobalKey<HomeFabMenuState>();
   bool _fabOpen = false;
 
@@ -38,7 +48,10 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _focusedDay = ValueNotifier(DateUtils.dateOnly(DateTime.now()));
+    _now = ValueNotifier(DateTime.now());
     _pageController = PageController(initialPage: _todayPage);
+    WidgetsBinding.instance.addObserver(this);
+    _startNowTimer();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _commitSelectedDate();
     });
@@ -46,9 +59,36 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _stopNowTimer();
     _pageController.dispose();
     _focusedDay.dispose();
+    _now.dispose();
     super.dispose();
+  }
+
+  void _startNowTimer() {
+    _nowTimer ??= Timer.periodic(const Duration(minutes: 1), (_) {
+      _now.value = DateTime.now();
+    });
+  }
+
+  void _stopNowTimer() {
+    _nowTimer?.cancel();
+    _nowTimer = null;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Hours may have passed with the app backgrounded; don't wait a
+      // full tick for the labels to catch up.
+      _now.value = DateTime.now();
+      _startNowTimer();
+    } else if (state != AppLifecycleState.inactive) {
+      // Paused/hidden/detached: stop waking the isolate every minute.
+      _stopNowTimer();
+    }
   }
 
   /// Publish the day to the provider. This notifies every listener in the
@@ -122,6 +162,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   builder: (context, day, _) => HomeDayCard(
                     focusedDay: day,
                     onDaySelected: _selectDay,
+                    now: _now,
                   ),
                 ),
                 Expanded(
@@ -149,6 +190,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           key: ValueKey(_dateForPage(index)),
                           date: _dateForPage(index),
                           onAddDose: _openAddDose,
+                          now: _now,
                         ),
                       ),
                     ),
@@ -196,10 +238,14 @@ class _HomeDayPage extends StatelessWidget {
     super.key,
     required this.date,
     required this.onAddDose,
+    required this.now,
   });
 
   final DateTime date;
   final VoidCallback onAddDose;
+
+  /// Ticking clock for the live gap label; see [_HomeScreenState].
+  final ValueListenable<DateTime> now;
 
   @override
   Widget build(BuildContext context) {
@@ -243,6 +289,7 @@ class _HomeDayPage extends StatelessWidget {
           dosages: List<Dosage>.unmodifiable(dosages),
           strainsById: strains,
           isToday: isToday,
+          now: now,
           header: const SizedBox.shrink(),
         ),
       ),

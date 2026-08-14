@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
@@ -17,6 +18,40 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('home timeline composition', () {
+    testWidgets('live gap label advances when the now clock ticks',
+        (tester) async {
+      final now = DateTime.now();
+      final day = DateTime(now.year, now.month, now.day);
+      final provider = await _provider(
+        dosages: [
+          _dose('a', day.add(const Duration(hours: 8)), 1),
+          _dose('b', day.add(const Duration(hours: 10)), 2),
+        ],
+      );
+      final clock =
+          ValueNotifier<DateTime>(day.add(const Duration(hours: 11, minutes: 5)));
+      addTearDown(clock.dispose);
+
+      await _pumpList(
+        tester,
+        provider,
+        doseIds: const ['a', 'b'],
+        isToday: true,
+        size: const Size(369, 540),
+        now: clock,
+      );
+
+      // Settled gap 8:00→10:00 stays static; the live gap follows the clock.
+      expect(find.text('2h 0m'), findsOneWidget);
+      expect(find.text('1h 5m'), findsOneWidget);
+
+      clock.value = day.add(const Duration(hours: 14));
+      await tester.pump();
+
+      expect(find.text('2h 0m'), findsOneWidget);
+      expect(find.text('4h 0m'), findsOneWidget);
+    });
+
     testWidgets(
       '3 doses today spread through a realistic 393×852 list body',
       (tester) async {
@@ -242,6 +277,7 @@ Future<void> _pumpList(
   required bool isToday,
   required Size size,
   bool setViewSize = true,
+  ValueListenable<DateTime>? now,
 }) async {
   if (setViewSize) {
     tester.view.physicalSize = Size(size.width, size.height + 200);
@@ -271,6 +307,7 @@ Future<void> _pumpList(
               dosages: List<Dosage>.unmodifiable(dosages),
               strainsById: strains,
               isToday: isToday,
+              now: now,
               header: const SizedBox.shrink(),
             ),
           ),

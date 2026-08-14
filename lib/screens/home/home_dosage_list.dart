@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -24,6 +25,7 @@ class HomeDosageList extends StatelessWidget {
     required this.dosages,
     required this.strainsById,
     this.isToday = true,
+    this.now,
     this.header = const SizedBox.shrink(),
   });
 
@@ -32,6 +34,10 @@ class HomeDosageList extends StatelessWidget {
 
   /// When true, the vine continues past the last dose to a terminal NOW node.
   final bool isToday;
+
+  /// Ticking clock the live gap label listens to. Null (tests, static
+  /// embeds) keeps the label computed once at build, as before.
+  final ValueListenable<DateTime>? now;
 
   /// Optional widget rendered above the vine (kept for call-site compatibility).
   final Widget header;
@@ -68,6 +74,7 @@ class HomeDosageList extends StatelessWidget {
             fromIndex: sorted.length - 1,
             toIndex: sorted.length,
             toNow: true,
+            liveFrom: last!.timestamp,
           ),
         );
       }
@@ -125,6 +132,8 @@ class HomeDosageList extends StatelessWidget {
                 gapStrip: rhythm.gapStrip,
                 fromIndex: item.fromIndex,
                 toIndex: item.toIndex,
+                liveFrom: item.liveFrom,
+                now: now,
                 fromColor: _strainColor(
                   context,
                   strainsById[sorted[item.fromIndex].strainId],
@@ -171,6 +180,7 @@ class _VineItem {
     this.fromIndex = 0,
     this.toIndex = 0,
     this.toNow = false,
+    this.liveFrom,
     this.lastColor,
   });
 
@@ -182,12 +192,14 @@ class _VineItem {
     required int fromIndex,
     required int toIndex,
     bool toNow = false,
+    DateTime? liveFrom,
   }) => _VineItem._(
     kind: _Kind.gap,
     gap: gap,
     fromIndex: fromIndex,
     toIndex: toIndex,
     toNow: toNow,
+    liveFrom: liveFrom,
   );
 
   factory _VineItem.now({required int nodeIndex, Color? lastColor}) =>
@@ -196,6 +208,9 @@ class _VineItem {
   final _Kind kind;
   final Dosage? dosage;
   final Duration? gap;
+
+  /// Anchor for the live (to NOW) gap label: recompute, don't freeze.
+  final DateTime? liveFrom;
   final int nodeIndex;
   final int fromIndex;
   final int toIndex;
@@ -406,6 +421,8 @@ class _GapRow extends StatelessWidget {
     required this.fromColor,
     required this.toColor,
     this.toNow = false,
+    this.liveFrom,
+    this.now,
   });
 
   final Duration gap;
@@ -415,6 +432,11 @@ class _GapRow extends StatelessWidget {
   final Color fromColor;
   final Color toColor;
   final bool toNow;
+
+  /// When [toNow], the gap is live: the label recomputes from this dose's
+  /// timestamp against the ticking [now] instead of freezing at build time.
+  final DateTime? liveFrom;
+  final ValueListenable<DateTime>? now;
 
   @override
   Widget build(BuildContext context) {
@@ -447,6 +469,27 @@ class _GapRow extends StatelessWidget {
     // settled gap because it is the one number still moving; the status line
     // above keeps saying it too, so the figure survives being scrolled off on
     // a long day.
+    // The live label listens to the ticking clock; settled gaps stay static.
+    final liveAnchor = liveFrom;
+    Widget gutterLabel(Duration d) => Text(
+          _gapLabel(d),
+          style: TextStyle(
+            color: toNow ? context.c.textSecondary : context.c.textTertiary,
+            fontSize: 10.5,
+            fontWeight: toNow ? FontWeight.w600 : FontWeight.w500,
+            height: 1.1,
+            letterSpacing: 0.42, // ~0.04em at 10.5px
+            fontFeatures: _tabular,
+          ),
+        );
+    final label = (toNow && liveAnchor != null && now != null)
+        ? ValueListenableBuilder<DateTime>(
+            valueListenable: now!,
+            builder: (context, tick, _) =>
+                gutterLabel(tick.difference(liveAnchor)),
+          )
+        : gutterLabel(gap);
+
     return SizedBox(
       height: gapStrip,
       child: Row(
@@ -457,19 +500,7 @@ class _GapRow extends StatelessWidget {
               padding: const EdgeInsets.only(right: 6),
               child: Align(
                 alignment: Alignment.centerRight,
-                child: Text(
-                  _gapLabel(gap),
-                  style: TextStyle(
-                    color: toNow
-                        ? context.c.textSecondary
-                        : context.c.textTertiary,
-                    fontSize: 10.5,
-                    fontWeight: toNow ? FontWeight.w600 : FontWeight.w500,
-                    height: 1.1,
-                    letterSpacing: 0.42, // ~0.04em at 10.5px
-                    fontFeatures: _tabular,
-                  ),
-                ),
+                child: label,
               ),
             ),
           ),

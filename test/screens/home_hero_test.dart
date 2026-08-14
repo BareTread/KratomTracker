@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kratom_tracker_plus/providers/kratom_provider.dart';
@@ -28,6 +29,39 @@ void main() {
     );
     expect(
       find.textContaining('2g · 1 dose', findRichText: true),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('quiet line advances when the now clock ticks', (tester) async {
+    final now = DateTime.now();
+    final provider = await _provider(
+      dosages: [
+        _dose('today', DateTime(now.year, now.month, now.day, 8), 2),
+      ],
+    );
+    final clock = ValueNotifier<DateTime>(
+      DateTime(now.year, now.month, now.day, 9, 2),
+    );
+    addTearDown(clock.dispose);
+
+    await _pumpCard(
+      tester,
+      provider,
+      focusedDay: DateUtils.dateOnly(now),
+      now: clock,
+    );
+    expect(
+      find.textContaining('1h 2m since last dose', findRichText: true),
+      findsOneWidget,
+    );
+
+    // Hours pass (resume from background); the label must catch up without
+    // any dose or strain change forcing a rebuild.
+    clock.value = DateTime(now.year, now.month, now.day, 11, 30);
+    await tester.pump();
+    expect(
+      find.textContaining('3h 30m since last dose', findRichText: true),
       findsOneWidget,
     );
   });
@@ -85,6 +119,7 @@ Future<void> _pumpCard(
   WidgetTester tester,
   KratomProvider provider, {
   required DateTime focusedDay,
+  ValueListenable<DateTime>? now,
 }) async {
   tester.view.physicalSize = const Size(800, 1400);
   tester.view.devicePixelRatio = 1;
@@ -101,6 +136,7 @@ Future<void> _pumpCard(
             child: HomeDayCard(
               focusedDay: focusedDay,
               onDaySelected: (_) {},
+              now: now,
             ),
           ),
         ),
