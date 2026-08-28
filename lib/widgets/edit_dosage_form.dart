@@ -114,6 +114,9 @@ class _EditDosageFormState extends State<EditDosageForm> {
 
     final notesRaw = _notesController.text.trim();
     final provider = context.read<KratomProvider>();
+    if (provider.getStrain(_selectedStrainId) == null) {
+      return;
+    }
 
     final messenger = ScaffoldMessenger.maybeOf(context);
     final positive = context.c.positive;
@@ -151,6 +154,7 @@ class _EditDosageFormState extends State<EditDosageForm> {
   Widget build(BuildContext context) {
     final provider = context.watch<KratomProvider>();
     final c = context.c;
+    final knownStrain = provider.getStrain(_selectedStrainId) != null;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -176,22 +180,31 @@ class _EditDosageFormState extends State<EditDosageForm> {
               ),
               const SizedBox(height: 24),
               InputDecorator(
-                decoration: _decoration(context, 'Strain'),
+                decoration: _decoration(context, 'Strain').copyWith(
+                  errorText: knownStrain ? null : 'Select a strain',
+                ),
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
                     isExpanded: true,
                     value: _selectedStrainId,
-                    items: provider.strains.map((strain) {
-                      return DropdownMenuItem(
-                        value: strain.id,
-                        child: Text(
-                          strain.code == strain.name
-                              ? strain.code
-                              : '${strain.code} — ${strain.name}',
-                          overflow: TextOverflow.ellipsis,
+                    items: [
+                      if (!knownStrain)
+                        DropdownMenuItem(
+                          value: _selectedStrainId,
+                          child: const Text('Unknown strain'),
                         ),
-                      );
-                    }).toList(),
+                      ...provider.strains.map((strain) {
+                        return DropdownMenuItem(
+                          value: strain.id,
+                          child: Text(
+                            strain.code == strain.name
+                                ? strain.code
+                                : '${strain.code} — ${strain.name}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        );
+                      }),
+                    ],
                     onChanged: (value) {
                       if (value != null) {
                         setState(() => _selectedStrainId = value);
