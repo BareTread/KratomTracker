@@ -346,6 +346,21 @@ void main() {
       expect(drift.level.gramsPerDay, closeTo(12.0, 1e-9));
       expect(drift.direction, DriftDirection.up);
     });
+
+    test('the fit caps at the most recent $driftFitWindowDays closed days', () {
+      // A year of history in the "All" range: the trend must describe the
+      // last 180 closed days, not pay O(n²) over the whole year.
+      final doses = _series(365, doses: (_) => 4, size: (_) => 2.5);
+      final all = DateTimeRange(
+        start: DateTime(2025, 2, 1),
+        end: addDays(DateTime(2025, 2, 1), 364),
+      );
+
+      final drift = computeDrift(doses, all, now: addDays(all.end, 1));
+
+      expect(drift.windowDays, driftFitWindowDays);
+      expect(drift.direction, DriftDirection.steady);
+    });
   });
 
   group('computeDayRhythm', () {

@@ -454,6 +454,14 @@ const int driftMinDays = 10;
 /// them. A trend needs days that actually happened.
 const int driftMinDosedDays = 5;
 
+/// Closed days the trend fit looks at, even when the selected range reaches
+/// further back. Theil–Sen is the median of every pairwise slope — O(n²) in
+/// window size — so fitting the "All" range over years of history made every
+/// stats visit quadratically slower for a trend readout that only wants to
+/// describe recent movement. Half a year is ample: the "now" level already
+/// reads just the last [driftLevelDays] days.
+const int driftFitWindowDays = 180;
+
 DriftReading computeDrift(
   List<Dosage> dosages,
   DateTimeRange range, {
@@ -466,7 +474,14 @@ DriftReading computeDrift(
     facts.length <= levelDays ? facts : facts.sublist(facts.length - levelDays),
   );
 
-  final dosedDays = facts.where((fact) => fact.doses > 0).length;
+  // The fit — and the gate that decides whether a trend is sayable — read
+  // only the most recent [driftFitWindowDays] closed days, never the whole
+  // selected range.
+  final fitFacts = facts.length <= driftFitWindowDays
+      ? facts
+      : facts.sublist(facts.length - driftFitWindowDays);
+
+  final dosedDays = fitFacts.where((fact) => fact.doses > 0).length;
   if (facts.length < driftMinDays ||
       dosedDays < driftMinDosedDays ||
       level.doses == 0) {
@@ -481,17 +496,19 @@ DriftReading computeDrift(
     );
   }
 
-  final origin = facts.first.day;
+  final origin = fitFacts.first.day;
   double x(DayFacts fact) => daysBetween(origin, fact.day).toDouble();
-  final span = x(facts.last);
+  final span = x(fitFacts.last);
 
-  final gramsFit = theilSen([for (final f in facts) (x: x(f), y: f.grams)]);
+  final gramsFit = theilSen([
+    for (final f in fitFacts) (x: x(f), y: f.grams),
+  ]);
   final dosesFit =
-      theilSen([for (final f in facts) (x: x(f), y: f.doses.toDouble())]);
+      theilSen([for (final f in fitFacts) (x: x(f), y: f.doses.toDouble())]);
   // Dose size is undefined on a rest day — a zero there would read as
   // "shrinking doses" when he simply did not take any.
   final sizeFit = theilSen([
-    for (final f in facts)
+    for (final f in fitFacts)
       if (f.doses > 0) (x: x(f), y: f.grams / f.doses),
   ]);
 
@@ -517,7 +534,7 @@ DriftReading computeDrift(
     sizeChangePercent: sizePercent,
     driver: _driverOf(direction, dosesPercent, sizePercent),
     level: level,
-    windowDays: facts.length,
+    windowDays: fitFacts.length,
   );
 }
 
