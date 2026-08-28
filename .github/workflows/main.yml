@@ -12,15 +12,23 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Read-only by default. GitHub Actions accepts `permissions` only at
+# workflow or job level, never on a step. contents: write is isolated
+# to the tagged-release job below.
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Analyze, test & build APK
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
-    # Only the tagged-release step needs write; nothing needs the rest.
     permissions:
-      contents: write
+      contents: read
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      have_key: ${{ steps.key.outputs.have_key }}
 
     steps:
       - name: Checkout code
@@ -39,6 +47,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          flutter-version: '3.44.9'
           cache: true
 
       - name: Flutter doctor
@@ -97,7 +106,10 @@ jobs:
         if: steps.key.outputs.have_key == 'true'
         env:
           KRATOM_KEYSTORE_PROPERTIES: ${{ steps.key.outputs.properties }}
-        run: flutter build apk --release
+        # Split per ABI: the fat APK shipped four engine copies (~4x the
+        # download) for a single arm64 phone. arm64 keeps the plain release
+        # name below; the other ABIs ride along for emulators/old devices.
+        run: flutter build apk --release --split-per-abi
 
       - name: Build APK (unsigned, debug-key fallback)
         if: steps.key.outputs.have_key != 'true'
@@ -108,11 +120,13 @@ jobs:
           cd build/app/outputs/flutter-apk
           mv app-debug.apk "kratom-tracker-v${{ steps.ver.outputs.version }}-unsigned-debugkey.apk"
 
-      - name: Stage release artifact name
+      - name: Stage release artifact names
         if: steps.key.outputs.have_key == 'true'
         run: |
           cd build/app/outputs/flutter-apk
-          cp app-release.apk "kratom-tracker-v${{ steps.ver.outputs.version }}-release.apk"
+          cp app-arm64-v8a-release.apk "kratom-tracker-v${{ steps.ver.outputs.version }}-release.apk"
+          cp app-armeabi-v7a-release.apk "kratom-tracker-v${{ steps.ver.outputs.version }}-release-armeabi-v7a.apk"
+          cp app-x86_64-release.apk "kratom-tracker-v${{ steps.ver.outputs.version }}-release-x86_64.apk"
 
       - name: Cleanup keystore material
         if: always()
@@ -125,7 +139,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: kratom-tracker-v${{ steps.ver.outputs.version }}-release-apk
-          path: build/app/outputs/flutter-apk/kratom-tracker-v${{ steps.ver.outputs.version }}-release.apk
+          path: |
+            build/app/outputs/flutter-apk/kratom-tracker-v${{ steps.ver.outputs.version }}-release.apk
+            build/app/outputs/flutter-apk/kratom-tracker-v${{ steps.ver.outputs.version }}-release-armeabi-v7a.apk
+            build/app/outputs/flutter-apk/kratom-tracker-v${{ steps.ver.outputs.version }}-release-x86_64.apk
           retention-days: 30
           if-no-files-found: error
 
@@ -141,10 +158,39 @@ jobs:
           if-no-files-found: warn
 
       # --------------------------------------------------------------- releases
-      - name: Attach APK to GitHub Release
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && steps.key.outputs.have_key == 'true'
+      - name: Verify tag matches pubspec version
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag_version="${GITHUB_REF#refs/tags/v}"
+          pubspec_version="${{ steps.ver.outputs.version }}"
+          if [ "$tag_version" != "$pubspec_version" ]; then
+            echo "::error::Tag version ($tag_version) does not match pubspec version ($pubspec_version)"
+            exit 1
+          fi
+
+  release:
+    name: Attach APKs to GitHub Release
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.build.outputs.have_key == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download signed release APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: kratom-tracker-v${{ needs.build.outputs.version }}-release-apk
+          # Upload strips the shared flutter-apk parent, so the archive is
+          # basename-only. Extract into the directory the attach step names.
+          path: build/app/outputs/flutter-apk
+      - name: Attach APKs to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/app/outputs/flutter-apk/kratom-tracker-v${{ steps.ver.outputs.version }}-release.apk
+          files: |
+            build/app/outputs/flutter-apk/kratom-tracker-v${{ needs.build.outputs.version }}-release.apk
+            build/app/outputs/flutter-apk/kratom-tracker-v${{ needs.build.outputs.version }}-release-armeabi-v7a.apk
+            build/app/outputs/flutter-apk/kratom-tracker-v${{ needs.build.outputs.version }}-release-x86_64.apk
           fail_on_unmatched_files: true
           generate_release_notes: true

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kratom_tracker_plus/main.dart' as app;
+import 'package:kratom_tracker_plus/providers/theme_provider.dart';
 import 'package:kratom_tracker_plus/screens/home_screen.dart';
 import 'package:kratom_tracker_plus/theme/app_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -41,6 +42,22 @@ void main() {
     expect(find.text('No doses recorded'), findsNothing);
   });
 
+  testWidgets('prefs load failure shows the existing error surface',
+      (tester) async {
+    await tester.pumpWidget(
+      app.AppBootstrap(
+        loadPrefs: () async => throw Exception('prefs unavailable'),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Failed to start'), findsOneWidget);
+    expect(find.textContaining('prefs unavailable'), findsOneWidget);
+    expect(find.byType(HomeScreen), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
   for (final themeCase in [
     (name: 'light', darkMode: false, brightness: Brightness.light),
     (name: 'dark', darkMode: true, brightness: Brightness.dark),
@@ -72,6 +89,10 @@ Future<void> _bootAndExercise(WidgetTester tester) async {
   await tester.pumpWidget(app.AppBootstrap(prefs: prefs));
 
   expect(find.byType(CircularProgressIndicator), findsOneWidget);
+  expect(
+    Theme.of(tester.element(find.byType(Scaffold))).scaffoldBackgroundColor,
+    ThemeProvider.darkTheme.scaffoldBackgroundColor,
+  );
   expect(tester.takeException(), isNull);
 
   await tester.pump(const Duration(seconds: 3));

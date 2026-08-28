@@ -258,7 +258,7 @@ class _AddStrainFormState extends State<AddStrainForm> {
                     ),
                   ),
                   validator: (value) {
-                    if (value == null || value.isEmpty) {
+                    if (value == null || value.trim().isEmpty) {
                       return 'Please enter a name';
                     }
                     return null;
@@ -278,10 +278,11 @@ class _AddStrainFormState extends State<AddStrainForm> {
                     ),
                   ),
                   validator: (value) {
-                    if (value == null || value.isEmpty) {
+                    final trimmed = value?.trim() ?? '';
+                    if (trimmed.isEmpty) {
                       return 'Please enter a code';
                     }
-                    if (value.length < 2 || value.length > 4) {
+                    if (trimmed.length < 2 || trimmed.length > 4) {
                       return 'Code must be 2-4 letters';
                     }
                     return null;
@@ -343,18 +344,28 @@ class _AddStrainFormState extends State<AddStrainForm> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: () {
-                      if (_formKey.currentState!.validate()) {
-                        final provider =
-                            Provider.of<KratomProvider>(context, listen: false);
-                        provider.addStrain(
-                          _nameController.text,
-                          _codeController.text,
+                    onPressed: () async {
+                      if (!_formKey.currentState!.validate()) return;
+                      final provider =
+                          Provider.of<KratomProvider>(context, listen: false);
+                      final messenger = ScaffoldMessenger.of(context);
+                      try {
+                        await provider.addStrain(
+                          _nameController.text.trim(),
+                          _codeController.text.trim(),
                           _selectedColor!.color.toARGB32(),
                           _selectedShape.name,
                           inStock: _inStock,
                         );
+                        if (!context.mounted) return;
                         Navigator.pop(context);
+                      } catch (e) {
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text('Could not save strain: $e'),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
                       }
                     },
                     style: ElevatedButton.styleFrom(

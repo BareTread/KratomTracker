@@ -10,6 +10,18 @@
           INTERNET in *this* app's manifest. INTERNET remains declared in the
           debug/profile source sets for the Flutter dev tooling.
     -->
+    <!--
+      url_launcher uses canLaunchUrl / the system browser to open https links.
+      On Android 11+ (API 30) package visibility requires declaring the intent
+      the app intends to resolve, otherwise canLaunchUrl returns false and the
+      link silently does nothing.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
     <application
         android:label="Herbal Tracker+"
         android:name="${applicationName}"

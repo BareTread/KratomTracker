@@ -18,7 +18,11 @@ import 'home/home_empty_state.dart';
 import 'home/home_fab_menu.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.clock});
+
+  /// Test seam for the wall clock. Production leaves this null.
+  @visibleForTesting
+  final DateTime Function()? clock;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -41,14 +45,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final ValueNotifier<DateTime> _now;
   Timer? _nowTimer;
 
+  /// Calendar day that page [_todayPage] maps to. Frozen until midnight
+  /// (timer tick or resume) re-anchors it, so the last page stays "today".
+  late DateTime _anchor;
+
   final _fabKey = GlobalKey<HomeFabMenuState>();
   bool _fabOpen = false;
+
+  DateTime _wallClock() => widget.clock?.call() ?? DateTime.now();
 
   @override
   void initState() {
     super.initState();
-    _focusedDay = ValueNotifier(DateUtils.dateOnly(DateTime.now()));
-    _now = ValueNotifier(DateTime.now());
+    final now = _wallClock();
+    _anchor = startOfDay(now);
+    _focusedDay = ValueNotifier(_anchor);
+    _now = ValueNotifier(now);
     _pageController = PageController(initialPage: _todayPage);
     WidgetsBinding.instance.addObserver(this);
     _startNowTimer();
@@ -68,8 +80,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _startNowTimer() {
-    _nowTimer ??= Timer.periodic(const Duration(minutes: 1), (_) {
-      _now.value = DateTime.now();
+    _stopNowTimer();
+    final delay = _delayUntilNextMinute(_wallClock());
+    _nowTimer = Timer(delay, () {
+      if (!mounted) return;
+      _onNowTick();
+      _startNowTimer();
     });
   }
 
@@ -78,12 +94,43 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _nowTimer = null;
   }
 
+  void _onNowTick() {
+    if (!mounted) return;
+    _syncToWallClock();
+  }
+
+  /// Align labels and the page→date mapping with the wall clock. Called on
+  /// every minute tick and on resume so an instance left running across
+  /// midnight lands on the real today.
+  void _syncToWallClock() {
+    final now = _wallClock();
+    final today = startOfDay(now);
+    _now.value = now;
+    if (today == _anchor) return;
+
+    _anchor = today;
+    _focusedDay.value = today;
+    setState(() {});
+    if (_pageController.hasClients &&
+        (_pageController.page?.round() ?? _todayPage) != _todayPage) {
+      _pageController.jumpToPage(_todayPage);
+    }
+    _commitSelectedDate();
+  }
+
+  static Duration _delayUntilNextMinute(DateTime now) {
+    final ms = now.second * 1000 + now.millisecond;
+    return Duration(milliseconds: 60000 - ms);
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) return;
     if (state == AppLifecycleState.resumed) {
       // Hours may have passed with the app backgrounded; don't wait a
-      // full tick for the labels to catch up.
-      _now.value = DateTime.now();
+      // full tick for the labels to catch up, and re-align the next tick
+      // to the wall-clock minute.
+      _syncToWallClock();
       _startNowTimer();
     } else if (state != AppLifecycleState.inactive) {
       // Paused/hidden/detached: stop waking the isolate every minute.
@@ -101,20 +148,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   // Calendar days, not elapsed hours: Duration(days: n) is 24h each and
-  // slips a page either side of a DST transition.
-  DateTime _dateForPage(int index) =>
-      addDays(DateTime.now(), index - _todayPage);
+  // slips a page either side of a DST transition. Derived from [_anchor]
+  // so a live clock crossing midnight cannot shift every page by one.
+  DateTime _dateForPage(int index) => addDays(_anchor, index - _todayPage);
 
   bool _sameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
 
   void _selectDay(DateTime day) {
-    final cleanDay = DateUtils.dateOnly(day);
-    if (_sameDay(cleanDay, _focusedDay.value)) return;
+    final cleanDay = startOfDay(day);
+    var target = _todayPage + daysBetween(_anchor, cleanDay);
+    if (target < 0) target = 0;
+    if (target > _todayPage) target = _todayPage;
+    final mapped = _dateForPage(target);
+    if (_sameDay(mapped, _focusedDay.value)) return;
     final current = _pageController.page?.round() ?? _todayPage;
-    final target = current + daysBetween(_focusedDay.value, cleanDay);
     final adjacent = (target - current).abs() == 1;
-    _focusedDay.value = cleanDay;
+    _focusedDay.value = mapped;
     if (!_pageController.hasClients) {
       _commitSelectedDate();
       return;
@@ -172,6 +222,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       return false;
                     },
                     child: PageView.builder(
+                      key: const Key('home-day-pager'),
                       controller: _pageController,
                       itemCount: _todayPage + 1,
                       physics: const PageScrollPhysics(
@@ -189,6 +240,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         child: _HomeDayPage(
                           key: ValueKey(_dateForPage(index)),
                           date: _dateForPage(index),
+                          today: _anchor,
                           onAddDose: _openAddDose,
                           now: _now,
                         ),
@@ -237,11 +289,13 @@ class _HomeDayPage extends StatelessWidget {
   const _HomeDayPage({
     super.key,
     required this.date,
+    required this.today,
     required this.onAddDose,
     required this.now,
   });
 
   final DateTime date;
+  final DateTime today;
   final VoidCallback onAddDose;
 
   /// Ticking clock for the live gap label; see [_HomeScreenState].
@@ -258,7 +312,6 @@ class _HomeDayPage extends StatelessWidget {
     );
     final provider = context.read<KratomProvider>();
     final dosages = provider.getDosagesForDate(date);
-    final today = DateUtils.dateOnly(DateTime.now());
     final isToday = DateUtils.isSameDay(date, today);
 
     // Today with no doses still shows a young shoot + NOW; past empty days

@@ -14,15 +14,22 @@ import '../models/strain.dart';
 
 enum ImportMode { replace, merge }
 
+const _transactionGenerationKeys = <String>[
+  'strains',
+  'dosages',
+  'settings',
+  'user_name',
+];
+
 class KratomProvider with ChangeNotifier {
   KratomProvider._(this._prefs);
 
-  static const int currentBackupVersion = 1;
   static const _strainsKey = 'strains';
   static const _dosagesKey = 'dosages';
   static const _settingsKey = 'settings';
   static const _userNameKey = 'user_name';
-  static const _tempPrefix = '_kratom_tracker_tmp_';
+  static const _transactionKey = '_kratom_tracker_transaction';
+  static const _quarantinePrefix = '_kratom_tracker_quarantine_';
 
   final SharedPreferences _prefs;
   final Uuid _uuid = const Uuid();
@@ -108,23 +115,29 @@ class KratomProvider with ChangeNotifier {
     int color,
     String icon, {
     bool inStock = true,
-  }) async {
-    if (name.trim().isEmpty || code.trim().isEmpty || icon.trim().isEmpty) {
-      throw ArgumentError('Strain name, code, and icon must not be empty');
-    }
-    _strains.add(
-      Strain(
-        id: _uuid.v4(),
-        name: name.trim(),
-        code: code.trim(),
-        color: color,
-        icon: icon,
-        inStock: inStock,
-      ),
+  }) {
+    return _persistMutation(
+      mutate: () {
+        if (name.trim().isEmpty ||
+            code.trim().isEmpty ||
+            icon.trim().isEmpty) {
+          throw ArgumentError('Strain name, code, and icon must not be empty');
+        }
+        _strains = [
+          ..._strains,
+          Strain(
+            id: _uuid.v4(),
+            name: name.trim(),
+            code: code.trim(),
+            color: color,
+            icon: icon,
+            inStock: inStock,
+          ),
+        ];
+        _invalidateComputedData();
+        return true;
+      },
     );
-    _invalidateComputedData();
-    await _save({_strainsKey: _encodeStrains()});
-    _notifyMutation();
   }
 
   Future<void> updateStrain(
@@ -134,51 +147,63 @@ class KratomProvider with ChangeNotifier {
     int? color,
     String? icon,
     bool? inStock,
-  }) async {
-    final index = _strains.indexWhere((strain) => strain.id == id);
-    if (index < 0) throw ArgumentError.value(id, 'id', 'unknown strain');
-    if (name != null && name.trim().isEmpty ||
-        code != null && code.trim().isEmpty ||
-        icon != null && icon.trim().isEmpty) {
-      throw ArgumentError('Strain name, code, and icon must not be empty');
-    }
-    _strains[index] = _strains[index].copyWith(
-      name: name?.trim(),
-      code: code?.trim(),
-      color: color,
-      icon: icon,
-      inStock: inStock,
+  }) {
+    return _persistMutation(
+      mutate: () {
+        final index = _strains.indexWhere((strain) => strain.id == id);
+        if (index < 0) {
+          throw ArgumentError.value(id, 'id', 'unknown strain');
+        }
+        if (name != null && name.trim().isEmpty ||
+            code != null && code.trim().isEmpty ||
+            icon != null && icon.trim().isEmpty) {
+          throw ArgumentError('Strain name, code, and icon must not be empty');
+        }
+        final updated = _strains[index].copyWith(
+          name: name?.trim(),
+          code: code?.trim(),
+          color: color,
+          icon: icon,
+          inStock: inStock,
+        );
+        _strains = List<Strain>.of(_strains)..[index] = updated;
+        _invalidateComputedData();
+        return true;
+      },
     );
-    _invalidateComputedData();
-    await _save({_strainsKey: _encodeStrains()});
-    _notifyMutation();
   }
 
   /// Toggles whether a strain is currently on hand. A display/ranking concern
   /// only — never touches dosage records. Follows the same persist + cache
   /// invalidation + mutation-stamp path as [updateStrain].
-  Future<void> setStrainInStock(String id, {required bool inStock}) async {
-    final index = _strains.indexWhere((strain) => strain.id == id);
-    if (index < 0) throw ArgumentError.value(id, 'id', 'unknown strain');
-    if (_strains[index].inStock == inStock) return;
-    _strains[index] = _strains[index].copyWith(inStock: inStock);
-    _invalidateComputedData();
-    await _save({_strainsKey: _encodeStrains()});
-    _notifyMutation();
+  Future<void> setStrainInStock(String id, {required bool inStock}) {
+    return _persistMutation(
+      mutate: () {
+        final index = _strains.indexWhere((strain) => strain.id == id);
+        if (index < 0) {
+          throw ArgumentError.value(id, 'id', 'unknown strain');
+        }
+        if (_strains[index].inStock == inStock) return false;
+        final updated = _strains[index].copyWith(inStock: inStock);
+        _strains = List<Strain>.of(_strains)..[index] = updated;
+        _invalidateComputedData();
+        return true;
+      },
+    );
   }
 
-  Future<void> deleteStrain(String id) async {
-    if (!_strains.any((strain) => strain.id == id)) {
-      throw ArgumentError.value(id, 'id', 'unknown strain');
-    }
-    _strains.removeWhere((strain) => strain.id == id);
-    _dosages.removeWhere((dose) => dose.strainId == id);
-    _invalidateComputedData();
-    await _save({
-      _strainsKey: _encodeStrains(),
-      _dosagesKey: _encodeDosages(),
-    });
-    _notifyMutation();
+  Future<void> deleteStrain(String id) {
+    return _persistMutation(
+      mutate: () {
+        if (!_strains.any((strain) => strain.id == id)) {
+          throw ArgumentError.value(id, 'id', 'unknown strain');
+        }
+        _strains = _strains.where((strain) => strain.id != id).toList();
+        _dosages = _dosages.where((dose) => dose.strainId != id).toList();
+        _invalidateComputedData();
+        return true;
+      },
+    );
   }
 
   /// Returns the created dosage so callers can act on it without having to
@@ -189,18 +214,22 @@ class KratomProvider with ChangeNotifier {
     DateTime timestamp, {
     String? notes,
   }) async {
-    _validateDosage(strainId, amount);
-    final dosage = Dosage(
-      id: _uuid.v4(),
-      strainId: strainId,
-      amount: amount,
-      timestamp: timestamp,
-      notes: notes,
+    late Dosage dosage;
+    await _persistMutation(
+      mutate: () {
+        _validateDosage(strainId, amount);
+        dosage = Dosage(
+          id: _uuid.v4(),
+          strainId: strainId,
+          amount: amount,
+          timestamp: timestamp,
+          notes: notes,
+        );
+        _dosages = [..._dosages, dosage];
+        _invalidateComputedData();
+        return true;
+      },
     );
-    _dosages.add(dosage);
-    _invalidateComputedData();
-    await _save({_dosagesKey: _encodeDosages()});
-    _notifyMutation();
     return dosage;
   }
 
@@ -210,58 +239,67 @@ class KratomProvider with ChangeNotifier {
     required double amount,
     required DateTime timestamp,
     String? notes,
-  }) async {
-    final index = _dosages.indexWhere((dose) => dose.id == id);
-    if (index < 0) throw ArgumentError.value(id, 'id', 'unknown dosage');
-    _validateDosage(strainId, amount);
-    _dosages[index] = Dosage(
-      id: id,
-      strainId: strainId,
-      amount: amount,
-      timestamp: timestamp,
-      notes: notes,
+  }) {
+    return _persistMutation(
+      mutate: () {
+        final index = _dosages.indexWhere((dose) => dose.id == id);
+        if (index < 0) {
+          throw ArgumentError.value(id, 'id', 'unknown dosage');
+        }
+        _validateDosage(strainId, amount);
+        final updated = Dosage(
+          id: id,
+          strainId: strainId,
+          amount: amount,
+          timestamp: timestamp,
+          notes: notes,
+        );
+        _dosages = List<Dosage>.of(_dosages)..[index] = updated;
+        _invalidateComputedData();
+        return true;
+      },
     );
-    _invalidateComputedData();
-    await _save({_dosagesKey: _encodeDosages()});
-    _notifyMutation();
   }
 
-  Future<void> deleteDosage(String id) async {
-    if (!_dosages.any((dose) => dose.id == id)) {
-      throw ArgumentError.value(id, 'id', 'unknown dosage');
-    }
-    _dosages.removeWhere((dose) => dose.id == id);
-    _invalidateComputedData();
-    await _save({
-      _dosagesKey: _encodeDosages(),
-    });
-    _notifyMutation();
+  Future<void> deleteDosage(String id) {
+    return _persistMutation(
+      mutate: () {
+        if (!_dosages.any((dose) => dose.id == id)) {
+          throw ArgumentError.value(id, 'id', 'unknown dosage');
+        }
+        _dosages = _dosages.where((dose) => dose.id != id).toList();
+        _invalidateComputedData();
+        return true;
+      },
+    );
   }
 
-  Future<void> updateSettings(UserSettings settings) async {
-    if (!settings.dailyLimit.isFinite || settings.dailyLimit < 0) {
-      throw ArgumentError.value(
-        settings.dailyLimit,
-        'settings.dailyLimit',
-        'must be finite and non-negative',
-      );
-    }
-    _settings = settings;
-    await _save({_settingsKey: jsonEncode(_settings.toJson())});
-    _notifyMutation();
+  Future<void> updateSettings(UserSettings settings) {
+    return _persistMutation(
+      mutate: () {
+        if (!settings.dailyLimit.isFinite || settings.dailyLimit < 0) {
+          throw ArgumentError.value(
+            settings.dailyLimit,
+            'settings.dailyLimit',
+            'must be finite and non-negative',
+          );
+        }
+        _settings = settings;
+        return true;
+      },
+    );
   }
 
-  Future<void> updateUserName(String? name) async {
+  Future<void> updateUserName(String? name) {
     final normalized = name?.trim();
-    _userName = normalized == null || normalized.isEmpty ? null : normalized;
-    await _enqueueWrite(() async {
-      if (_userName == null) {
-        await _prefs.remove(_userNameKey);
-      } else {
-        await _prefs.setString(_userNameKey, _userName!);
-      }
-    });
-    _notifyMutation();
+    final nextName =
+        normalized == null || normalized.isEmpty ? null : normalized;
+    return _persistMutation(
+      mutate: () {
+        _userName = nextName;
+        return true;
+      },
+    );
   }
 
   Future<String> exportJson() async {
@@ -275,74 +313,52 @@ class KratomProvider with ChangeNotifier {
     });
   }
 
-  Future<BackupSummary> previewImport(String jsonText) async {
+  Future<BackupSummary> previewImport(
+    String jsonText, {
+    ImportMode mode = ImportMode.replace,
+  }) async {
     final result = parseBackup(jsonText);
-    return switch (result) {
-      BackupOk(:final summary) => summary,
-      BackupError(:final message, :final details) =>
-        throw FormatException([message, ...details].join('\n')),
-    };
+    switch (result) {
+      case BackupOk(:final payload, :final summary):
+        _prepareImport(payload, mode);
+        return summary;
+      case BackupError(:final message, :final details):
+        throw FormatException([message, ...details].join('\n'));
+    }
   }
 
   Future<void> commitImport(
     BackupPayload p, {
     required ImportMode mode,
-  }) async {
-    _validatePayload(p);
-
-    final nextStrains = mode == ImportMode.replace
-        ? List<Strain>.of(p.strains)
-        : _mergeById(_strains, p.strains, (strain) => strain.id);
-    final nextDosages = mode == ImportMode.replace
-        ? List<Dosage>.of(p.dosages)
-        : _mergeById(_dosages, p.dosages, (dose) => dose.id);
-    final nextSettings =
-        mode == ImportMode.merge ? _settings : p.settings ?? _settings;
-    final nextUserName =
-        mode == ImportMode.merge ? _userName : p.userName ?? _userName;
-
-    final previousUserName = _userName;
-    _strains = nextStrains;
-    _dosages = nextDosages;
-    _settings = nextSettings;
-    _userName = nextUserName;
-    _invalidateComputedData();
-
-    final values = {
-      _strainsKey: jsonEncode(nextStrains.map((e) => e.toJson()).toList()),
-      _dosagesKey: jsonEncode(nextDosages.map((e) => e.toJson()).toList()),
-      _settingsKey: jsonEncode(nextSettings.toJson()),
-    };
-    await _save(values);
-    if (nextUserName != previousUserName) {
-      await _enqueueWrite(() async {
-        if (nextUserName == null) {
-          await _prefs.remove(_userNameKey);
-        } else {
-          await _prefs.setString(_userNameKey, nextUserName);
-        }
-      });
-    }
-
-    _notifyMutation();
+  }) {
+    return _persistMutation(
+      mutate: () {
+        final plan = _prepareImport(p, mode);
+        _strains = plan.strains;
+        _dosages = plan.dosages;
+        _settings = plan.settings;
+        _userName = plan.userName;
+        _invalidateComputedData();
+        return true;
+      },
+    );
   }
 
-  Future<void> clearAllData() async {
-    final settings = const UserSettings();
-    await _save({
-      _strainsKey: '[]',
-      _dosagesKey: '[]',
-      _settingsKey: jsonEncode(settings.toJson()),
-    });
-    // The name is user data too — leaving it behind meant it survived a
-    // "clear all" and reappeared in the next export.
-    await _prefs.remove(_userNameKey);
-    _strains = [];
-    _dosages = [];
-    _settings = settings;
-    _userName = null;
-    _invalidateComputedData();
-    _notifyMutation();
+  Future<void> clearAllData() {
+    const settings = UserSettings(
+      enableNotifications: false,
+      toleranceBreakInterval: 7,
+    );
+    return _persistMutation(
+      mutate: () {
+        _strains = [];
+        _dosages = [];
+        _settings = settings;
+        _userName = null;
+        _invalidateComputedData();
+        return true;
+      },
+    );
   }
 
   Future<void> refreshData() async {
@@ -352,9 +368,52 @@ class KratomProvider with ChangeNotifier {
   }
 
   Future<void> _loadData() async {
-    _strains = _decodeList(_readStored(_strainsKey), Strain.fromJson);
-    _dosages = _decodeList(_readStored(_dosagesKey), Dosage.fromJson);
-    final settingsJson = _readStored(_settingsKey);
+    final generation = await _resolvePendingTransaction(reload: true);
+    final strainsEncoded = generation == null
+        ? _prefs.getString(_strainsKey)
+        : generation[_strainsKey];
+    final dosagesEncoded = generation == null
+        ? _prefs.getString(_dosagesKey)
+        : generation[_dosagesKey];
+    final strains = _decodeList(strainsEncoded, Strain.fromJson);
+    final dosages = _decodeList(dosagesEncoded, Dosage.fromJson);
+    final seenStrainIds = <String>{};
+    final validStrains = <Strain>[];
+    var strainsCorrupt = strains.hadMalformed;
+    for (final strain in strains.values) {
+      if (strain.id.isEmpty ||
+          strain.name.isEmpty ||
+          strain.code.isEmpty ||
+          !seenStrainIds.add(strain.id)) {
+        strainsCorrupt = true;
+        continue;
+      }
+      validStrains.add(strain);
+    }
+    final strainIds = seenStrainIds;
+    final seenDoseIds = <String>{};
+    final validDosages = <Dosage>[];
+    var dosagesCorrupt = dosages.hadMalformed;
+    for (final dose in dosages.values) {
+      if (dose.id.isEmpty ||
+          dose.strainId.isEmpty ||
+          !dose.amount.isFinite ||
+          dose.amount <= 0 ||
+          dose.amount > 1000 ||
+          !strainIds.contains(dose.strainId) ||
+          !seenDoseIds.add(dose.id)) {
+        dosagesCorrupt = true;
+        continue;
+      }
+      validDosages.add(dose);
+    }
+    await _quarantineCorrupt(_strainsKey, strainsEncoded, strainsCorrupt);
+    await _quarantineCorrupt(_dosagesKey, dosagesEncoded, dosagesCorrupt);
+    _strains = validStrains;
+    _dosages = validDosages;
+    final settingsJson = generation == null
+        ? _prefs.getString(_settingsKey)
+        : generation[_settingsKey];
     if (settingsJson != null) {
       try {
         final decoded = jsonDecode(settingsJson);
@@ -367,21 +426,22 @@ class KratomProvider with ChangeNotifier {
         debugPrint('Could not load settings: $error');
       }
     }
-    _userName = _prefs.getString(_userNameKey);
+    _userName = generation == null
+        ? _prefs.getString(_userNameKey)
+        : generation[_userNameKey];
     _invalidateComputedData();
   }
 
-  String? _readStored(String key) =>
-      _prefs.getString('$_tempPrefix$key') ?? _prefs.getString(key);
 
-  List<T> _decodeList<T>(
+  _DecodedList<T> _decodeList<T>(
     String? encoded,
     T Function(Map<String, dynamic>) decode,
   ) {
-    if (encoded == null) return [];
+    if (encoded == null) return _DecodedList([], false);
     try {
       final raw = jsonDecode(encoded);
-      if (raw is! List) return [];
+      if (raw is! List) return _DecodedList([], true);
+      var hadMalformed = false;
       final result = <T>[];
       for (final item in raw) {
         if (item is Map) {
@@ -390,30 +450,161 @@ class KratomProvider with ChangeNotifier {
               decode(item.map((key, value) => MapEntry(key.toString(), value))),
             );
           } catch (error) {
+            hadMalformed = true;
             debugPrint('Skipped malformed stored record: $error');
           }
+        } else {
+          hadMalformed = true;
         }
       }
-      return result;
+      return _DecodedList(result, hadMalformed);
     } catch (error) {
       debugPrint('Could not load stored list: $error');
-      return [];
+      return _DecodedList([], true);
     }
   }
 
-  Future<void> _save(Map<String, String> values) {
-    final snapshot = Map<String, String>.of(values);
+  Future<void> _quarantineCorrupt(
+    String key,
+    String? encoded,
+    bool shouldQuarantine,
+  ) async {
+    if (!shouldQuarantine || encoded == null) return;
+    final quarantineKey = '$_quarantinePrefix$key';
+    if (_prefs.getString(quarantineKey) == null) {
+      await _prefs.setString(quarantineKey, encoded);
+    }
+  }
+
+  Future<void> _persistMutation({
+    required bool Function() mutate,
+  }) {
     return _enqueueWrite(() async {
-      for (final entry in snapshot.entries) {
-        await _prefs.setString('$_tempPrefix${entry.key}', entry.value);
+      final pending = await _resolvePendingTransaction(reload: true);
+      final previousStrains = _strains;
+      final previousDosages = _dosages;
+      final previousSettings = _settings;
+      final previousUserName = _userName;
+      final previousPersisted = pending ?? _readCanonicalGeneration();
+
+      try {
+        if (!mutate()) return;
+        await _runTransaction(previousPersisted, _currentGeneration());
+      } catch (error, stackTrace) {
+        _strains = previousStrains;
+        _dosages = previousDosages;
+        _settings = previousSettings;
+        _userName = previousUserName;
+        _invalidateComputedData();
+        try {
+          await _resolvePendingTransaction(reload: true);
+        } catch (_) {
+          // The original mutation error is the actionable failure. A pending
+          // journal keeps a later load/refresh able to recover the generation.
+        }
+        Error.throwWithStackTrace(error, stackTrace);
       }
-      for (final entry in snapshot.entries) {
-        await _prefs.setString(entry.key, entry.value);
-      }
-      for (final key in snapshot.keys) {
-        await _prefs.remove('$_tempPrefix$key');
-      }
+      _notifyMutation();
     });
+  }
+
+  Map<String, String?> _readCanonicalGeneration() => {
+        for (final key in _transactionGenerationKeys)
+          key: _prefs.getString(key),
+      };
+
+  Map<String, String?> _currentGeneration() => {
+        _strainsKey: _encodeStrains(),
+        _dosagesKey: _encodeDosages(),
+        _settingsKey: jsonEncode(_settings.toJson()),
+        _userNameKey: _userName,
+      };
+
+  Future<void> _runTransaction(
+    Map<String, String?> previous,
+    Map<String, String?> target,
+  ) async {
+    await _writeTransaction(
+      _Transaction(
+        phase: _TransactionPhase.prepared,
+        previous: previous,
+        target: target,
+      ),
+    );
+    await _writeGeneration(target);
+    await _writeTransaction(
+      _Transaction(
+        phase: _TransactionPhase.committed,
+        previous: previous,
+        target: target,
+      ),
+    );
+    try {
+      await _requireWriteSucceeded(
+        _prefs.remove(_transactionKey),
+        _transactionKey,
+      );
+    } catch (_) {
+      // The commit marker is the linearization point. Cleanup is retried by
+      // the next load or queued mutation and must not turn success into error.
+    }
+  }
+
+  Future<Map<String, String?>?> _resolvePendingTransaction({
+    bool reload = false,
+  }) async {
+    if (reload) await _prefs.reload();
+    final encoded = _prefs.getString(_transactionKey);
+    if (encoded == null) return null;
+    final transaction = _Transaction.decode(encoded);
+    if (transaction == null) return null;
+    final generation = transaction.targetForRecovery;
+    var canClearJournal = true;
+    if (transaction.phase == _TransactionPhase.prepared) {
+      try {
+        await _writeGeneration(generation);
+      } catch (_) {
+        canClearJournal = false;
+        // Keep the prepared journal. Its prior generation remains the source
+        // of truth until canonical repair can complete.
+      }
+    }
+    if (canClearJournal) {
+      try {
+        await _requireWriteSucceeded(
+          _prefs.remove(_transactionKey),
+          _transactionKey,
+        );
+      } catch (_) {
+        // Recovery is safe to retry; never replace the loaded generation with
+        // a partially written canonical set.
+      }
+    }
+    return generation;
+  }
+
+  Future<void> _writeTransaction(_Transaction transaction) {
+    return _requireWriteSucceeded(
+      _prefs.setString(_transactionKey, transaction.encode()),
+      _transactionKey,
+    );
+  }
+
+  Future<void> _writeGeneration(Map<String, String?> generation) async {
+    for (final key in _transactionGenerationKeys) {
+      final value = generation[key];
+      if (value == null) {
+        await _requireWriteSucceeded(_prefs.remove(key), key);
+      } else {
+        await _requireWriteSucceeded(_prefs.setString(key, value), key);
+      }
+    }
+  }
+
+  Future<void> _requireWriteSucceeded(Future<bool> result, String key) async {
+    if (!await result) {
+      throw StateError('Could not persist preference "$key"');
+    }
   }
 
   Future<void> _enqueueWrite(Future<void> Function() action) {
@@ -440,6 +631,45 @@ class KratomProvider with ChangeNotifier {
     }
   }
 
+  _ImportPlan _prepareImport(BackupPayload p, ImportMode mode) {
+    _validatePayload(p);
+
+    // Bare dose lists have no strain collection. Replace cannot reconstruct
+    // strains from the file, so keep local strains when they can attach every
+    // dose; otherwise reject with the same error preview uses.
+    final legacyDoseOnly =
+        p.strains.isEmpty && p.orphanedDosages.isEmpty;
+    final nextStrains = mode == ImportMode.replace
+        ? List<Strain>.of(legacyDoseOnly ? _strains : p.strains)
+        : _mergeById(_strains, p.strains, (strain) => strain.id);
+    final strainIds = nextStrains.map((strain) => strain.id).toSet();
+    final importedDosages = <Dosage>[
+      ...p.dosages,
+      if (mode == ImportMode.merge)
+        ...p.orphanedDosages.where(
+          (dose) => strainIds.contains(dose.strainId),
+        ),
+    ];
+    final droppedOrphans = mode == ImportMode.replace
+        ? p.orphanedDosages
+        : p.orphanedDosages.where(
+            (dose) => !strainIds.contains(dose.strainId),
+          );
+    if (droppedOrphans.isNotEmpty ||
+        importedDosages.any((dose) => !strainIds.contains(dose.strainId))) {
+      throw ArgumentError('Imported dosage data references an unknown strain');
+    }
+    _validateImportedDosages(importedDosages);
+    return _ImportPlan(
+      strains: nextStrains,
+      dosages: mode == ImportMode.replace
+          ? importedDosages
+          : _mergeById(_dosages, importedDosages, (dose) => dose.id),
+      settings: mode == ImportMode.merge ? _settings : p.settings ?? _settings,
+      userName: mode == ImportMode.merge ? _userName : p.userName ?? _userName,
+    );
+  }
+
   void _validatePayload(BackupPayload payload) {
     final strainIds = <String>{};
     for (final strain in payload.strains) {
@@ -447,14 +677,20 @@ class KratomProvider with ChangeNotifier {
         throw ArgumentError('Imported strains must have unique, non-empty IDs');
       }
     }
+    _validateImportedDosages([
+      ...payload.dosages,
+      ...payload.orphanedDosages,
+    ]);
+  }
+
+  void _validateImportedDosages(Iterable<Dosage> doses) {
     final dosageIds = <String>{};
-    for (final dose in payload.dosages) {
+    for (final dose in doses) {
       if (dose.id.isEmpty ||
           !dosageIds.add(dose.id) ||
           !dose.amount.isFinite ||
           dose.amount <= 0 ||
-          dose.amount > 1000 ||
-          payload.strains.isNotEmpty && !strainIds.contains(dose.strainId)) {
+          dose.amount > 1000) {
         throw ArgumentError('Imported dosage data is invalid');
       }
     }
@@ -470,6 +706,86 @@ class KratomProvider with ChangeNotifier {
     _lastMutationStamp++;
     notifyListeners();
   }
+}
+
+enum _TransactionPhase { prepared, committed }
+
+class _Transaction {
+  final _TransactionPhase phase;
+  final Map<String, String?> previous;
+  final Map<String, String?> target;
+
+  const _Transaction({
+    required this.phase,
+    required this.previous,
+    required this.target,
+  });
+
+  Map<String, String?> get targetForRecovery =>
+      phase == _TransactionPhase.prepared ? previous : target;
+
+  String encode() => jsonEncode({
+        'version': 1,
+        'phase': phase.name,
+        'previous': previous,
+        'target': target,
+      });
+
+  static _Transaction? decode(String encoded) {
+    try {
+      final raw = jsonDecode(encoded);
+      if (raw is! Map || raw['version'] != 1) return null;
+      final phaseName = raw['phase'];
+      final phase = switch (phaseName) {
+        'prepared' => _TransactionPhase.prepared,
+        'committed' => _TransactionPhase.committed,
+        _ => null,
+      };
+      final previous = _decodeGeneration(raw['previous']);
+      final target = _decodeGeneration(raw['target']);
+      if (phase == null || previous == null || target == null) return null;
+      return _Transaction(
+        phase: phase,
+        previous: previous,
+        target: target,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+Map<String, String?>? _decodeGeneration(Object? encoded) {
+  if (encoded is! Map) return null;
+  final generation = <String, String?>{};
+  for (final key in _transactionGenerationKeys) {
+    if (!encoded.containsKey(key)) return null;
+    final value = encoded[key];
+    if (value != null && value is! String) return null;
+    generation[key] = value as String?;
+  }
+  return generation;
+}
+
+class _DecodedList<T> {
+  final List<T> values;
+  final bool hadMalformed;
+
+  const _DecodedList(this.values, this.hadMalformed);
+}
+
+class _ImportPlan {
+  final List<Strain> strains;
+  final List<Dosage> dosages;
+  final UserSettings settings;
+  final String? userName;
+
+  const _ImportPlan({
+    required this.strains,
+    required this.dosages,
+    required this.settings,
+    required this.userName,
+  });
 }
 
 List<T> _mergeById<T>(

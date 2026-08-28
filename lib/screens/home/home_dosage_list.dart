@@ -605,8 +605,13 @@ class _LiveGapStemState extends State<_LiveGapStem>
       child: AnimatedBuilder(
         animation: _controller,
         builder: (context, _) {
-          // Travel −36 over one period so dashes flow toward NOW.
-          final offset = -VineGeometry.liveDashTravel * _controller.value;
+          // Travel −36 over one period so dashes flow toward NOW, quantized
+          // to whole-pixel phases: sub-pixel steps are invisible at this
+          // drift rate, and equal consecutive offsets make shouldRepaint
+          // false so the raster is skipped between steps.
+          final offset = quantizeLiveDashOffset(
+            -VineGeometry.liveDashTravel * _controller.value,
+          );
           return paint(offset);
         },
       ),
@@ -810,7 +815,12 @@ class _LiveNowStemState extends State<_LiveNowStem>
         builder: (context, _) {
           final t = _controller.value;
           return paint(
-            dashOffset: -VineGeometry.liveDashTravel * t,
+            // Quantized so the steady tail (dashes only) skips repaints
+            // between phase steps; the sprout keeps its full phase
+            // resolution for smooth growth.
+            dashOffset: quantizeLiveDashOffset(
+              -VineGeometry.liveDashTravel * t,
+            ),
             sprout: _sprouting ? t : null,
           );
         },

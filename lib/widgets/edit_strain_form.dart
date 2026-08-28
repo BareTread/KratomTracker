@@ -105,10 +105,13 @@ class _EditStrainFormState extends State<EditStrainForm> {
     _nameController = TextEditingController(text: widget.strain.name);
     _codeController = TextEditingController(text: widget.strain.code);
 
-    // Initialize selected type and color based on current strain color
+    // Initialize selected type and color based on current strain color.
+    // If the strain's colour is not in the 12-swatch palette (e.g. from an
+    // import), keep the original colour so saving without picking a swatch
+    // does not silently recolour it.
     final currentColor = Color(widget.strain.color);
     String foundType = 'Green'; // Default
-    _ColorOption foundColor = _strainTypes['Green']![0]; // Default
+    _ColorOption? foundColor;
 
     // Find matching color in strainTypes
     for (var type in _strainTypes.keys) {
@@ -122,7 +125,8 @@ class _EditStrainFormState extends State<EditStrainForm> {
     }
 
     _selectedType = foundType;
-    _selectedColor = foundColor;
+    _selectedColor =
+        foundColor ?? _CustomColorOption(color: currentColor);
 
     // Initialize mark selection from the stored icon. The stored value is
     // already a LeafShape.name after the read migration, but resolve handles
@@ -201,7 +205,7 @@ class _EditStrainFormState extends State<EditStrainForm> {
               controller: _nameController,
               decoration: const InputDecoration(labelText: 'Strain Name'),
               validator: (value) {
-                if (value == null || value.isEmpty) {
+                if (value == null || value.trim().isEmpty) {
                   return 'Please enter a name';
                 }
                 return null;
@@ -212,7 +216,7 @@ class _EditStrainFormState extends State<EditStrainForm> {
               controller: _codeController,
               decoration: const InputDecoration(labelText: 'Strain Code'),
               validator: (value) {
-                if (value == null || value.isEmpty) {
+                if (value == null || value.trim().isEmpty) {
                   return 'Please enter a code';
                 }
                 return null;
@@ -269,19 +273,29 @@ class _EditStrainFormState extends State<EditStrainForm> {
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
-                  onPressed: () {
-                    if (_formKey.currentState!.validate()) {
-                      final provider =
-                          Provider.of<KratomProvider>(context, listen: false);
-                      provider.updateStrain(
+                  onPressed: () async {
+                    if (!_formKey.currentState!.validate()) return;
+                    final provider =
+                        Provider.of<KratomProvider>(context, listen: false);
+                    final messenger = ScaffoldMessenger.of(context);
+                    try {
+                      await provider.updateStrain(
                         widget.strain.id,
-                        name: _nameController.text,
-                        code: _codeController.text,
+                        name: _nameController.text.trim(),
+                        code: _codeController.text.trim(),
                         color: _selectedColor.color.toARGB32(),
                         icon: _selectedShape.name,
                         inStock: _inStock,
                       );
+                      if (!context.mounted) return;
                       Navigator.pop(context);
+                    } catch (e) {
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Text('Could not save strain: $e'),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
                     }
                   },
                   child: const Text('Save Changes'),
@@ -354,4 +368,11 @@ class _ColorOption {
     required this.name,
     required this.intensity,
   });
+}
+
+/// A colour outside the 12-swatch palette (e.g. from an import). Preserves
+/// the original colour on save when the user did not pick a swatch.
+class _CustomColorOption extends _ColorOption {
+  _CustomColorOption({required super.color})
+      : super(name: 'Custom', intensity: '');
 }

@@ -38,7 +38,14 @@ DoseStats computeDoseStats(
   DateTimeRange range, {
   DateTime? now,
 }) {
-  final daily = dailyTotals(dosages, range);
+  final today = startOfDay(now ?? DateTime.now());
+  final requestedStart = startOfDay(range.start);
+  final requestedEnd = startOfDay(range.end);
+  final boundedRange = DateTimeRange(
+    start: requestedStart.isAfter(today) ? today : requestedStart,
+    end: requestedEnd.isAfter(today) ? today : requestedEnd,
+  );
+  final daily = dailyTotals(dosages, boundedRange);
 
   // A today that hasn't finished yet is not a completed rest day. Counted as
   // one it zeroed `currentStreakDays` every morning before the first dose,
@@ -47,13 +54,18 @@ DoseStats computeDoseStats(
   // range; the moment it has a dose it counts like any other day.
   final closed = Map<DateTime, double>.from(daily);
   if (closed.isNotEmpty) {
-    final today = startOfDay(now ?? DateTime.now());
     if (closed[today] == 0 && closed.keys.last == today) {
       closed.remove(today);
     }
   }
   final filtered = dosages
-      .where((dose) => inRangeInclusive(dose.timestamp, range.start, range.end))
+      .where(
+        (dose) => inRangeInclusive(
+          dose.timestamp,
+          boundedRange.start,
+          boundedRange.end,
+        ),
+      )
       .toList()
     ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
   final totalGrams = filtered.fold<double>(0, (sum, d) => sum + d.amount);
@@ -273,8 +285,13 @@ List<DayFacts> closedDayFacts(
   DateTimeRange range, {
   DateTime? now,
 }) {
-  final start = startOfDay(range.start);
-  final end = startOfDay(range.end);
+  // Same today-cap as [computeDoseStats]: an All range that runs to a
+  // future-dated import must not seed empty days as rest.
+  final today = startOfDay(now ?? DateTime.now());
+  final requestedStart = startOfDay(range.start);
+  final requestedEnd = startOfDay(range.end);
+  final start = requestedStart.isAfter(today) ? today : requestedStart;
+  final end = requestedEnd.isAfter(today) ? today : requestedEnd;
   if (end.isBefore(start)) {
     throw ArgumentError('Date range end must not precede start');
   }
@@ -292,7 +309,7 @@ List<DayFacts> closedDayFacts(
     counts[day] = (counts[day] ?? 0) + 1;
   }
 
-  if (grams[end] == 0 && end == startOfDay(now ?? DateTime.now())) {
+  if (grams[end] == 0 && end == today) {
     grams.remove(end);
     counts.remove(end);
   }

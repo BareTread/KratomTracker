@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/kratom_provider.dart';
 import '../theme/app_theme.dart';
+import '../domain/date_utils.dart';
 import '../domain/strain_usage.dart';
 import '../widgets/add_strain_form.dart';
 import 'strain_usage_tile.dart';
@@ -427,13 +428,9 @@ class _DosageDetailsFormState extends State<_DosageDetailsForm> {
   /// Seed from the calendar's selected day, keeping the frozen open-time
   /// time-of-day. If the selected day is today, use openedAt exactly.
   static DateTime _seedDateTime(DateTime selectedDate, DateTime openedAt) {
-    final selectedDay = DateTime(
-      selectedDate.year,
-      selectedDate.month,
-      selectedDate.day,
-    );
-    final openDay = DateTime(openedAt.year, openedAt.month, openedAt.day);
-    if (selectedDay == openDay) return openedAt;
+    final selectedDay = startOfDay(selectedDate);
+    final openDay = startOfDay(openedAt);
+    if (!selectedDay.isBefore(openDay)) return openedAt;
     return DateTime(
       selectedDay.year,
       selectedDay.month,
@@ -543,6 +540,19 @@ class _DosageDetailsFormState extends State<_DosageDetailsForm> {
 
     final amount = parseDoseAmount(_amountController.text);
     if (amount == null) return;
+
+    // The date picker clamps to today but the time wheel does not, so a dose
+    // hours in the future is one tap away — and the vine would render it
+    // above NOW as if just taken.
+    if (_selectedDateTime.isAfter(DateTime.now())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Dose time is in the future'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
 
     final notesRaw = _notesController.text.trim();
     final notes = notesRaw.isEmpty ? null : notesRaw;

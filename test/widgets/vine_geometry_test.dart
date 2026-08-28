@@ -208,4 +208,89 @@ void main() {
       expect(mild.nowPitch, VineRhythm.baseNow);
     });
   });
+
+  group('quantizeLiveDashOffset — 9px dash cycle', () {
+    // Pattern [2, 7] repeats every 9px; result is a whole-pixel phase in 0..8.
+    final cycle = VineGeometry.liveDash.fold<double>(0, (a, b) => a + b);
+
+    test('exact cycle boundaries wrap to phase 0', () {
+      expect(cycle, 9.0);
+      expect(quantizeLiveDashOffset(0), 0.0);
+      expect(quantizeLiveDashOffset(cycle), 0.0);
+      expect(quantizeLiveDashOffset(-cycle), 0.0);
+      expect(quantizeLiveDashOffset(2 * cycle), 0.0);
+    });
+
+    test('whole-pixel phases 0–8 stay put; 9 wraps to 0', () {
+      for (var p = 0; p <= 8; p++) {
+        expect(quantizeLiveDashOffset(p.toDouble()), p.toDouble());
+      }
+      expect(quantizeLiveDashOffset(9), 0.0);
+    });
+
+    test('rounding 8.5 up wraps 9 → 0 (round-to-wrap)', () {
+      // 8.4 stays on 8; halfway-and-up leaves the last pixel and wraps.
+      expect(quantizeLiveDashOffset(8.4), 8.0);
+      expect(quantizeLiveDashOffset(8.5), 0.0);
+      expect(quantizeLiveDashOffset(8.6), 0.0);
+      expect(quantizeLiveDashOffset(8.5 + cycle), 0.0);
+    });
+
+    test('mid-pixel values round to the nearest whole phase', () {
+      expect(quantizeLiveDashOffset(0.4), 0.0);
+      expect(quantizeLiveDashOffset(0.5), 1.0);
+      expect(quantizeLiveDashOffset(7.5), 8.0);
+    });
+
+    test('negative offsets wrap into the same 0–8 cycle', () {
+      expect(quantizeLiveDashOffset(-1), 8.0);
+      expect(quantizeLiveDashOffset(-0.6), 8.0);
+      expect(quantizeLiveDashOffset(-0.5), 0.0);
+      expect(quantizeLiveDashOffset(-0.4), 0.0);
+      expect(quantizeLiveDashOffset(-8), 1.0);
+      expect(quantizeLiveDashOffset(-8.5), 1.0);
+      expect(quantizeLiveDashOffset(-8.6), 0.0);
+      expect(quantizeLiveDashOffset(-9), 0.0);
+      expect(quantizeLiveDashOffset(-10), 8.0);
+    });
+
+    test('large multiples and live-travel span collapse to 9 phases', () {
+      expect(quantizeLiveDashOffset(VineGeometry.liveDashTravel), 0.0);
+      expect(quantizeLiveDashOffset(-VineGeometry.liveDashTravel), 0.0);
+      expect(quantizeLiveDashOffset(36 + 3), 3.0);
+      expect(quantizeLiveDashOffset(-36 - 3), 6.0);
+      expect(quantizeLiveDashOffset(90.4), 0.0);
+      expect(quantizeLiveDashOffset(-90.4), 0.0);
+
+      final phases = <double>{};
+      for (var i = 0; i <= 36; i++) {
+        phases.add(quantizeLiveDashOffset(-i.toDouble()));
+      }
+      expect(phases, {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0});
+    });
+
+    test('quantize is idempotent and stays in 0–8', () {
+      const samples = [
+        0.0,
+        0.5,
+        8.4,
+        8.5,
+        9.0,
+        -0.4,
+        -0.5,
+        -1.0,
+        -36.0,
+        36.7,
+        99.2,
+        -99.2,
+      ];
+      for (final offset in samples) {
+        final once = quantizeLiveDashOffset(offset);
+        expect(once, quantizeLiveDashOffset(once));
+        expect(once, greaterThanOrEqualTo(0.0));
+        expect(once, lessThan(cycle));
+        expect(once, once.roundToDouble());
+      }
+    });
+  });
 }

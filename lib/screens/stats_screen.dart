@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../domain/date_utils.dart';
 import '../providers/kratom_provider.dart';
 import '../theme/app_theme.dart';
 import 'report_screen.dart';
@@ -37,12 +40,48 @@ class StatsScreen extends StatefulWidget {
   State<StatsScreen> createState() => _StatsScreenState();
 }
 
-class _StatsScreenState extends State<StatsScreen> {
+class _StatsScreenState extends State<StatsScreen> with WidgetsBindingObserver {
   StatsRange _range = StatsRange.thirty;
 
-  // Memoised bundle, recomputed only when provider data or the range changes.
+  // Memoised bundle, recomputed only when provider data, the range, or the
+  // calendar day changes. Without the day, an overnight session keeps
+  // yesterday's 30d/90d windows until a dose is logged or the range moves.
   StatsBundle? _bundle;
-  ({StatsRange range, int stamp})? _bundleKey;
+  ({StatsRange range, int stamp, DateTime day})? _bundleKey;
+  Timer? _midnightTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _armMidnightTimer();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _midnightTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      setState(() {});
+      _armMidnightTimer();
+    }
+  }
+
+  void _armMidnightTimer() {
+    _midnightTimer?.cancel();
+    final now = DateTime.now();
+    final next = addDays(startOfDay(now), 1);
+    _midnightTimer = Timer(next.difference(now), () {
+      if (!mounted) return;
+      setState(() {});
+      _armMidnightTimer();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -140,7 +179,11 @@ class _StatsScreenState extends State<StatsScreen> {
   }
 
   StatsBundle _resolveBundle(KratomProvider provider) {
-    final key = (range: _range, stamp: provider.lastMutationStamp);
+    final key = (
+      range: _range,
+      stamp: provider.lastMutationStamp,
+      day: startOfDay(DateTime.now()),
+    );
     if (_bundle != null && _bundleKey == key) return _bundle!;
     final bundle = StatsBundle.compute(provider, _range);
     _bundle = bundle;

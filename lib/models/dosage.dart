@@ -41,12 +41,15 @@ class Dosage {
       };
 
   factory Dosage.fromJson(Map<String, dynamic> json) {
+    final timestamp = DateTime.tryParse(asString(json['timestamp']));
+    if (timestamp == null) {
+      throw const FormatException('Invalid dosage timestamp');
+    }
     return Dosage(
       id: asString(json['id']),
       strainId: asString(json['strainId']),
       amount: asDouble(json['amount']),
-      timestamp: DateTime.tryParse(asString(json['timestamp'])) ??
-          DateTime.fromMillisecondsSinceEpoch(0),
+      timestamp: timestamp,
       notes: json['notes'] is String ? json['notes'] as String : null,
     );
   }

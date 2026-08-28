@@ -7,7 +7,6 @@ import '../models/strain.dart';
 import '../widgets/strain_details_view.dart';
 import '../widgets/strain_mark.dart';
 import '../theme/app_theme.dart';
-import 'dart:ui';  // For ImageFilter
 
 class StrainsScreen extends StatelessWidget {
   const StrainsScreen({super.key});
@@ -19,9 +18,7 @@ class StrainsScreen extends StatelessWidget {
         final strains = provider.strains;
         
         return Scaffold(
-          backgroundColor: Theme.of(context).brightness == Brightness.dark 
-              ? Colors.black 
-              : Colors.white,
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           body: Column(
             children: [
               // Status bar spacing
@@ -33,18 +30,19 @@ class StrainsScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text(
+                    Text(
                       'Strains',
                       style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.w600,
                         height: 1.1,
+                        color: context.c.textPrimary,
                       ),
                     ),
                     Text(
                       '${strains.length} strains total',
                       style: TextStyle(
-                        color: Colors.grey[500],
+                        color: context.c.textTertiary,
                         fontSize: 14,
                         height: 1.2,
                       ),
@@ -83,7 +81,7 @@ class StrainsScreen extends StatelessWidget {
                 ),
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00ACC1),
+                    backgroundColor: context.c.accent,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     minimumSize: const Size.fromHeight(42),
@@ -124,17 +122,20 @@ class StrainsScreen extends StatelessWidget {
   }
 
   Widget _buildStrainCard(BuildContext context, Strain strain, KratomProvider provider) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final c = context.c;
+    final brightness = Theme.of(context).brightness;
+    final chip = strainChipColors(Color(strain.color), brightness);
     final lastDose = provider.dosages
         .where((d) => d.strainId == strain.id)
         .toList()
         ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+        color: c.surfaceRaised,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: c.hairline),
       ),
       child: Material(
         color: Colors.transparent,
@@ -150,7 +151,7 @@ class StrainsScreen extends StatelessWidget {
                   height: 40,
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Color(strain.color).withValues(alpha: 0.15),
+                    color: chip.background,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Center(
@@ -171,7 +172,7 @@ class StrainsScreen extends StatelessWidget {
                           Text(
                             strain.code,
                             style: TextStyle(
-                              color: Color(strain.color),
+                              color: chip.foreground,
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
                               letterSpacing: 0.5,
@@ -182,7 +183,7 @@ class StrainsScreen extends StatelessWidget {
                             child: Text(
                               strain.name,
                               style: TextStyle(
-                                color: isDark ? Colors.grey[300] : Colors.grey[800],
+                                color: c.textPrimary,
                                 fontSize: 16,
                               ),
                               overflow: TextOverflow.ellipsis,
@@ -196,7 +197,7 @@ class StrainsScreen extends StatelessWidget {
                           _formatLastUsed(DateTime.now().difference(lastDose.first.timestamp)),
                           style: TextStyle(
                             fontSize: 13,
-                            color: Colors.grey[600],
+                            color: c.textTertiary,
                           ),
                         ),
                       ],
@@ -213,7 +214,7 @@ class StrainsScreen extends StatelessWidget {
                 IconButton(
                   icon: Icon(
                     Icons.more_vert,
-                    color: Colors.grey[500],
+                    color: c.textTertiary,
                     size: 20,
                   ),
                   onPressed: () => _showStrainOptions(context, strain),
@@ -260,11 +261,9 @@ class StrainsScreen extends StatelessWidget {
   }
 
   void _showStrainOptions(BuildContext context, Strain strain) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
     showModalBottomSheet(
       context: context,
-      backgroundColor: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+      backgroundColor: context.c.surfaceRaised,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -276,7 +275,7 @@ class StrainsScreen extends StatelessWidget {
             width: 32,
             height: 4,
             decoration: BoxDecoration(
-              color: Colors.grey[600],
+              color: context.c.hairline,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -297,10 +296,10 @@ class StrainsScreen extends StatelessWidget {
             },
           ),
           ListTile(
-            leading: const Icon(Icons.delete_outline, color: Colors.red),
-            title: const Text(
+            leading: Icon(Icons.delete_outline, color: context.c.caution),
+            title: Text(
               'Delete Strain',
-              style: TextStyle(color: Colors.red),
+              style: TextStyle(color: context.c.caution),
             ),
             onTap: () {
               Navigator.pop(context);
@@ -317,48 +316,25 @@ class StrainsScreen extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => BackdropFilter(
-        filter: ImageFilter.blur(
-          sigmaX: 5,
-          sigmaY: 5,
-        ),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).brightness == Brightness.dark
-                ? Colors.black.withValues(alpha: 0.85)
-                : Colors.white.withValues(alpha: 0.9),
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(20),
-            ),
-          ),
-          child: EditStrainForm(strain: strain),
-        ),
+      backgroundColor: context.c.surfaceRaised,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      builder: (context) => EditStrainForm(strain: strain),
     );
   }
 
   void _showDeleteConfirmation(BuildContext context, Strain strain) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF1A1A1A) : Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
         title: Text(
           'Delete Strain',
-          style: TextStyle(
-            color: isDark ? Colors.white : Colors.black87,
-          ),
+          style: TextStyle(color: context.c.textPrimary),
         ),
         content: Text(
-          'Are you sure you want to delete ${strain.name}? This action cannot be undone.',
-          style: TextStyle(
-            color: isDark ? Colors.grey[400] : Colors.grey[600],
-          ),
+          'Are you sure you want to delete ${strain.name}? This will also permanently delete ALL recorded doses for this strain. This action cannot be undone.',
+          style: TextStyle(color: context.c.textSecondary),
         ),
         actions: [
           TextButton(
@@ -371,9 +347,9 @@ class StrainsScreen extends StatelessWidget {
                   .deleteStrain(strain.id);
               Navigator.pop(context);
             },
-            child: const Text(
+            child: Text(
               'Delete',
-              style: TextStyle(color: Colors.red),
+              style: TextStyle(color: context.c.caution),
             ),
           ),
         ],

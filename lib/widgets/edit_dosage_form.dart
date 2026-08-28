@@ -100,6 +100,18 @@ class _EditDosageFormState extends State<EditDosageForm> {
     final amount = parseDoseAmount(_amountController.text);
     if (amount == null) return;
 
+    // The date picker clamps to today but the time wheel does not; reject a
+    // moved-forward time the same way the add form does.
+    if (_selectedDateTime.isAfter(DateTime.now())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Dose time is in the future'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     final notesRaw = _notesController.text.trim();
     final provider = context.read<KratomProvider>();
 

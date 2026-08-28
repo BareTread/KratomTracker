@@ -5,11 +5,11 @@ with light and dark themes. All data stays on the device — no account, no netw
 analytics.
 
 - **Package**: `org.kratomtracker.plus`
-- **Current release**: 2.16.2+21 (`pubspec.yaml`, mirrored in
+- **Current release**: 2.16.3+22 (`pubspec.yaml`, mirrored in
   `lib/constants/app_version.dart` and enforced by `test/app_version_test.dart`)
 - **Flutter**: 3.44.x stable, Dart SDK `^3.5.4`
 - **Min Android**: API 23 (6.0)
-- **Release**: [v2.16.2](https://github.com/BareTread/KratomTracker/releases/tag/v2.16.2)
+- **Release**: [v2.16.3](https://github.com/BareTread/KratomTracker/releases/tag/v2.16.3)
 
 ## What it does
 
@@ -56,7 +56,7 @@ Four rules the UI does not break:
 
 ```bash
 flutter pub get
-flutter test                        # 31 test files / 217 tests at v2.16.2
+flutter test
 flutter analyze
 flutter run                         # debug — NOT representative of animation smoothness
 flutter build apk --release
@@ -129,6 +129,73 @@ change with failure-path tests and an explicit data-recovery policy:
 3. Preserve corrupt raw stored JSON instead of allowing a later write to replace it with an
    empty decoded list.
 
+## Polish pass — 2026-08-15 (post-v2.16.2)
+
+A second-opinion review of the phone diagnostic plus the full codebase produced five
+changes; everything else on the idea list was deliberately left alone (reasoning and
+corrections to the review itself are appended in `improvement-ideas-2026-08-15.md`).
+
+1. **Undo on dose delete** (`home_dose_actions.dart`). The confirm dialog is gone;
+   deleting is one tap and the "Dose deleted" snackbar carries an Undo action that
+   re-adds the dose at its original timestamp (fresh ID — nothing keys on dose IDs;
+   guarded for the strain-also-deleted case). A wrong-row delete now costs one tap
+   back instead of a modal on every delete.
+2. **Strain-edit sheet blur removed** (`strains_screen.dart`). The sheet ran a
+   full-surface `BackdropFilter` at sigma 5 behind an ~85%-opaque container for the
+   whole edit session — GPU cost, no design value. Now an opaque surface matching
+   the strain-options sheet in the same file. Also deleted
+   `lib/services/mobile_backup_service.dart` and `web_backup_service.dart`
+   (`BackupFileService`, imported nowhere; Manage backs up inline).
+3. **Live-tail dash caching** (`vine_painter.dart`, `home_dosage_list.dart`). The
+   dash pattern repeats every 2+7=9px and the tail drifts 36px/2.8s ≈ 0.2px per
+   vsync at 120Hz, so the phase is quantized to whole pixels: at most 9 cached
+   dashed paths per geometry (24 growth steps for the sprout, deterministic per
+   loop) instead of `computeMetrics`/`extractPath` on every vsync of an infinitely
+   repeating animation. Quantized offsets also flow into `shouldRepaint`, so frames
+   between phase steps skip the raster entirely — ~13 repaints/s instead of ~120 on
+   a dosed today. The sprout keeps full phase resolution for smooth growth.
+4. **Dark cold start** (`android/.../res/values*/styles.xml`, `launch_background.xml`,
+   `colors.xml`). Launch and normal windows are pinned to the scaffold colour
+   `#090B0C`, and `windowSplashScreenBackground` is set for the Android 12+ system
+   splash. The app defaults to its dark theme regardless of system theme, so the
+   launch window now follows the app instead of flashing white/cyan into it.
+5. **Split-per-ABI release APK** (`.github/workflows/main.yml`). `--split-per-abi`;
+   arm64 keeps the plain `kratom-tracker-vX-release.apk` name (phone install and
+   GitHub Release attachment unchanged); armeabi-v7a and x86_64 ride along as
+   renamed workflow artifacts. Roughly a quarter of the previous download size.
+   Note: split builds offset each APK's versionCode (arm32 +1000, arm64 +2000,
+   x64 +4000 over the pubspec base), so the arm64 2.16.2 build installs as
+   **2021**. Keep distributing split APKs from here on; a future universal APK
+   would need a base code above the highest installed split code or Android
+   rejects it as a downgrade.
+
+Not done, deliberately: the day-indexed dose map, incremental persistence, and stats
+isolate (no felt symptom at current scale — the "next performance change if one is
+ever needed" bar below); the `performanceMode` Manage toggle (the dash cache removes
+the cost it would have toggled); a system-follow theme mode (single user, dark-only
+in practice).
+
+### On-device check (2026-08-15, OnePlus 12, after the polish pass)
+
+`top` delta windows over ADB, per-core convention (100% = one core), same
+trickle-charging USB condition as the diagnostic report:
+
+- Idle on Home **today**, live tail animating at 120Hz: **~24% of one core**
+  (≈3% of total device capacity).
+- Flinging through past days (page movement verified by screenshot): **~13% of
+  one core** — past days have no live tail, so flinging costs less than the
+  animated today page.
+- Static past-day page: **0% CPU, 14 minor faults** — fully static, as designed.
+
+No A/B against the old build was possible on the daily phone (the tagged fat APK
+is a versionCode downgrade and uninstalling would wipe data), so the comparison
+baseline is the diagnostic report's single old-build window: 28% of total capacity
+(~2.2 cores) during interaction. The new build's worst sustained app-process figure
+is ~0.24 core. The residual on today is the two tickers still scheduling a frame
+per vsync to advance the quantized dash phase; paint and raster are skipped between
+phase steps. If that residual ever matters, halving the tail's tick rate or pausing
+it under covering sheets is the next lever — not needed now.
+
 ## Performance notes
 
 The home screen paints continuously (the live dashed tail animates on a 2.8s loop), so it is
@@ -151,8 +218,9 @@ and is sound — record this so it is not re-litigated:
 
 Known remaining cost, not yet addressed: `LeafMarkPainter` rebuilds its stroke `Path`s and
 recomputes per-shape ink bounds on every paint (`strain_mark.dart:94`, `:115`), and the vine
-painters build gradients and path metrics inside `paint()` (`vine_painter.dart:279`, `:293`,
-`:320`). Memoizing those is the next performance change if one is ever needed.
+painters build gradients inside `paint()` (`vine_painter.dart:279`, `:293`). The live tail's
+per-frame path metrics were cached in the 2026-08-15 polish pass above; memoizing the rest
+is the next performance change if one is ever needed.
 
 **Always profile in `--profile` mode.** Debug builds are not indicative of release
 smoothness, and a fresh install can be janky for unrelated reasons (background dexopt, Play

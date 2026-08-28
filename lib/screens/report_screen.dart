@@ -203,6 +203,9 @@ class ReportScreen extends StatelessWidget {
       final date = startOfDay(dosage.timestamp);
       grouped.putIfAbsent(date, () => []).add(dosage);
     }
+    for (final day in grouped.values) {
+      day.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    }
     return Map.fromEntries(
       grouped.entries.toList()
         ..sort((a, b) => b.key.compareTo(a.key)),
@@ -359,164 +362,13 @@ class ReportScreen extends StatelessWidget {
     Dosage dosage,
     KratomProvider provider,
   ) {
-    final c = context.c;
-    final TextEditingController amountController = TextEditingController(
-      text: dosage.amount.toString(),
-    );
-    String selectedStrainId = dosage.strainId;
-    DateTime selectedTime = dosage.timestamp.toLocal();
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: c.surfaceRaised,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-        ),
-        child: StatefulBuilder(
-          builder: (context, setState) => SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      margin: const EdgeInsets.only(bottom: 16),
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: c.hairline,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  Text(
-                    'Edit Dose',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-                  const SizedBox(height: 24),
-                  DropdownButtonFormField<String>(
-                    initialValue: selectedStrainId,
-                    decoration: InputDecoration(
-                      labelText: 'Strain',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    items: provider.strains
-                        .map(
-                          (strain) => DropdownMenuItem(
-                            value: strain.id,
-                            child: Text(strain.name),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => selectedStrainId = value);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: amountController,
-                    decoration: InputDecoration(
-                      labelText: 'Amount (g)',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                  ),
-                  const SizedBox(height: 16),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(
-                      'Time',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: c.textSecondary,
-                          ),
-                    ),
-                    subtitle: Text(
-                      DateFormat('h:mm a, MMM d').format(selectedTime),
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w500,
-                          ),
-                    ),
-                    trailing: Icon(
-                      Icons.access_time,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    onTap: () async {
-                      final time = await showTimePicker(
-                        context: context,
-                        initialTime: TimeOfDay.fromDateTime(selectedTime),
-                      );
-                      if (time != null) {
-                        setState(() {
-                          selectedTime = DateTime(
-                            selectedTime.year,
-                            selectedTime.month,
-                            selectedTime.day,
-                            time.hour,
-                            time.minute,
-                          );
-                        });
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      onPressed: () {
-                        final amount = double.tryParse(amountController.text);
-                        if (amount != null && amount > 0) {
-                          provider.updateDosage(
-                            id: dosage.id,
-                            strainId: selectedStrainId,
-                            amount: amount,
-                            timestamp: selectedTime,
-                            notes: dosage.notes,
-                          );
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Dose updated successfully'),
-                            ),
-                          );
-                        } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Please enter a valid amount'),
-                            ),
-                          );
-                        }
-                      },
-                      child: const Text('Save Changes'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+      builder: (context) => _EditDoseSheet(
+        dosage: dosage,
+        provider: provider,
       ),
     );
   }
@@ -544,15 +396,23 @@ class ReportScreen extends StatelessWidget {
               'Delete',
               style: TextStyle(color: Colors.red),
             ),
-            onPressed: () {
-              provider.deleteDosage(dosage.id);
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: const Text('Dose deleted'),
-                  backgroundColor: c.caution,
-                ),
-              );
+            onPressed: () async {
+              final messenger = ScaffoldMessenger.of(context);
+              try {
+                await provider.deleteDosage(dosage.id);
+                if (!context.mounted) return;
+                Navigator.pop(context);
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: const Text('Dose deleted'),
+                    backgroundColor: c.caution,
+                  ),
+                );
+              } catch (e) {
+                messenger.showSnackBar(
+                  SnackBar(content: Text('Failed to delete dose: $e')),
+                );
+              }
             },
           ),
         ],
@@ -575,5 +435,203 @@ class ReportScreen extends StatelessWidget {
         SnackBar(content: Text('CSV export failed: $e')),
       );
     }
+  }
+}
+
+class _EditDoseSheet extends StatefulWidget {
+  const _EditDoseSheet({required this.dosage, required this.provider});
+
+  final Dosage dosage;
+  final KratomProvider provider;
+
+  @override
+  State<_EditDoseSheet> createState() => _EditDoseSheetState();
+}
+
+class _EditDoseSheetState extends State<_EditDoseSheet> {
+  late final TextEditingController _amountController = TextEditingController(
+    text: widget.dosage.amount.toString(),
+  );
+  late String _selectedStrainId = widget.dosage.strainId;
+  late DateTime _selectedTime = widget.dosage.timestamp.toLocal();
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    super.dispose();
+  }
+
+  void _showResult(String message, {Color? backgroundColor}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: backgroundColor),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Container(
+      decoration: BoxDecoration(
+        color: c.surfaceRaised,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: c.hairline,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Text(
+                'Edit Dose',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 24),
+              DropdownButtonFormField<String>(
+                initialValue: _selectedStrainId,
+                decoration: InputDecoration(
+                  labelText: 'Strain',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                items: widget.provider.strains
+                    .map(
+                      (strain) => DropdownMenuItem(
+                        value: strain.id,
+                        child: Text(strain.name),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _selectedStrainId = value);
+                  }
+                },
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _amountController,
+                decoration: InputDecoration(
+                  labelText: 'Amount (g)',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+              ),
+              const SizedBox(height: 16),
+              Material(
+                color: Colors.transparent,
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    'Time',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: c.textSecondary,
+                        ),
+                  ),
+                  subtitle: Text(
+                    DateFormat('h:mm a, MMM d').format(_selectedTime),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w500,
+                        ),
+                  ),
+                  trailing: Icon(
+                    Icons.access_time,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  onTap: () async {
+                    final time = await showTimePicker(
+                      context: context,
+                      initialTime: TimeOfDay.fromDateTime(_selectedTime),
+                    );
+                    if (time != null) {
+                      setState(() {
+                        _selectedTime = DateTime(
+                          _selectedTime.year,
+                          _selectedTime.month,
+                          _selectedTime.day,
+                          time.hour,
+                          time.minute,
+                        );
+                      });
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: () async {
+                    final amount = double.tryParse(_amountController.text);
+                    if (amount == null || amount <= 0) {
+                      _showResult('Please enter a valid amount');
+                      return;
+                    }
+                    if (_selectedTime.isAfter(DateTime.now())) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Dose time is in the future'),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                      return;
+                    }
+
+                    final messenger = ScaffoldMessenger.of(context);
+                    try {
+                      await widget.provider.updateDosage(
+                        id: widget.dosage.id,
+                        strainId: _selectedStrainId,
+                        amount: amount,
+                        timestamp: _selectedTime,
+                        notes: widget.dosage.notes,
+                      );
+                      if (!context.mounted) return;
+                      Navigator.pop(context);
+                      messenger.showSnackBar(
+                        const SnackBar(
+                          content: Text('Dose updated successfully'),
+                        ),
+                      );
+                    } catch (e) {
+                      messenger.showSnackBar(
+                        SnackBar(content: Text('Failed to update dose: $e')),
+                      );
+                    }
+                  },
+                  child: const Text('Save Changes'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

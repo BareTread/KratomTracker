@@ -7,6 +7,8 @@ import '../../providers/kratom_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/edit_dosage_form.dart';
 
+bool _isLoggingAgain = false;
+
 Future<void> showDosageOptions(BuildContext context, Dosage dosage) {
   return showModalBottomSheet<void>(
     context: context,
@@ -54,41 +56,7 @@ Future<void> showDosageOptions(BuildContext context, Dosage dosage) {
           ListTile(
             leading: Icon(Icons.delete_outline, color: context.c.caution),
             title: Text('Delete', style: TextStyle(color: context.c.caution)),
-            onTap: () => showDialog<void>(
-              context: sheetContext,
-              builder: (dialogContext) => AlertDialog(
-                backgroundColor: dialogContext.c.surfaceRaised,
-                title: const Text('Delete Dose'),
-                content:
-                    const Text('Are you sure you want to delete this dose?'),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(dialogContext),
-                    child: const Text('Cancel'),
-                  ),
-                  TextButton(
-                    onPressed: () async {
-                      await context
-                          .read<KratomProvider>()
-                          .deleteDosage(dosage.id);
-                      if (!dialogContext.mounted) return;
-                      Navigator.pop(dialogContext);
-                      Navigator.pop(sheetContext);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Dose deleted'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    },
-                    child: Text(
-                      'Delete',
-                      style: TextStyle(color: context.c.caution),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            onTap: () => _deleteWithUndo(context, sheetContext, dosage),
           ),
         ],
       ),
@@ -96,25 +64,96 @@ Future<void> showDosageOptions(BuildContext context, Dosage dosage) {
   );
 }
 
-Future<void> _logAgain(BuildContext context, Dosage dosage) async {
+/// Delete in one tap — the snackbar's Undo action is the safety net, so a
+/// wrong-row delete costs one tap back instead of a confirm dialog on every
+/// delete. Undo re-adds the dose at its original timestamp; the new record
+/// gets a fresh ID, which nothing keys on.
+Future<void> _deleteWithUndo(
+  BuildContext context,
+  BuildContext sheetContext,
+  Dosage dosage,
+) async {
   final provider = context.read<KratomProvider>();
-  final strain = provider.getStrain(dosage.strainId);
-  await provider.addDosage(
-    dosage.strainId,
-    dosage.amount,
-    DateTime.now(),
-  );
-  await HapticFeedback.lightImpact();
-  if (!context.mounted) return;
-  Navigator.pop(context);
-  ScaffoldMessenger.of(context).showSnackBar(
+  // Capture the messenger while the row context is definitely alive: the
+  // undo callback can fire after the page beneath has been swiped away.
+  final messenger = ScaffoldMessenger.of(context);
+  await provider.deleteDosage(dosage.id);
+  if (!sheetContext.mounted) return;
+  Navigator.pop(sheetContext);
+  messenger.showSnackBar(
     SnackBar(
-      content: Text(
-        strain == null
-            ? 'Dose logged'
-            : 'Logged ${dosage.amount}g ${strain.code}',
-      ),
+      content: const Text('Dose deleted'),
       behavior: SnackBarBehavior.floating,
+      duration: const Duration(seconds: 5),
+      action: SnackBarAction(
+        label: 'Undo',
+        onPressed: () async {
+          try {
+            await provider.addDosage(
+              dosage.strainId,
+              dosage.amount,
+              dosage.timestamp,
+              notes: dosage.notes,
+            );
+          } on ArgumentError {
+            // The strain was deleted too while the bar was up; a dose
+            // cannot come back without it.
+            messenger.showSnackBar(
+              const SnackBar(
+                content: Text('Could not undo — strain no longer exists'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        },
+      ),
     ),
   );
+}
+
+Future<void> _logAgain(BuildContext context, Dosage dosage) async {
+  if (_isLoggingAgain) return;
+  _isLoggingAgain = true;
+  try {
+    final provider = context.read<KratomProvider>();
+    final strain = provider.getStrain(dosage.strainId);
+    if (strain == null) {
+      if (!context.mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not log — this strain no longer exists'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    try {
+      await provider.addDosage(
+        dosage.strainId,
+        dosage.amount,
+        DateTime.now(),
+      );
+      await HapticFeedback.lightImpact();
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not log dose: $e'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    if (!context.mounted) return;
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Logged ${dosage.amount}g ${strain.code}'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  } finally {
+    _isLoggingAgain = false;
+  }
 }

@@ -95,11 +95,13 @@ android {
     }
 }
 
-// Fail fast on `flutter build apk --release` (=> :app:assembleRelease) when no
-// release keystore is configured, instead of silently shipping a debug-signed
-// APK. Debug builds are never affected.
+// Fail fast on `flutter build apk --release` (=> :app:assembleRelease) or
+// `flutter build appbundle --release` (=> :app:bundleRelease) when no release
+// keystore is configured, instead of silently shipping a debug-signed APK/AAB.
+// Debug builds are never affected.
 gradle.taskGraph.whenReady { graph ->
-    if (graph.hasTask(':app:assembleRelease') && !hasReleaseKeystore) {
+    def releaseTasks = [':app:assembleRelease', ':app:bundleRelease']
+    if (releaseTasks.any { graph.hasTask(it) } && !hasReleaseKeystore) {
         throw new GradleException(
             "Release build requires a signing keystore, but none was found.\n" +
             "Provide android/key.properties (see android/key.properties.example)\n" +

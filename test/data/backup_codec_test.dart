@@ -102,6 +102,22 @@ void main() {
     expect(ok.payload.dosages.single.id, 'dose-1');
   });
 
+  test('keeps mixed orphan doses on the payload with a warning', () {
+    final source = _backup();
+    (source['dosages'] as List).add({
+      'id': 'dose-orphan',
+      'strainId': 'missing',
+      'amount': 2,
+      'timestamp': '2025-01-02T08:00:00.000',
+    });
+
+    final ok = parseBackup(jsonEncode(source)) as BackupOk;
+
+    expect(ok.payload.dosages.single.id, 'dose-1');
+    expect(ok.payload.orphanedDosages.single.id, 'dose-orphan');
+    expect(ok.summary.warnings, isNotEmpty);
+  });
+
   test('drops an orphaned effect silently (legacy backups keep effects)', () {
     // Backups written by older versions carry an `effects` array. The codec
     // no longer models effects, so the whole key must be ignored without

@@ -152,6 +152,21 @@ void main() {
       expect(facts[1].grams, 3.0);
     });
 
+    test('empty days after today are not closed days', () {
+      final facts = closedDayFacts(
+        [
+          _dose('a', 2.5, DateTime(2025, 2, 1, 8)),
+          _dose('b', 3.0, DateTime(2025, 3, 1, 8)),
+        ],
+        DateTimeRange(start: DateTime(2025, 2, 1), end: DateTime(2025, 3, 1)),
+        now: DateTime(2025, 2, 10, 9),
+      );
+
+      expect(facts.first.day, DateTime(2025, 2, 1));
+      expect(facts.last.day, DateTime(2025, 2, 9));
+      expect(facts.any((f) => f.day == DateTime(2025, 3, 1)), isFalse);
+    });
+
   });
 
   group('IntakeFactors', () {

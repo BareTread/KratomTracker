@@ -37,15 +37,15 @@ class StrainUsage {
   });
 }
 
-/// Ranks strains for the picker: the most rested come first, but a strain the
-/// rotation has been leaning on has to rest longer to earn the same place.
+/// Ranks strains for the Add Dose picker by rotation rest.
 ///
-/// The old formula scored consumption against a hardcoded 500g ceiling. At a
-/// real month's intake that term barely moved, so the order read as "days since
-/// last use, with unexplained jitter". [concentration] replaces it with a
-/// scale-free measure — a strain's share of the month relative to an even split
-/// — which means the ranking behaves the same whether the shelf holds six
-/// strains or sixty, and whether the month totalled 100g or 400g.
+/// Calendar days since last dose is the only primary key: a strain last taken
+/// 5 days ago always ranks ahead of one taken 2 days ago, even if it carried
+/// far more of the month. Never-used strains are treated as the most rested.
+/// 30-day grams break ties only inside the same rest bucket, lighter first;
+/// equal rest and equal volume fall back to strain code, then strain ID,
+/// so the order is a total deterministic order.
+/// Future timestamps clamp to "today" so corrupt clocks cannot invert the list.
 List<StrainUsage> computeStrainUsage(
   List<Strain> strains,
   List<Dosage> dosages, {
@@ -78,10 +78,11 @@ List<StrainUsage> computeStrainUsage(
         strain: strain,
         lastUsed: lastUsed,
         // Calendar days, so an evening dose still reads as "yesterday" the
-        // next morning instead of collapsing to "today".
+        // next morning instead of collapsing to "today". A future/corrupt
+        // timestamp is treated as today rather than a negative rest.
         daysSinceUse: lastUsed == null
             ? 365.0
-            : daysBetween(lastUsed, effectiveNow).toDouble(),
+            : _nonNegativeDays(lastUsed, effectiveNow),
         doses30d: last30d.length,
         grams30d: _sum(last30d),
       ),
@@ -96,8 +97,20 @@ List<StrainUsage> computeStrainUsage(
   final provisional = [
     for (final r in raw) _score(r, evenShare: evenShare, maxGrams: maxGrams30d),
   ]..sort((a, b) {
-      final byScore = b.rotationScore.compareTo(a.rotationScore);
-      return byScore != 0 ? byScore : a.strain.code.compareTo(b.strain.code);
+      final aNever = a.lastUsed == null;
+      final bNever = b.lastUsed == null;
+      if (aNever != bNever) return aNever ? -1 : 1;
+
+      final byRest = b.daysSinceLastUse.compareTo(a.daysSinceLastUse);
+      if (byRest != 0) return byRest;
+
+      final byVolume = a.grams30d.compareTo(b.grams30d);
+      if (byVolume != 0) return byVolume;
+
+      final byCode = a.strain.code.compareTo(b.strain.code);
+      if (byCode != 0) return byCode;
+
+      return a.strain.id.compareTo(b.strain.id);
     });
 
   return [
@@ -128,10 +141,9 @@ StrainUsage _score(
 }) {
   final concentration = evenShare <= 0 ? 0.0 : r.grams30d / evenShare;
 
-  // Rest divided by load. The +1 keeps a strain used today from collapsing to
-  // zero — among equally fresh strains the lighter-used one should still come
-  // first — and the +0.5 keeps an untouched strain's score large but finite.
-  final rotationScore = (r.daysSinceUse + 1) / (0.5 + concentration);
+  // Recency only. Volume is applied in the sort, never mixed into this score,
+  // so a heavier 5-day rest cannot lose to a lighter 2-day rest.
+  final rotationScore = r.daysSinceUse;
 
   return StrainUsage(
     strain: r.strain,
@@ -162,3 +174,8 @@ StrainUsage _withRank(StrainUsage u, int rank) => StrainUsage(
 
 double _sum(Iterable<Dosage> dosages) =>
     dosages.fold(0, (total, dosage) => total + dosage.amount);
+
+double _nonNegativeDays(DateTime lastUsed, DateTime now) {
+  final elapsed = daysBetween(lastUsed, now);
+  return (elapsed < 0 ? 0 : elapsed).toDouble();
+}

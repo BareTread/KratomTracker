@@ -43,10 +43,10 @@ String _row(Dosage dose, Strain? strain) {
     DateFormat('yyyy-MM-dd').format(localTimestamp),
     DateFormat('HH:mm').format(localTimestamp),
     dose.timestamp.toIso8601String(),
-    strain?.code ?? '???',
-    strain?.name ?? 'Unknown strain',
+    _safeText(strain?.code ?? '???'),
+    _safeText(strain?.name ?? 'Unknown strain'),
     _formatAmount(dose.amount),
-    dose.notes ?? '',
+    _safeText(dose.notes ?? ''),
   ];
   return fields.map(_quote).join(',');
 }
@@ -54,6 +54,19 @@ String _row(Dosage dose, Strain? strain) {
 String _formatAmount(double amount) {
   if (amount == amount.roundToDouble()) return amount.toStringAsFixed(1);
   return amount.toStringAsFixed(2);
+}
+
+/// Neutralise CSV formula injection (OWASP): spreadsheets execute a cell as
+/// a formula when the field starts with = + - @ or a tab/CR/LF. Notes and strain
+/// names are user free text, so prefix such fields with a single quote —
+/// Excel/Sheets render it as literal text. Amounts are validated > 0 and
+/// dates/times are app-formatted, so only free-text fields pass through here.
+String _safeText(String field) {
+  const dangerous = {'=', '+', '-', '@', '\t', '\r', '\n'};
+  if (field.isNotEmpty && dangerous.contains(field[0])) {
+    return "'$field";
+  }
+  return field;
 }
 
 /// RFC 4180: quote any field containing a comma, double quote, or line break;

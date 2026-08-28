@@ -355,17 +355,45 @@ Path dashPath(Path source, {required List<double> pattern, double offset = 0}) {
   return dashed;
 }
 
+/// Wraps [offset] into one dash cycle and rounds to a whole pixel. The live
+/// pattern [2, 7] repeats every 9px, so the tail's 36px travel collapses to
+/// 9 distinct phases — at its drift rate (~0.2px per vsync at 120Hz) the
+/// stepping is below perception, and passing the quantized value through to
+/// `shouldRepaint` lets frames between steps skip the raster entirely.
+double quantizeLiveDashOffset(double offset) {
+  final cycle =
+      VineGeometry.liveDash.fold<double>(0, (a, b) => a + b); // 9.0
+  var phase = offset % cycle;
+  if (phase < 0) phase += cycle;
+  return (phase.round() % cycle.round()).toDouble();
+}
+
+/// Pre-dashed live-tail paths, keyed by geometry + quantized dash phase.
+/// Each key is built once (per sprout-growth step) and then served from the
+/// map every loop, so `computeMetrics`/`extractPath` no longer run on every
+/// vsync of an infinitely repeating animation. Bounded; a full cache is
+/// simply cleared — the next loop rebuilds it in one 2.8s pass.
+const int _liveDashCacheLimit = 512;
+final Map<String, Path> _liveDashCache = {};
+
+Path _cachedLiveDash(Path source, double offset, Object geometryKey) {
+  final phase = quantizeLiveDashOffset(offset);
+  final key = '$geometryKey|$phase';
+  final cached = _liveDashCache[key];
+  if (cached != null) return cached;
+  if (_liveDashCache.length >= _liveDashCacheLimit) _liveDashCache.clear();
+  return _liveDashCache[key] =
+      dashPath(source, pattern: VineGeometry.liveDash, offset: phase);
+}
+
 void paintLiveTail(
   Canvas canvas,
   Path path, {
   required Color color,
   required double dashOffset,
+  required Object cacheKey,
 }) {
-  final dashed = dashPath(
-    path,
-    pattern: VineGeometry.liveDash,
-    offset: dashOffset,
-  );
+  final dashed = _cachedLiveDash(path, dashOffset, cacheKey);
   canvas.drawPath(
     dashed,
     Paint()
@@ -539,6 +567,8 @@ class VineGapStemPainter extends CustomPainter {
         path,
         color: liveColor ?? toColor,
         dashOffset: dashOffset,
+        // Geometry fully determines the source path; same layout → same key.
+        cacheKey: ('gap', size.width, size.height, fromOffset, toOffset),
       );
       return;
     }
@@ -648,11 +678,16 @@ class VineNowStemPainter extends CustomPainter {
     }
 
     if (live) {
+      // Growth is quantized into the key: each growth step's dashed path is
+      // built once on the first sprout loop and served from the cache on
+      // every loop after (the animation is deterministic per phase).
+      final grownStep = (grown * 24).round().clamp(0, 24);
       paintLiveTail(
         canvas,
         stem,
         color: liveColor ?? tipColor,
         dashOffset: dashOffset,
+        cacheKey: ('now', size.width, size.height, xOffset, grownStep),
       );
     } else {
       paintVinePath(

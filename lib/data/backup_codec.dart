@@ -14,6 +14,7 @@ class BackupPayload {
   final List<Dosage> dosages;
   final UserSettings? settings;
   final String? userName;
+  final List<Dosage> orphanedDosages;
 
   const BackupPayload({
     required this.version,
@@ -22,6 +23,7 @@ class BackupPayload {
     required this.dosages,
     required this.settings,
     required this.userName,
+    this.orphanedDosages = const [],
   });
 }
 
@@ -94,9 +96,12 @@ BackupParseResult parseBackup(String jsonText) {
   );
   final hasStrainCollection = root?.containsKey('strains') ?? false;
   final strainIds = strains.map((strain) => strain.id).toSet();
-  final orphanedDosageCount = hasStrainCollection
-      ? rawDosages.where((dose) => !strainIds.contains(dose.strainId)).length
-      : 0;
+  final orphanedDosages = hasStrainCollection
+      ? rawDosages
+          .where((dose) => !strainIds.contains(dose.strainId))
+          .toList(growable: false)
+      : const <Dosage>[];
+  final orphanedDosageCount = orphanedDosages.length;
   final dosages = hasStrainCollection
       ? rawDosages
           .where((dose) => strainIds.contains(dose.strainId))
@@ -110,7 +115,7 @@ BackupParseResult parseBackup(String jsonText) {
     );
   }
 
-  if (strains.isEmpty && dosages.isEmpty) {
+  if (strains.isEmpty && dosages.isEmpty && orphanedDosages.isEmpty) {
     return BackupError(
       'Backup contained no recoverable strains or dosages',
       warnings,
@@ -137,6 +142,7 @@ BackupParseResult parseBackup(String jsonText) {
     dosages: List.unmodifiable(dosages),
     settings: settings,
     userName: _optionalString(root?['userName'] ?? root?['user_name']),
+    orphanedDosages: List.unmodifiable(orphanedDosages),
   );
   final summary = BackupSummary(
     strainCount: strains.length,

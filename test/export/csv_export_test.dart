@@ -48,6 +48,32 @@ void main() {
       expect(records[1][6], 'A note, with a "quote" and a\nnewline');
     });
 
+    test('neutralises a leading LF so spreadsheets do not treat the cell as a formula', () {
+      final dose = Dosage(
+        id: 'd1',
+        strainId: 's1',
+        amount: 2.5,
+        timestamp: DateTime(2025, 3, 1, 8, 30),
+        notes: '\n=1+1',
+      );
+      final csv = exportDosagesCsv(
+        dosages: [dose],
+        strains: [
+          const Strain(
+            id: 's1',
+            name: 'Maeng Da',
+            code: 'MD',
+            color: 1,
+            icon: 'Leaf',
+          ),
+        ],
+      );
+
+      final records = _parseCsv(csv);
+      expect(records, hasLength(2));
+      expect(records[1][6], "'\n=1+1");
+    });
+
     test('every data row has the same column count as the header', () {
       final doses = [
         Dosage(

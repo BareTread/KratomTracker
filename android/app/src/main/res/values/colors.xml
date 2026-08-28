@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#00ACC1</color>
+    <!-- Cold-start window colour, pinned to the app's dark scaffold. The app
+         defaults to its dark theme regardless of system theme, so the launch
+         window must not follow system light/dark either — following it made a
+         system-light phone flash white into the near-black home screen. -->
+    <color name="launch_background">#090B0C</color>
 </resources>

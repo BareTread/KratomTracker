@@ -12,6 +12,11 @@ import '../widgets/edit_profile_sheet.dart';
 import 'privacy_policy_screen.dart';
 import 'terms_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../theme/app_theme.dart';
+
+/// Test seam for the support-link launcher. Production uses [launchUrl].
+@visibleForTesting
+Future<bool> Function(Uri url, {LaunchMode mode}) launchSupportUrl = launchUrl;
 
 class ManageScreen extends StatefulWidget {
   const ManageScreen({super.key});
@@ -74,7 +79,16 @@ class _ManageScreenState extends State<ManageScreen> {
       );
       if (result == null || !context.mounted) return;
 
-      final file = File(result.files.single.path!);
+      final path = result.files.single.path;
+      if (path == null) {
+        if (!context.mounted) return;
+        _showErrorDialog(
+          context,
+          'Could not access the selected file. Please try again.',
+        );
+        return;
+      }
+      final file = File(path);
       final jsonData = await file.readAsString();
       final summary = await provider.previewImport(jsonData);
       if (!context.mounted) return;
@@ -122,9 +136,9 @@ class _ManageScreenState extends State<ManageScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Clear All Data?'),
-        content: const Text(
+        content: Text(
           'This action cannot be undone. Consider creating a backup first.',
-          style: TextStyle(color: Colors.red),
+          style: TextStyle(color: context.c.caution),
         ),
         actions: [
           TextButton(
@@ -133,7 +147,7 @@ class _ManageScreenState extends State<ManageScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: context.c.caution),
             child: const Text('Clear Data'),
           ),
         ],
@@ -164,7 +178,7 @@ class _ManageScreenState extends State<ManageScreen> {
                 fontSize: 24,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 0.5,
-                color: Theme.of(context).colorScheme.onSurface,
+                color: context.c.textPrimary,
               ),
             ),
           ),
@@ -177,7 +191,6 @@ class _ManageScreenState extends State<ManageScreen> {
                 _buildSectionHeader(
                   'App Settings',
                   Icons.settings_outlined,
-                  Colors.blue,
                 ),
                 _buildProfileCard(context),
                 _buildThemeSettings(context),
@@ -188,7 +201,6 @@ class _ManageScreenState extends State<ManageScreen> {
                 _buildSectionHeader(
                   'Backup & Restore',
                   Icons.cloud_outlined,
-                  Colors.teal,
                 ),
                 _buildBackupCard(context, provider),
 
@@ -197,7 +209,6 @@ class _ManageScreenState extends State<ManageScreen> {
                 _buildSectionHeader(
                   'Data Management',
                   Icons.storage_outlined,
-                  Colors.purple,
                 ),
                 _buildDataManagementCard(context, provider),
 
@@ -206,7 +217,6 @@ class _ManageScreenState extends State<ManageScreen> {
                 _buildSectionHeader(
                   'About',
                   Icons.info_outline,
-                  Colors.amber,
                 ),
                 _buildAboutCard(context),
                 const SizedBox(height: 24),
@@ -218,19 +228,20 @@ class _ManageScreenState extends State<ManageScreen> {
     );
   }
 
-  Widget _buildSectionHeader(String title, IconData icon, Color color) {
+  Widget _buildSectionHeader(String title, IconData icon) {
+    final c = context.c;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: color),
+          Icon(icon, size: 20, color: c.textTertiary),
           const SizedBox(width: 8),
           Text(
             title,
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: color,
+              color: c.textTertiary,
               letterSpacing: 0.5,
             ),
           ),
@@ -239,9 +250,24 @@ class _ManageScreenState extends State<ManageScreen> {
     );
   }
 
+  Widget _panel({required Widget child}) {
+    final c = context.c;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Material(
+        color: c.surfaceRaised,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: c.hairline),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: child,
+      ),
+    );
+  }
+
   Widget _buildProfileCard(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    return _panel(
       child: ListTile(
         leading: const Icon(Icons.person_outline),
         title: const Text('Profile'),
@@ -258,8 +284,7 @@ class _ManageScreenState extends State<ManageScreen> {
   }
 
   Widget _buildThemeSettings(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    return _panel(
       child: Column(
         children: [
           Consumer<ThemeProvider>(
@@ -286,9 +311,8 @@ class _ManageScreenState extends State<ManageScreen> {
     BuildContext context,
     KratomProvider provider,
   ) {
-    return const Card(
-      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
+    return _panel(
+      child: const Column(
         children: [
           ListTile(
             leading: Icon(Icons.notifications_outlined),
@@ -308,8 +332,8 @@ class _ManageScreenState extends State<ManageScreen> {
   }
 
   Widget _buildBackupCard(BuildContext context, KratomProvider provider) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    final hairline = context.c.hairline;
+    return _panel(
       child: Column(
         children: [
           ListTile(
@@ -319,7 +343,7 @@ class _ManageScreenState extends State<ManageScreen> {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _createBackup(context, provider),
           ),
-          const Divider(height: 1),
+          Divider(height: 1, color: hairline),
           ListTile(
             leading: const Icon(Icons.download_outlined),
             title: const Text('Restore Backup'),
@@ -336,18 +360,18 @@ class _ManageScreenState extends State<ManageScreen> {
     BuildContext context,
     KratomProvider provider,
   ) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    final caution = context.c.caution;
+    return _panel(
       child: Column(
         children: [
           ListTile(
-            leading: const Icon(Icons.delete_outline, color: Colors.red),
-            title: const Text(
+            leading: Icon(Icons.delete_outline, color: caution),
+            title: Text(
               'Clear All Data',
-              style: TextStyle(color: Colors.red),
+              style: TextStyle(color: caution),
             ),
             subtitle: const Text('Delete all tracked data'),
-            trailing: const Icon(Icons.chevron_right, color: Colors.red),
+            trailing: Icon(Icons.chevron_right, color: caution),
             onTap: () => _showClearDataDialog(context, provider),
           ),
         ],
@@ -388,8 +412,8 @@ class _ManageScreenState extends State<ManageScreen> {
   }
 
   Widget _buildAboutCard(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    final c = context.c;
+    return _panel(
       child: Column(
         children: [
           const ListTile(
@@ -397,7 +421,7 @@ class _ManageScreenState extends State<ManageScreen> {
             title: Text('Version'),
             subtitle: Text(kAppVersion),
           ),
-          const Divider(height: 1),
+          Divider(height: 1, color: c.hairline),
           ListTile(
             leading: const Icon(Icons.privacy_tip_outlined),
             title: const Text('Privacy Policy'),
@@ -411,7 +435,7 @@ class _ManageScreenState extends State<ManageScreen> {
               );
             },
           ),
-          const Divider(height: 1),
+          Divider(height: 1, color: c.hairline),
           ListTile(
             leading: const Icon(Icons.description_outlined),
             title: const Text('Terms of Service'),
@@ -425,27 +449,45 @@ class _ManageScreenState extends State<ManageScreen> {
               );
             },
           ),
-          const Divider(height: 1),
+          Divider(height: 1, color: c.hairline),
           ListTile(
-            leading: const Icon(
+            leading: Icon(
               Icons.favorite_outline,
-              color: Colors.red,
+              color: c.accent,
             ),
             title: const Text('Support Development'),
             subtitle: const Text('Buy me a coffee if you find the app useful'),
             trailing: const Icon(Icons.open_in_new),
-            onTap: () async {
-              const url = 'https://buymeacoffee.com/alint';
-              if (await canLaunchUrl(Uri.parse(url))) {
-                await launchUrl(
-                  Uri.parse(url),
-                  mode: LaunchMode.externalApplication,
-                );
-              }
-            },
+            onTap: () => _openSupportLink(context),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _openSupportLink(BuildContext context) async {
+    const url = 'https://buymeacoffee.com/alint';
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final launched = await launchSupportUrl(
+        Uri.parse(url),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Could not open link'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Could not open link: $e'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 }

@@ -9,53 +9,109 @@ import 'screens/home_screen.dart';
 import 'screens/manage_screen.dart';
 import 'screens/stats_screen.dart';
 import 'screens/strains_screen.dart';
+import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final prefs = await SharedPreferences.getInstance();
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
-  runApp(AppBootstrap(prefs: prefs));
+  // Prefs are loaded after [runApp] so a platform failure can render
+  // [_ErrorScreen] instead of dying on a pre-widget exception.
+  runApp(const AppBootstrap());
+}
+
+/// Shown when startup prefs or [KratomProvider.create] fails.
+/// Without this the [FutureBuilder] would spin forever.
+class _ErrorScreen extends StatelessWidget {
+  const _ErrorScreen({required this.error});
+
+  final Object error;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Herbal Tracker+',
+      home: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline, size: 48),
+                const SizedBox(height: 16),
+                Text(
+                  'Failed to start',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '$error',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class AppBootstrap extends StatefulWidget {
-  const AppBootstrap({super.key, required this.prefs});
+  const AppBootstrap({super.key, this.prefs, this.loadPrefs});
 
-  final SharedPreferences prefs;
+  /// Test seam: skip [SharedPreferences.getInstance] when already loaded.
+  final SharedPreferences? prefs;
+
+  /// Test seam: force a failing prefs load without going through the plugin.
+  @visibleForTesting
+  final Future<SharedPreferences> Function()? loadPrefs;
 
   @override
   State<AppBootstrap> createState() => _AppBootstrapState();
 }
 
 class _AppBootstrapState extends State<AppBootstrap> {
-  late final ThemeProvider _themeProvider = ThemeProvider(widget.prefs);
-  late final Future<KratomProvider> _provider =
-      KratomProvider.create(widget.prefs);
+  late final Future<({ThemeProvider theme, KratomProvider kratom})> _boot =
+      _load();
+
+  Future<({ThemeProvider theme, KratomProvider kratom})> _load() async {
+    final prefs = widget.prefs ??
+        await (widget.loadPrefs ?? SharedPreferences.getInstance)();
+    return (
+      theme: ThemeProvider(prefs),
+      kratom: await KratomProvider.create(prefs),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider.value(
-      value: _themeProvider,
-      child: FutureBuilder<KratomProvider>(
-        future: _provider,
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return Consumer<ThemeProvider>(
-              builder: (context, theme, child) => MaterialApp(
-                title: 'Herbal Tracker+',
-                theme: theme.theme,
-                home: const _LoadingScreen(),
-              ),
-            );
-          }
-          return ChangeNotifierProvider.value(
-            value: snapshot.requireData,
-            child: const MyApp(),
+    return FutureBuilder<({ThemeProvider theme, KratomProvider kratom})>(
+      future: _boot,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return _ErrorScreen(error: snapshot.error!);
+        }
+        if (!snapshot.hasData) {
+          return MaterialApp(
+            title: 'Herbal Tracker+',
+            theme: ThemeProvider.darkTheme,
+            home: const _LoadingScreen(),
           );
-        },
-      ),
+        }
+        final boot = snapshot.requireData;
+        return MultiProvider(
+          providers: [
+            ChangeNotifierProvider.value(value: boot.theme),
+            ChangeNotifierProvider.value(value: boot.kratom),
+          ],
+          child: const MyApp(),
+        );
+      },
     );
   }
 }
@@ -125,8 +181,8 @@ class _MainScreenState extends State<MainScreen> {
           currentIndex: _selectedIndex,
           onTap: _onItemTapped,
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-          selectedItemColor: Theme.of(context).colorScheme.primary,
-          unselectedItemColor: Colors.grey,
+          selectedItemColor: context.c.accent,
+          unselectedItemColor: context.c.textTertiary,
           items: const [
             // Outline when inactive, filled when active — same Material
             // family and optical weight across all four tabs.
