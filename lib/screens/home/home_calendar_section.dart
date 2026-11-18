@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 import '../../domain/date_utils.dart';
+import '../../providers/kratom_provider.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/day_sprig.dart';
 
 /// Which slot of the Monday-first week strip [day] belongs to.
 ///
@@ -18,9 +21,14 @@ import '../../theme/app_theme.dart';
 int weekDayIndex(DateTime monday, DateTime day) =>
     daysBetween(monday, DateTime(day.year, day.month, day.day));
 
-/// Calendar content (week strip + per-day dose dots + month picker) intended
-/// to live inside its own card. Owns no card chrome — the surrounding card
-/// supplies the surface, border, and radius.
+/// Compare calendar labels without interpreting UTC-normalised labels as instants.
+int compareCalendarDays(DateTime a, DateTime b) =>
+    DateTime.utc(a.year, a.month, a.day)
+        .compareTo(DateTime.utc(b.year, b.month, b.day));
+
+/// Calendar content (week strip + per-day dose dots + month picker).
+/// Owns no card chrome. The chevron glyph and the week grid share the
+/// section's left edge, so the day card can line that up with the status text.
 class HomeCalendarSection extends StatelessWidget {
   const HomeCalendarSection({
     super.key,
@@ -58,40 +66,48 @@ class HomeCalendarSection extends StatelessWidget {
       7,
       (i) => totalFor(addDays(monday, i)),
     );
+    final sprigs = _weekSprigs(context, monday);
     final canGoForward = addDays(focusedDay, 7).isBefore(addDays(today, 1));
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        // Left padding is 0 so this row and the week grid share the section
+        // edge. The chevron's 8px icon inset is shifted back out so the glyph,
+        // not the hit slop, sits on that edge. Hit-box size is unchanged.
         Padding(
-          padding: const EdgeInsets.fromLTRB(4, 6, 8, 0),
+          padding: const EdgeInsets.fromLTRB(0, 2, 8, 0),
           child: Row(
             children: [
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                onPressed: () {
-                  final prev = addDays(focusedDay, -7);
-                  _select(
-                    prev.isBefore(DateTime.utc(2020))
-                        ? DateTime.utc(2020)
-                        : prev,
-                  );
-                },
-                icon: Icon(
-                  Icons.chevron_left,
-                  color: context.c.accent,
+              Transform.translate(
+                offset: const Offset(-8, 0),
+                child: IconButton(
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () {
+                    final prev = addDays(focusedDay, -7);
+                    _select(
+                      prev.isBefore(DateTime.utc(2020))
+                          ? DateTime.utc(2020)
+                          : prev,
+                    );
+                  },
+                  icon: Icon(
+                    Icons.chevron_left,
+                    color: context.c.textSecondary,
+                  ),
                 ),
               ),
               Expanded(
                 child: Center(
                   child: InkWell(
                     onTap: () async {
-                      final picked = await _showMonthPicker(context, focusedDay);
+                      final picked =
+                          await _showMonthPicker(context, focusedDay);
                       if (picked != null) _select(picked);
                     },
                     borderRadius: BorderRadius.circular(12),
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(minHeight: 40),
+                      constraints: const BoxConstraints(minHeight: 36),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -105,7 +121,7 @@ class HomeCalendarSection extends StatelessWidget {
                           ),
                           Icon(
                             Icons.arrow_drop_down,
-                            color: context.c.accent,
+                            color: context.c.textSecondary,
                           ),
                         ],
                       ),
@@ -124,7 +140,7 @@ class HomeCalendarSection extends StatelessWidget {
                 icon: Icon(
                   Icons.chevron_right,
                   color: canGoForward
-                      ? context.c.accent
+                      ? context.c.textSecondary
                       : context.c.textTertiary.withValues(alpha: 0.4),
                 ),
               ),
@@ -143,8 +159,9 @@ class HomeCalendarSection extends StatelessWidget {
           calendarFormat: CalendarFormat.week,
           availableCalendarFormats: const {CalendarFormat.week: 'Week'},
           startingDayOfWeek: StartingDayOfWeek.monday,
-          rowHeight: 58,
-          daysOfWeekHeight: 22,
+          // 32 date disc + 2 + a 28px micro-sprig, with 2px to spare.
+          rowHeight: 64,
+          daysOfWeekHeight: 20,
           headerVisible: false,
           calendarStyle: CalendarStyle(
             defaultTextStyle: TextStyle(color: context.c.textPrimary),
@@ -156,10 +173,14 @@ class HomeCalendarSection extends StatelessWidget {
               shape: BoxShape.circle,
             ),
             selectedDecoration: BoxDecoration(
-              color: context.c.accent,
+              color: context.c.textPrimary,
               shape: BoxShape.circle,
             ),
-            selectedTextStyle: TextStyle(color: context.c.textPrimary),
+            selectedTextStyle: TextStyle(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              fontFamily: AppType.sans,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
           ),
           daysOfWeekStyle: DaysOfWeekStyle(
             weekdayStyle: TextStyle(
@@ -176,6 +197,7 @@ class HomeCalendarSection extends StatelessWidget {
               context,
               day,
               weekTotals: weekTotals,
+              sprigs: sprigs,
               monday: monday,
               today: today,
             ),
@@ -183,6 +205,7 @@ class HomeCalendarSection extends StatelessWidget {
               context,
               day,
               weekTotals: weekTotals,
+              sprigs: sprigs,
               monday: monday,
               today: today,
             ),
@@ -190,6 +213,7 @@ class HomeCalendarSection extends StatelessWidget {
               context,
               day,
               weekTotals: weekTotals,
+              sprigs: sprigs,
               monday: monday,
               today: today,
               enabled: true,
@@ -198,6 +222,7 @@ class HomeCalendarSection extends StatelessWidget {
               context,
               day,
               weekTotals: weekTotals,
+              sprigs: sprigs,
               monday: monday,
               today: today,
               enabled: false,
@@ -206,19 +231,20 @@ class HomeCalendarSection extends StatelessWidget {
               context,
               day,
               weekTotals: weekTotals,
+              sprigs: sprigs,
               monday: monday,
               today: today,
               enabled: false,
             ),
           ),
           onDaySelected: (day, _) {
-            if (!_sameDay(day, focusedDay) && !day.isAfter(today)) {
+            if (!_sameDay(day, focusedDay) && compareCalendarDays(day, today) <= 0) {
               _select(day);
             }
           },
           selectedDayPredicate: (day) => _sameDay(focusedDay, day),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
       ],
     );
   }
@@ -227,6 +253,7 @@ class HomeCalendarSection extends StatelessWidget {
     BuildContext context,
     DateTime day, {
     required List<double> weekTotals,
+    required _WeekSprigs? sprigs,
     required DateTime monday,
     required DateTime today,
     bool enabled = true,
@@ -235,19 +262,34 @@ class HomeCalendarSection extends StatelessWidget {
     final isToday = _sameDay(day, today);
     final dayIndex = weekDayIndex(monday, day);
     final total = (dayIndex >= 0 && dayIndex < 7) ? weekTotals[dayIndex] : 0.0;
-    final hasDoses = total > 0 && !day.isAfter(today);
-    // Selected → filled accent circle, scaffold-coloured text.
-    // Today (not selected) → 1.5px inset accent ring, accent text.
+    final hasDoses = total > 0 && compareCalendarDays(day, today) <= 0;
+    // Today → cyan (filled when selected, ring + numeral otherwise).
+    // Selected and not today → ink disc, page-coloured numeral.
     // Has doses → 3×3 presence dot under the number.
+    final page = Theme.of(context).scaffoldBackgroundColor;
     final Color textColor;
+    final Color? fill;
+    final Border? ring;
     if (!enabled) {
       textColor = context.c.textTertiary;
+      fill = null;
+      ring = null;
+    } else if (selected && isToday) {
+      textColor = page;
+      fill = context.c.accent;
+      ring = null;
     } else if (selected) {
-      textColor = Theme.of(context).scaffoldBackgroundColor;
+      textColor = page;
+      fill = context.c.textPrimary;
+      ring = null;
     } else if (isToday) {
       textColor = context.c.accent;
+      fill = null;
+      ring = Border.all(color: context.c.accent, width: 1.5);
     } else {
       textColor = context.c.textPrimary;
+      fill = null;
+      ring = null;
     }
     return Semantics(
       label:
@@ -259,38 +301,53 @@ class HomeCalendarSection extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
+            AnimatedContainer(
+              // The fill travels with the selection instead of snapping.
+              duration:
+                  AppMotion.reduced(context) ? Duration.zero : AppMotion.fast,
+              curve: AppMotion.emphasized,
               width: 32,
               height: 32,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: selected ? context.c.accent : null,
+                color: fill ?? Colors.transparent,
                 shape: BoxShape.circle,
-                border: isToday && !selected
-                    ? Border.all(
-                        color: context.c.accent,
-                        width: 1.5,
-                      )
-                    : null,
+                border: ring,
               ),
               child: Text(
                 '${day.day}',
                 style: TextStyle(
+                  fontFamily: AppType.sans,
                   color: textColor,
-                  fontWeight: selected
-                      ? FontWeight.w600
-                      : isToday
-                          ? FontWeight.w600
-                          : FontWeight.w500,
+                  fontWeight:
+                      selected || isToday ? FontWeight.w600 : FontWeight.w500,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
             ),
-            const SizedBox(height: 3),
-            _DayDot(
-              key: ValueKey('home-day-bar-${day.year}-${day.month}-${day.day}'),
-              hasDoses: hasDoses,
-              selected: selected,
-            ),
+            const SizedBox(height: 2),
+            if (sprigs != null && dayIndex >= 0 && dayIndex < 7)
+              _MicroSprig(
+                key: ValueKey(
+                  'home-day-bar-${day.year}-${day.month}-${day.day}',
+                ),
+                doses: sprigs.doses[dayIndex],
+                scale: sprigs.scale,
+                // Nothing before the record starts or after today; today
+                // is still growing, so an empty today is not a rest day.
+                visible: compareCalendarDays(day, today) <= 0 &&
+                    sprigs.first != null &&
+                    compareCalendarDays(day, sprigs.first!) >= 0,
+                rest: !isToday,
+              )
+            else
+              _DayDot(
+                key: ValueKey(
+                  'home-day-bar-${day.year}-${day.month}-${day.day}',
+                ),
+                hasDoses: hasDoses,
+                selected: selected,
+              ),
           ],
         ),
       ),
@@ -382,7 +439,10 @@ class HomeCalendarSection extends StatelessWidget {
                       final day = index - leading + 1;
                       final date = DateTime(month.year, month.month, day);
                       final selected = _sameDay(date, focusedDay);
+                      final isToday = _sameDay(date, today);
                       final enabled = !date.isAfter(today);
+                      final page =
+                          Theme.of(dialogContext).scaffoldBackgroundColor;
                       return Semantics(
                         label: DateFormat.yMMMMEEEEd(locale).format(date),
                         button: true,
@@ -399,18 +459,41 @@ class HomeCalendarSection extends StatelessWidget {
                               minHeight: 48,
                             ),
                             alignment: Alignment.center,
-                            decoration: selected
-                                ? BoxDecoration(
-                                    color: dialogContext.c.accent,
-                                    shape: BoxShape.circle,
-                                  )
-                                : null,
+                            decoration: !enabled
+                                ? null
+                                : selected && isToday
+                                    ? BoxDecoration(
+                                        color: dialogContext.c.accent,
+                                        shape: BoxShape.circle,
+                                      )
+                                    : selected
+                                        ? BoxDecoration(
+                                            color: dialogContext.c.textPrimary,
+                                            shape: BoxShape.circle,
+                                          )
+                                        : isToday
+                                            ? BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                border: Border.all(
+                                                  color: dialogContext.c.accent,
+                                                  width: 1.5,
+                                                ),
+                                              )
+                                            : null,
                             child: Text(
                               '$day',
                               style: TextStyle(
-                                color: enabled
-                                    ? dialogContext.c.textPrimary
-                                    : dialogContext.c.textTertiary,
+                                fontFamily: AppType.sans,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                                color: !enabled
+                                    ? dialogContext.c.textTertiary
+                                    : selected
+                                        ? page
+                                        : isToday
+                                            ? dialogContext.c.accent
+                                            : dialogContext.c.textPrimary,
                                 fontWeight: selected ? FontWeight.bold : null,
                               ),
                             ),
@@ -425,6 +508,76 @@ class HomeCalendarSection extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+typedef _WeekSprigs = ({
+  List<List<SprigDose>> doses,
+  double scale,
+  DateTime? first,
+});
+
+/// The week's doses for the micro-sprigs, on one gram scale for the week.
+/// Read from the provider here rather than passed in, so the Home card keeps
+/// its signature; with no provider (standalone widget tests) this is null and
+/// the strip falls back to the presence dot.
+_WeekSprigs? _weekSprigs(BuildContext context, DateTime monday) {
+  final KratomProvider provider;
+  try {
+    provider = Provider.of<KratomProvider>(context);
+  } on ProviderNotFoundException {
+    return null;
+  }
+  final fallback = context.c.textTertiary;
+  final doses = [
+    for (var i = 0; i < 7; i++)
+      [
+        for (final dose in provider.getDosagesForDate(addDays(monday, i)))
+          SprigDose.fromDosage(
+            dose,
+            switch (provider.getStrain(dose.strainId)) {
+              final strain? => Color(strain.color),
+              null => fallback,
+            },
+          ),
+      ],
+  ];
+  DateTime? first;
+  for (final dose in provider.dosages) {
+    final day = startOfDay(dose.timestamp);
+    if (first == null || day.isBefore(first)) first = day;
+  }
+  return (doses: doses, scale: sprigScaleFor(doses), first: first);
+}
+
+/// A day's doses as a 20×28 sprig under its date number: a leaf per dose at
+/// its time of day, length in grams on the week's scale, a bud on a rest day.
+/// Always reserves its slot so the week row stays level.
+class _MicroSprig extends StatelessWidget {
+  const _MicroSprig({
+    super.key,
+    required this.doses,
+    required this.scale,
+    required this.visible,
+    required this.rest,
+  });
+
+  static const size = Size(20, 28);
+
+  final List<SprigDose> doses;
+  final double scale;
+  final bool visible;
+  final bool rest;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!visible) return SizedBox.fromSize(size: size);
+    return DaySprig(
+      doses: doses,
+      scaleGrams: scale,
+      rest: rest,
+      size: size,
     );
   }
 }

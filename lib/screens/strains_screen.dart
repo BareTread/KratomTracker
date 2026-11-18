@@ -2,12 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/kratom_provider.dart';
 import '../widgets/add_strain_form.dart';
-import '../widgets/edit_strain_form.dart';
+import '../domain/strain_usage.dart';
 import '../models/strain.dart';
+import '../widgets/sheet_header.dart';
 import '../widgets/strain_details_view.dart';
 import '../widgets/strain_mark.dart';
+import '../widgets/strain_usage_tile.dart';
 import '../theme/app_theme.dart';
 
+/// The strains index: rows sit directly on the screen background behind
+/// hairline dividers, stock is stated only when it is the exception, and the
+/// single action lives in the header. Edit/delete/stock toggling moved into
+/// the details sheet each row opens.
 class StrainsScreen extends StatelessWidget {
   const StrainsScreen({super.key});
 
@@ -15,104 +21,58 @@ class StrainsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<KratomProvider>(
       builder: (context, provider, child) {
-        final strains = provider.strains;
-        
+        // Same order as the dose sheet: next-up suggestion first, out of
+        // stock last. Strains the usage list does not know keep list order.
+        final usage = provider.strainUsage;
+        final usageByStrain = <String, StrainUsage>{
+          for (final u in usage) u.strain.id: u,
+        };
+        final all = provider.strains;
+        final rank = <String, int>{
+          for (var i = 0; i < all.length; i++) all[i].id: usage.length + i,
+          for (var i = 0; i < usage.length; i++) usage[i].strain.id: i,
+        };
+        final strains = [...all]..sort((a, b) {
+            if (a.inStock != b.inStock) return a.inStock ? -1 : 1;
+            return rank[a.id]!.compareTo(rank[b.id]!);
+          });
+
         return Scaffold(
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           body: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Status bar spacing
               SizedBox(height: MediaQuery.of(context).padding.top + 8),
-              // Header
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Strains',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w600,
-                        height: 1.1,
-                        color: context.c.textPrimary,
-                      ),
-                    ),
-                    Text(
-                      '${strains.length} strains total',
-                      style: TextStyle(
-                        color: context.c.textTertiary,
-                        fontSize: 14,
-                        height: 1.2,
-                      ),
-                    ),
-                  ],
-                ),
+              _Head(
+                strains: strains,
+                onAdd: () => _showAddStrainForm(context),
               ),
-              // Strains List
               Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.only(
-                    left: 16,
-                    right: 16,
-                    top: 8,
-                    bottom: 80,
-                  ),
-                  physics: const AlwaysScrollableScrollPhysics(
-                    parent: BouncingScrollPhysics(),
-                  ),
-                  addAutomaticKeepAlives: false,
-                  addRepaintBoundaries: false,
-                  itemCount: strains.length,
-                  itemBuilder: (context, index) {
-                    final strain = strains[index];
-                    return _buildStrainCard(context, strain, provider);
-                  },
-                ),
-              ),
-              // Add Strain Button
-              Padding(
-                padding: EdgeInsets.only(
-                  left: 16,
-                  right: 16,
-                  bottom: MediaQuery.of(context).padding.bottom + 8,
-                  top: 4,
-                ),
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: context.c.accent,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    minimumSize: const Size.fromHeight(42),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 0,
-                    surfaceTintColor: Colors.transparent,
-                    shadowColor: Colors.transparent,
-                  ),
-                  onPressed: () => _showAddStrainForm(context),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.add,
-                        size: 18,
-                        color: Colors.white,
-                      ),
-                      SizedBox(width: 8),
-                      Text(
-                        'Add Strain',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white,
+                child: strains.isEmpty
+                    ? _EmptyState(onAdd: () => _showAddStrainForm(context))
+                    : ListView.separated(
+                        padding: const EdgeInsets.only(bottom: 80),
+                        physics: const AlwaysScrollableScrollPhysics(
+                          parent: BouncingScrollPhysics(),
                         ),
+                        addAutomaticKeepAlives: false,
+                        addRepaintBoundaries: false,
+                        itemCount: strains.length,
+                        separatorBuilder: (context, index) => Padding(
+                          // Indented to the text column so the hairline
+                          // starts beside the mark, not under it.
+                          padding: const EdgeInsets.only(left: 66, right: 16),
+                          child: Container(height: 1, color: context.c.hairline),
+                        ),
+                        itemBuilder: (context, index) {
+                          final strain = strains[index];
+                          return _StrainRow(
+                            strain: strain,
+                            usage: usageByStrain[strain.id],
+                            onTap: () => _showStrainDetails(context, strain),
+                          );
+                        },
                       ),
-                    ],
-                  ),
-                ),
               ),
             ],
           ),
@@ -121,109 +81,183 @@ class StrainsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildStrainCard(BuildContext context, Strain strain, KratomProvider provider) {
+  void _showStrainDetails(BuildContext context, Strain strain) {
+    showAppSheet(context, builder: (context) => StrainDetailsView(strain: strain));
+  }
+
+  void _showAddStrainForm(BuildContext context) {
+    showAppSheet(context, builder: (context) => const AddStrainForm());
+  }
+}
+
+/// Title row plus the quiet count line. The add action sits on the title row
+/// and is hidden when there is nothing to index — the empty state carries
+/// the only action instead.
+class _Head extends StatelessWidget {
+  final List<Strain> strains;
+  final VoidCallback onAdd;
+
+  const _Head({required this.strains, required this.onAdd});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final outOfStock = strains.where((s) => !s.inStock).length;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 8, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Text(
+                  'Strains',
+                  style: AppType.display(size: 36, color: c.textPrimary),
+                ),
+              ),
+              if (strains.isNotEmpty)
+                _AddStrainAction(label: 'Add strain', onTap: onAdd),
+            ],
+          ),
+          if (outOfStock > 0)
+            Text(
+              '$outOfStock out of stock',
+              style: TextStyle(
+                fontFamily: AppType.sans,
+                color: c.textTertiary,
+                fontSize: 14,
+                height: 1.2,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One index row: mark, code + name, the dose sheet's recency line, and a
+/// stock word only when the strain is out. No card, no menu, no chip.
+class _StrainRow extends StatelessWidget {
+  final Strain strain;
+  final StrainUsage? usage;
+  final VoidCallback onTap;
+
+  const _StrainRow({
+    required this.strain,
+    required this.usage,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     final c = context.c;
     final brightness = Theme.of(context).brightness;
-    final chip = strainChipColors(Color(strain.color), brightness);
-    final lastDose = provider.dosages
-        .where((d) => d.strainId == strain.id)
-        .toList()
-        ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    final strainColor = Color(strain.color);
+    final inStock = strain.inStock;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: c.surfaceRaised,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: c.hairline),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: () => _showStrainDetails(context, strain),
+    final showName = strain.name.trim().isNotEmpty &&
+        strain.name.trim().toLowerCase() != strain.code.trim().toLowerCase();
+
+    final secondLine = usage == null || usage!.lastUsed == null
+        ? 'Not used yet'
+        : strainRecencyLine(usage!);
+
+    final semantics = StringBuffer(strain.code)
+      ..write(showName ? ', ${strain.name}' : '')
+      ..write(', $secondLine')
+      ..write(inStock ? ', in stock' : ', out of stock');
+
+    return Semantics(
+      button: true,
+      label: semantics.toString(),
+      child: InkWell(
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 64),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
             child: Row(
               children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: chip.background,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Center(
-                    child: StrainMark(
-                      shape: resolveLeafShape(strain.icon, strain.code),
-                      color: Color(strain.color),
-                      size: 22,
-                    ),
-                  ),
+                StrainMark(
+                  shape: resolveLeafShape(strain.icon, strain.code),
+                  color: strainColor,
+                  size: 26,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            strain.code,
-                            style: TextStyle(
-                              color: chip.foreground,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              strain.name,
-                              style: TextStyle(
-                                color: c.textPrimary,
-                                fontSize: 16,
+                  child: Opacity(
+                    opacity: inStock ? 1.0 : 0.55,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                strain.code,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontFamily: AppType.sans,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: legibleStrainColor(
+                                    strainColor,
+                                    brightness,
+                                  ),
+                                ),
                               ),
-                              overflow: TextOverflow.ellipsis,
                             ),
-                          ),
-                        ],
-                      ),
-                      if (lastDose.isNotEmpty) ...[
-                        const SizedBox(height: 2),
+                            if (showName) ...[
+                              const SizedBox(width: 8),
+                              Flexible(
+                                flex: 2,
+                                child: Text(
+                                  strain.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontFamily: AppType.sans,
+                                    fontSize: 15,
+                                    color: c.textPrimary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 3),
                         Text(
-                          _formatLastUsed(DateTime.now().difference(lastDose.first.timestamp)),
+                          secondLine,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
+                            fontFamily: AppType.sans,
                             fontSize: 13,
+                            height: 1.25,
                             color: c.textTertiary,
                           ),
                         ),
                       ],
-                    ],
+                    ),
                   ),
                 ),
-                _StockChip(
-                  inStock: strain.inStock,
-                  onTap: () => provider.setStrainInStock(
-                    strain.id,
-                    inStock: !strain.inStock,
+                if (!inStock) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    'Out of stock',
+                    style: TextStyle(
+                      fontFamily: AppType.sans,
+                      fontSize: 12,
+                      color: c.textTertiary,
+                    ),
                   ),
-                ),
-                IconButton(
-                  icon: Icon(
-                    Icons.more_vert,
-                    color: c.textTertiary,
-                    size: 20,
-                  ),
-                  onPressed: () => _showStrainOptions(context, strain),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 32,
-                    minHeight: 32,
-                  ),
-                ),
+                ],
               ],
             ),
           ),
@@ -231,169 +265,90 @@ class StrainsScreen extends StatelessWidget {
       ),
     );
   }
+}
 
-  String _formatLastUsed(Duration difference) {
-    if (difference.inMinutes < 60) {
-      return 'Used recently';
-    } else if (difference.inHours < 24) {
-      return 'Last used ${difference.inHours} hours ago';
-    } else {
-      return 'Last used ${difference.inDays} days ago';
-    }
-  }
+/// First run: two calm lines of orientation and the one accent action the
+/// head row hides when the index is empty.
+class _EmptyState extends StatelessWidget {
+  final VoidCallback onAdd;
 
-  void _showStrainDetails(BuildContext context, Strain strain) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => StrainDetailsView(strain: strain),
-    );
-  }
+  const _EmptyState({required this.onAdd});
 
-  void _showAddStrainForm(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => const AddStrainForm(),
-    );
-  }
-
-  void _showStrainOptions(BuildContext context, Strain strain) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: context.c.surfaceRaised,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Column(
-        mainAxisSize: MainAxisSize.min,
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 8),
-          Container(
-            width: 32,
-            height: 4,
-            decoration: BoxDecoration(
-              color: context.c.hairline,
-              borderRadius: BorderRadius.circular(2),
+          Text(
+            'No strains yet',
+            style: TextStyle(
+              fontFamily: AppType.sans,
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+              color: c.textPrimary,
             ),
           ),
-          ListTile(
-            leading: const Icon(Icons.edit_outlined),
-            title: const Text('Edit Strain'),
-            onTap: () {
-              Navigator.pop(context);
-              _showEditStrainForm(context, strain);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.info_outline),
-            title: const Text('View Details'),
-            onTap: () {
-              Navigator.pop(context);
-              _showStrainDetails(context, strain);
-            },
-          ),
-          ListTile(
-            leading: Icon(Icons.delete_outline, color: context.c.caution),
-            title: Text(
-              'Delete Strain',
-              style: TextStyle(color: context.c.caution),
+          const SizedBox(height: 6),
+          Text(
+            'Add the strains you keep on hand. Each gets a code and a colour '
+            'that marks its doses everywhere in the app.',
+            style: TextStyle(
+              fontFamily: AppType.sans,
+              fontSize: 14,
+              height: 1.4,
+              color: c.textSecondary,
             ),
-            onTap: () {
-              Navigator.pop(context);
-              _showDeleteConfirmation(context, strain);
-            },
           ),
           const SizedBox(height: 8),
-        ],
-      ),
-    );
-  }
-
-  void _showEditStrainForm(BuildContext context, Strain strain) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: context.c.surfaceRaised,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => EditStrainForm(strain: strain),
-    );
-  }
-
-  void _showDeleteConfirmation(BuildContext context, Strain strain) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Delete Strain',
-          style: TextStyle(color: context.c.textPrimary),
-        ),
-        content: Text(
-          'Are you sure you want to delete ${strain.name}? This will also permanently delete ALL recorded doses for this strain. This action cannot be undone.',
-          style: TextStyle(color: context.c.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Provider.of<KratomProvider>(context, listen: false)
-                  .deleteStrain(strain.id);
-              Navigator.pop(context);
-            },
-            child: Text(
-              'Delete',
-              style: TextStyle(color: context.c.caution),
-            ),
-          ),
+          _AddStrainAction(label: 'Add a strain', onTap: onAdd),
         ],
       ),
     );
   }
 }
 
-/// Tappable stock badge shown on each strain card. One tap flips the state
-/// without opening the full edit form. Stock is a display/ranking concern
-/// only — flipping never touches dosage history.
-class _StockChip extends StatelessWidget {
-  final bool inStock;
+/// The restrained accent text action used by the head row and the empty
+/// state: a plus glyph and a label inside a 48dp tap target.
+class _AddStrainAction extends StatelessWidget {
+  final String label;
   final VoidCallback onTap;
 
-  const _StockChip({required this.inStock, required this.onTap});
+  const _AddStrainAction({required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final c = context.c;
-    final color = inStock ? c.accent : c.textTertiary;
     return Semantics(
       button: true,
-      label: inStock ? 'In stock, tap to mark out of stock' : 'Out of stock, tap to mark back in stock',
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
+      label: label,
+      child: InkWell(
+        key: const Key('strains-add'),
         onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: inStock ? 0.14 : 0.08),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: color.withValues(alpha: inStock ? 0.35 : 0.2)),
-          ),
-          child: Text(
-            inStock ? 'In stock' : 'Out of stock',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: color,
-            ),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 15),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.add, size: 18, color: c.textPrimary),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontFamily: AppType.sans,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  height: 1.0,
+                  color: c.textPrimary,
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
-} 
+}

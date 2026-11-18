@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kratom_tracker_plus/widgets/dose_amount_control.dart';
 import 'package:intl/intl.dart';
 import 'package:kratom_tracker_plus/models/dosage.dart';
 import 'package:kratom_tracker_plus/providers/kratom_provider.dart';
@@ -55,6 +56,36 @@ void main() {
     expect(find.text(DateFormat('h:mm a').format(local)), findsOneWidget);
   });
 
+  testWidgets('day totals and counts appear above card-free dose rows',
+      (tester) async {
+    final timestamp = DateTime(2024, 6, 5, 10);
+    SharedPreferences.setMockInitialValues({
+      'strains': jsonEncode([
+        {
+          'id': 's', 'name': 'Test Strain', 'code': 'TEST',
+          'color': 0xFF00ACC1, 'icon': 'Leaf',
+        },
+      ]),
+      'dosages': jsonEncode([
+        {
+          'id': 'a', 'strainId': 's', 'amount': 2.0,
+          'timestamp': timestamp.toIso8601String(),
+        },
+        {
+          'id': 'b', 'strainId': 's', 'amount': 3.5,
+          'timestamp': timestamp.add(const Duration(hours: 1)).toIso8601String(),
+        },
+      ]),
+    });
+    final provider =
+        await KratomProvider.create(await SharedPreferences.getInstance());
+    await _pumpReport(tester, provider);
+
+    expect(find.text('5.5g · 2 doses'), findsOneWidget);
+    expect(find.text('Test Strain'), findsNWidgets(2));
+    expect(find.byType(Card), findsNothing);
+  });
+
   testWidgets('edit sheet rejects a future dose time without saving',
       (tester) async {
     final timestamp = DateTime.now().add(const Duration(hours: 3));
@@ -96,7 +127,7 @@ void main() {
     await tester.tap(find.text('Edit'));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.widgetWithText(TextFormField, 'Amount (g)'), '9');
+    await tester.enterText(find.byKey(DoseAmountControl.fieldKey), '9');
     await tester.tap(find.text('Save Changes'));
     await tester.pump();
 
@@ -117,7 +148,7 @@ void main() {
     await _openEdit(tester);
 
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'Amount (g)'),
+      find.byKey(DoseAmountControl.fieldKey),
       '1,5',
     );
     await tester.tap(find.text('Save Changes'));
@@ -137,7 +168,7 @@ void main() {
     await _openEdit(tester);
 
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'Amount (g)'),
+      find.byKey(DoseAmountControl.fieldKey),
       '4',
     );
     await tester.pump();

@@ -10,6 +10,13 @@ import 'package:kratom_tracker_plus/screens/home/home_calendar_section.dart';
 /// zone: a local midnight in a UTC-5 zone *is* the instant 05:00Z, so passing
 /// that instant as `monday` reproduces exactly the arithmetic the widget did.
 void main() {
+  test('calendar boundaries compare labels rather than instants', () {
+    final today = DateTime(2026, 3, 2, 23);
+    expect(compareCalendarDays(DateTime.utc(2026, 3, 2), today), 0);
+    expect(compareCalendarDays(DateTime.utc(2026, 3, 1), today), lessThan(0));
+    expect(compareCalendarDays(DateTime.utc(2026, 3, 3), today), greaterThan(0));
+  });
+
   group('weekDayIndex', () {
     test('maps a UTC-normalised day onto its slot in the week', () {
       final monday = DateTime(2026, 3, 2); // a Monday

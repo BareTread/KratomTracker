@@ -16,6 +16,16 @@ class BackupPayload {
   final String? userName;
   final List<Dosage> orphanedDosages;
 
+  /// True when the backup file carried an explicit `strains` list — a full
+  /// export — even when the list was empty. False for absent, null, or
+  /// non-list values: they cannot express "no strains" and must not clear
+  /// local strains.
+  final bool hasStrainCollection;
+
+  /// Same contract for `dosages`: explicit list only. A bare top-level dose
+  /// array counts as an explicit dosages collection.
+  final bool hasDosageCollection;
+
   const BackupPayload({
     required this.version,
     required this.createdAt,
@@ -24,6 +34,8 @@ class BackupPayload {
     required this.settings,
     required this.userName,
     this.orphanedDosages = const [],
+    required this.hasStrainCollection,
+    required this.hasDosageCollection,
   });
 }
 
@@ -94,7 +106,9 @@ BackupParseResult parseBackup(String jsonText) {
     decoded is List ? decoded : root?['dosages'],
     warnings,
   );
-  final hasStrainCollection = root?.containsKey('strains') ?? false;
+  final hasStrainCollection = root?['strains'] is List;
+  final hasDosageCollection =
+      decoded is List || root?['dosages'] is List;
   final strainIds = strains.map((strain) => strain.id).toSet();
   final orphanedDosages = hasStrainCollection
       ? rawDosages
@@ -108,14 +122,29 @@ BackupParseResult parseBackup(String jsonText) {
           .toList(growable: false)
       : rawDosages;
   if (orphanedDosageCount > 0) {
+    // The import recovers these under a placeholder strain that keeps the
+    // original missing strain ID (merge reattaches to a matching local
+    // strain), so the warning must not claim they were dropped.
     warnings.add(
       '$orphanedDosageCount ${_plural(orphanedDosageCount, 'dose', 'doses')} '
-      'referenced a missing strain and '
-      '${_plural(orphanedDosageCount, 'was', 'were')} dropped',
+      'referenced a strain missing from the backup',
     );
   }
 
-  if (strains.isEmpty && dosages.isEmpty && orphanedDosages.isEmpty) {
+  // A valid backup schema can be empty: the app exports strains/dosages/
+  // settings/userName keys even with no records, and restoring its own
+  // empty export must work. Garbage that only happens to decode as a Map —
+  // no recognised keys at all — still gets rejected.
+  final hasBackupShape = root != null &&
+      (root['strains'] is List ||
+          root['dosages'] is List ||
+          root['settings'] is Map ||
+          root['userName'] is String ||
+          root['user_name'] is String);
+  if (strains.isEmpty &&
+      dosages.isEmpty &&
+      orphanedDosages.isEmpty &&
+      !hasBackupShape) {
     return BackupError(
       'Backup contained no recoverable strains or dosages',
       warnings,
@@ -134,7 +163,11 @@ BackupParseResult parseBackup(String jsonText) {
   final createdAt = DateTime.tryParse(
     asString(root?['createdAt'] ?? root?['timestamp']),
   );
-  final sortedDates = dosages.map((dose) => dose.timestamp).toList()..sort();
+  final sortedDates = [...dosages, ...orphanedDosages]
+      .map((dose) => dose.timestamp)
+      .toList()
+    ..sort();
+  final importedDosages = [...dosages, ...orphanedDosages];
   final payload = BackupPayload(
     version: version,
     createdAt: createdAt,
@@ -143,13 +176,15 @@ BackupParseResult parseBackup(String jsonText) {
     settings: settings,
     userName: _optionalString(root?['userName'] ?? root?['user_name']),
     orphanedDosages: List.unmodifiable(orphanedDosages),
+    hasStrainCollection: hasStrainCollection,
+    hasDosageCollection: hasDosageCollection,
   );
   final summary = BackupSummary(
     strainCount: strains.length,
-    dosageCount: dosages.length,
+    dosageCount: importedDosages.length,
     earliestDose: sortedDates.isEmpty ? null : sortedDates.first,
     latestDose: sortedDates.isEmpty ? null : sortedDates.last,
-    totalGrams: dosages.fold(0, (sum, dose) => sum + dose.amount),
+    totalGrams: importedDosages.fold(0, (sum, dose) => sum + dose.amount),
     warnings: List.unmodifiable(warnings),
   );
   return BackupOk(payload, summary);
@@ -169,7 +204,17 @@ List<Strain> _parseStrains(dynamic value, List<String> warnings) {
       continue;
     }
     final map = _stringMap(item);
-    final strain = Strain.fromJson(map);
+    // Per-row isolation: a single undecodable strain (e.g. a non-finite
+    // number reaching asInt) must not abort the whole backup — the rest of
+    // the file still parses and doses referencing the bad row are kept as
+    // orphans by the caller.
+    final Strain strain;
+    try {
+      strain = Strain.fromJson(map);
+    } catch (_) {
+      malformed++;
+      continue;
+    }
     if (strain.id.isEmpty || strain.name.isEmpty || strain.code.isEmpty) {
       malformed++;
       continue;

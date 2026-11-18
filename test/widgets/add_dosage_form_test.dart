@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:kratom_tracker_plus/providers/kratom_provider.dart';
 import 'package:kratom_tracker_plus/providers/theme_provider.dart';
 import 'package:kratom_tracker_plus/widgets/add_dosage_form.dart';
+import 'package:kratom_tracker_plus/widgets/dose_amount_control.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -18,15 +19,17 @@ void main() {
       final provider = await _seededProvider();
       await _pumpForm(tester, provider);
 
-      await tester.tap(find.text('ALPHA'));
+      await tester.tap(find.byKey(const Key('dose-strain-s-alpha')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add note'));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.widgetWithText(TextFormField, 'Amount'), '2.5');
+      await tester.enterText(find.byKey(DoseAmountControl.fieldKey), '2.5');
       await tester.enterText(
         find.widgetWithText(TextFormField, 'Notes (optional)'),
         '  morning tea  ',
       );
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Add Dose'));
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Log ALPHA 2.5g'));
       await tester.pumpAndSettle();
 
       expect(provider.dosages, hasLength(1));
@@ -41,14 +44,13 @@ void main() {
       final provider = await _seededProvider();
       final past = DateTime(2024, 6, 15);
       provider.setSelectedDate(past);
-
       await _pumpForm(tester, provider);
 
-      await tester.tap(find.text('BETA'));
+      await tester.tap(find.byKey(const Key('dose-strain-s-beta')));
       await tester.pumpAndSettle();
-
-      await tester.enterText(find.widgetWithText(TextFormField, 'Amount'), '1.5');
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Add Dose'));
+      await tester.enterText(find.byKey(DoseAmountControl.fieldKey), '1.5');
+      await tester.pump();
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Log BETA 1.5g'));
       await tester.pumpAndSettle();
 
       expect(provider.dosages, hasLength(1));
@@ -63,92 +65,60 @@ void main() {
       final provider = await _seededProvider();
       await _pumpForm(tester, provider);
 
-      await tester.tap(find.text('ALPHA'));
+      await tester.tap(find.byKey(const Key('dose-strain-s-alpha')));
       await tester.pumpAndSettle();
 
-      final amountField = find.widgetWithText(TextFormField, 'Amount');
+      final amountField = find.byKey(DoseAmountControl.fieldKey);
 
       await tester.enterText(amountField, '0');
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Add Dose'));
+      await tester.tap(find.byType(ElevatedButton));
       await tester.pumpAndSettle();
       expect(provider.dosages, isEmpty);
       expect(find.text('Amount must be greater than zero'), findsOneWidget);
 
       await tester.enterText(amountField, '-1');
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Add Dose'));
+      await tester.tap(find.byType(ElevatedButton));
       await tester.pumpAndSettle();
       expect(provider.dosages, isEmpty);
       expect(find.text('Amount must be greater than zero'), findsOneWidget);
 
       await tester.enterText(amountField, 'abc');
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Add Dose'));
+      await tester.tap(find.byType(ElevatedButton));
       await tester.pumpAndSettle();
       expect(provider.dosages, isEmpty);
       expect(find.text('Please enter a valid number'), findsOneWidget);
     });
 
-    testWidgets('strain list renders in provider.strainUsage order',
+    testWidgets('strain tiles render in provider.strainUsage order',
         (tester) async {
       final now = DateTime.now();
-      SharedPreferences.setMockInitialValues({
-        'strains': jsonEncode([
-          {
-            'id': 's-a',
-            'name': 'Aloe',
-            'code': 'ALOE',
-            'color': 0xFF4CAF50,
-            'icon': 'Leaf',
-          },
-          {
-            'id': 's-b',
-            'name': 'Basil',
-            'code': 'BASL',
-            'color': 0xFF2196F3,
-            'icon': 'Plant',
-          },
-          {
-            'id': 's-c',
-            'name': 'Cedar',
-            'code': 'CEDR',
-            'color': 0xFFFF9800,
-            'icon': 'Forest',
-          },
-        ]),
-        'dosages': jsonEncode([
-          // A used most recently → lowest rotation priority
-          {
-            'id': 'd1',
-            'strainId': 's-a',
-            'amount': 2.0,
-            'timestamp': now.subtract(const Duration(days: 1)).toIso8601String(),
-          },
-          // B used a few days ago
-          {
-            'id': 'd2',
-            'strainId': 's-b',
-            'amount': 2.0,
-            'timestamp': now.subtract(const Duration(days: 4)).toIso8601String(),
-          },
-          // C never used → highest rotation priority
-        ]),
-      });
-
-      final prefs = await SharedPreferences.getInstance();
-      final provider = await KratomProvider.create(prefs);
+      final provider = await _provider(
+        strains: [
+          _strain(id: 's-a', code: 'ALOE', name: 'Aloe'),
+          _strain(id: 's-b', code: 'BASL', name: 'Basil', color: 0xFF2196F3),
+          _strain(id: 's-c', code: 'CEDR', name: 'Cedar', color: 0xFFFF9800),
+        ],
+        dosages: [
+          _dose(
+            id: 'd1',
+            strainId: 's-a',
+            amount: 2,
+            timestamp: now.subtract(const Duration(days: 1)),
+          ),
+          _dose(
+            id: 'd2',
+            strainId: 's-b',
+            amount: 2,
+            timestamp: now.subtract(const Duration(days: 4)),
+          ),
+        ],
+      );
       final expectedOrder =
           provider.strainUsage.map((u) => u.strain.code).toList();
 
       await _pumpForm(tester, provider);
 
-      // Collect code labels in paint order from the list tiles.
-      final codeFinder = find.byWidgetPredicate(
-        (widget) =>
-            widget is Text &&
-            expectedOrder.contains(widget.data) &&
-            widget.style?.fontWeight == FontWeight.w600,
-      );
-      final texts = tester.widgetList<Text>(codeFinder).map((t) => t.data!).toList();
-      expect(texts, expectedOrder);
+      expect(_visibleCodes(tester, expectedOrder), expectedOrder);
     });
 
     testWidgets('header is a single title with no search or captions',
@@ -156,195 +126,329 @@ void main() {
       final provider = await _seededProvider();
       await _pumpForm(tester, provider);
 
-      expect(find.text('Select Strain'), findsOneWidget);
+      expect(find.text('Select Strain'), findsNothing);
+      expect(find.text('Add Dose'), findsNothing);
+      expect(
+        tester.widgetList<Text>(find.text('Log dose')).where(
+              (text) => text.style?.fontSize == 30,
+            ),
+        hasLength(1),
+      );
       expect(find.textContaining('Least recently used'), findsNothing);
       expect(find.textContaining('Bar fills'), findsNothing);
       expect(find.text('Search strains'), findsNothing);
-      // No free-text search field on the picker step.
-      expect(find.byType(TextField), findsNothing);
+      expect(find.byKey(DoseAmountControl.fieldKey), findsOneWidget);
     });
 
-    testWidgets('amount is prefilled from the strain usual dose',
+    testWidgets('amount is prefilled from the strain last dose, not the average',
         (tester) async {
-      final now = DateTime.now();
-      SharedPreferences.setMockInitialValues({
-        'strains': jsonEncode([
-          {
-            'id': 's-alpha',
-            'name': 'Alpha Strain',
-            'code': 'ALPHA',
-            'color': 0xFF00ACC1,
-            'icon': 'Leaf',
-          },
-        ]),
-        'dosages': jsonEncode([
-          {
-            'id': 'd1',
-            'strainId': 's-alpha',
-            'amount': 3.5,
-            'timestamp':
-                now.subtract(const Duration(days: 2)).toIso8601String(),
-          },
-          {
-            'id': 'd2',
-            'strainId': 's-alpha',
-            'amount': 4.5,
-            'timestamp':
-                now.subtract(const Duration(days: 5)).toIso8601String(),
-          },
-        ]),
-      });
-      final provider =
-          await KratomProvider.create(await SharedPreferences.getInstance());
+      final provider = await _provider(
+        strains: [
+          _strain(id: 's-alpha', code: 'ALPHA', name: 'Alpha Strain'),
+        ],
+        dosages: [
+          _dose(
+            id: 'd-new',
+            strainId: 's-alpha',
+            amount: 3.5,
+            timestamp: _daysAgo(2),
+          ),
+          _dose(
+            id: 'd-old',
+            strainId: 's-alpha',
+            amount: 4.5,
+            timestamp: _daysAgo(5),
+          ),
+        ],
+      );
       await _pumpForm(tester, provider);
 
-      await tester.tap(find.text('ALPHA'));
-      await tester.pumpAndSettle();
-
-      final amountField = tester.widget<TextFormField>(
-        find.widgetWithText(TextFormField, 'Amount'),
-      );
-      // avg of 3.5 and 4.5 = 4.0
-      expect(amountField.controller?.text, '4');
+      expect(_amountText(tester), '3.5');
+      expect(find.text('Log ALPHA 3.5g'), findsOneWidget);
     });
 
     testWidgets('saved time freezes at sheet open, not save time',
         (tester) async {
-      final provider = await _seededProvider();
+      final provider = await _leadProvider();
       final openMoment = DateTime.now();
       await _pumpForm(tester, provider);
 
-      // Read the frozen time shown on the details step before saving.
-      await tester.tap(find.text('ALPHA'));
+      expect(_chipText(tester), 'Now');
+      expect(find.byKey(const Key('add-dose-now-pill')), findsNothing);
+
+      final beforeIds = provider.dosages.map((dose) => dose.id).toSet();
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Log ALPHA 2.5g'));
       await tester.pumpAndSettle();
 
-      final frozenLabel = DateFormat('h:mm a').format(openMoment);
-      expect(find.text(frozenLabel), findsOneWidget);
-
-      await tester.enterText(
-        find.widgetWithText(TextFormField, 'Amount'),
-        '2.0',
+      final created = provider.dosages.singleWhere(
+        (dose) => !beforeIds.contains(dose.id),
       );
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Add Dose'));
-      await tester.pumpAndSettle();
-
-      expect(provider.dosages, hasLength(1));
-      final dose = provider.dosages.single;
-      // Saved time should be near openMoment (captured at sheet open).
-      final delta = dose.timestamp.difference(openMoment).inSeconds.abs();
+      final delta = created.timestamp.difference(openMoment).inSeconds.abs();
       expect(
         delta,
         lessThan(5),
-        reason:
-            'expected frozen open time (~$openMoment) but got ${dose.timestamp}',
+        reason: 'expected frozen open time (~$openMoment) but got ${created.timestamp}',
       );
     });
 
     testWidgets('Now pill snaps the time field to the current time',
         (tester) async {
       final provider = await _seededProvider();
-      // Seed a past selected day so the frozen open-time-of-day is painted
-      // onto a non-today date. After tapping Now the time-of-day should jump
-      // to wall-clock now (date stays on the selected day).
-      final past = DateTime(2024, 6, 15, 8, 0);
-      provider.setSelectedDate(past);
+      provider.setSelectedDate(DateTime(2024, 6, 15, 8));
       await _pumpForm(tester, provider);
 
-      await tester.tap(find.text('ALPHA'));
-      await tester.pumpAndSettle();
-
-      // Confirm the time is still the frozen open time-of-day on the past day.
-      expect(find.text('Jun 15, 2024'), findsOneWidget);
+      expect(_chipText(tester), contains('Jun 15, 2024'));
+      expect(_chipText(tester), isNot('Now'));
 
       final beforeNow = DateTime.now();
       await tester.tap(find.byKey(const Key('add-dose-now-pill')));
       await tester.pump();
 
-      final expectedLabel = DateFormat('h:mm a').format(beforeNow);
-      final altLabel = DateFormat('h:mm a')
+      final chip = _chipText(tester);
+      final expected = DateFormat('h:mm a').format(beforeNow);
+      final alt = DateFormat('h:mm a')
           .format(beforeNow.add(const Duration(minutes: 1)));
-      final labels = [expectedLabel, altLabel];
       expect(
-        labels.any((l) => find.text(l).evaluate().isNotEmpty),
+        chip.contains(expected) || chip.contains(alt),
         isTrue,
-        reason: 'expected one of $labels after tapping Now',
+        reason: 'expected one of $expected / $alt in "$chip"',
       );
-      // Date stays on the selected day; only time-of-day snaps.
-      expect(find.text('Jun 15, 2024'), findsOneWidget);
+      expect(chip, contains('Jun 15, 2024'));
+    });
+
+    testWidgets('clear rest lead preselects the first in-stock strain',
+        (tester) async {
+      final provider = await _leadProvider();
+      await _pumpForm(tester, provider);
+
+      expect(find.text('Pick a strain'), findsNothing);
+      expect(find.textContaining('Alpha Strain'), findsOneWidget);
+      expect(_amountText(tester), '2.5');
+      expect(find.text('Log ALPHA 2.5g'), findsOneWidget);
+      expect(
+        tester.widget<ElevatedButton>(find.byType(ElevatedButton)).onPressed,
+        isNotNull,
+      );
+    });
+
+    testWidgets('a rest tie still preselects the top suggestion', (tester) async {
+      final provider = await _provider(
+        strains: [
+          _strain(id: 's-a', code: 'ALPHA', name: 'Alpha'),
+          _strain(id: 's-b', code: 'BETA', name: 'Beta', color: 0xFF4CAF50),
+        ],
+        dosages: [
+          _dose(id: 'd-a', strainId: 's-a', amount: 2, timestamp: _daysAgo(2)),
+          _dose(id: 'd-b', strainId: 's-b', amount: 2, timestamp: _daysAgo(2)),
+        ],
+      );
+      await _pumpForm(tester, provider);
+
+      expect(find.text('Pick a strain'), findsNothing);
+      expect(_amountText(tester), '2');
+      expect(
+        tester.widget<ElevatedButton>(find.byType(ElevatedButton)).onPressed,
+        isNotNull,
+      );
+    });
+
+    testWidgets('a single used in-stock strain is preselected', (tester) async {
+      final provider = await _provider(
+        strains: [
+          _strain(id: 's-only', code: 'ONLY', name: 'Only Strain'),
+        ],
+        dosages: [
+          _dose(id: 'd1', strainId: 's-only', amount: 3, timestamp: _daysAgo(1)),
+        ],
+      );
+      await _pumpForm(tester, provider);
+
+      expect(find.textContaining('Only Strain'), findsOneWidget);
+      expect(_amountText(tester), '3');
+      expect(
+        tester.widget<ElevatedButton>(find.byType(ElevatedButton)).onPressed,
+        isNotNull,
+      );
+    });
+
+    testWidgets('out-of-stock strain is never preselected', (tester) async {
+      final provider = await _provider(
+        strains: [
+          _strain(
+            id: 's-oos',
+            code: 'OOS',
+            name: 'Rested Out',
+            inStock: false,
+          ),
+          _strain(id: 's-a', code: 'ALPHA', name: 'Alpha'),
+          _strain(id: 's-b', code: 'BETA', name: 'Beta', color: 0xFF4CAF50),
+        ],
+        dosages: [
+          _dose(id: 'd-oos', strainId: 's-oos', amount: 4, timestamp: _daysAgo(10)),
+          _dose(id: 'd-a', strainId: 's-a', amount: 2, timestamp: _daysAgo(2)),
+          _dose(id: 'd-b', strainId: 's-b', amount: 2, timestamp: _daysAgo(2)),
+        ],
+      );
+      await _pumpForm(tester, provider);
+
+      // The rested out-of-stock strain is skipped; an in-stock one is chosen.
+      expect(find.text('Pick a strain'), findsNothing);
+      expect(find.textContaining('Rested Out'), findsNothing);
+      expect(find.textContaining('Log OOS'), findsNothing);
+      expect(_amountText(tester), '2');
+    });
+
+    testWidgets('preselectedStrainId wins over the rest lead', (tester) async {
+      final provider = await _leadProvider();
+      await _pumpForm(tester, provider, preselectedStrainId: 's-beta');
+
+      expect(find.textContaining('Beta Strain'), findsOneWidget);
+      expect(find.textContaining('Alpha Strain'), findsNothing);
+      expect(_amountText(tester), '1');
+      expect(find.text('Log BETA 1g'), findsOneWidget);
+    });
+
+    testWidgets('stepper changes the amount by 0.1 and clamps', (tester) async {
+      final provider = await _leadProvider();
+      await _pumpForm(tester, provider);
+
+      expect(_amountText(tester), '2.5');
+      await tester.tap(find.byKey(DoseAmountControl.plusKey));
+      await tester.pump();
+      expect(_amountText(tester), '2.6');
+      await tester.tap(find.byKey(DoseAmountControl.minusKey));
+      await tester.pump();
+      expect(_amountText(tester), '2.5');
+
+      await tester.enterText(find.byKey(DoseAmountControl.fieldKey), '0.1');
+      await tester.tap(find.byKey(DoseAmountControl.minusKey));
+      await tester.pump();
+      expect(_amountText(tester), '0.1');
+
+      await tester.enterText(find.byKey(DoseAmountControl.fieldKey), '100');
+      await tester.tap(find.byKey(DoseAmountControl.plusKey));
+      await tester.pump();
+      expect(_amountText(tester), '100');
+    });
+
+    testWidgets('a recent-amount chip sets the amount', (tester) async {
+      final provider = await _provider(
+        strains: [
+          _strain(id: 's-sr', code: 'SR', name: 'Super Red'),
+        ],
+        dosages: [
+          _dose(id: 'd4', strainId: 's-sr', amount: 16.6, timestamp: _daysAgo(1)),
+          _dose(id: 'd3', strainId: 's-sr', amount: 16.3, timestamp: _daysAgo(2)),
+          _dose(id: 'd2', strainId: 's-sr', amount: 15, timestamp: _daysAgo(3)),
+          _dose(id: 'd1', strainId: 's-sr', amount: 16.6, timestamp: _daysAgo(4)),
+        ],
+      );
+      await _pumpForm(tester, provider);
+
+      expect(find.text('16.6g'), findsOneWidget);
+      expect(find.text('16.3g'), findsOneWidget);
+      expect(find.text('15g'), findsOneWidget);
+      expect(find.text('Log SR 16.6g'), findsOneWidget);
+
+      await tester.tap(find.text('16.3g'));
+      await tester.pump();
+
+      expect(_amountText(tester), '16.3');
+      expect(find.text('Log SR 16.3g'), findsOneWidget);
+    });
+
+    testWidgets('changing strain re-prefills and drops a typed amount',
+        (tester) async {
+      final provider = await _leadProvider();
+      await _pumpForm(tester, provider);
+
+      await tester.enterText(find.byKey(DoseAmountControl.fieldKey), '9');
+      await tester.pump();
+      expect(find.text('Log ALPHA 9g'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('dose-strain-s-beta')));
+      await tester.pump();
+
+      expect(_amountText(tester), '1');
+      expect(find.text('Log BETA 1g'), findsOneWidget);
+    });
+
+    testWidgets('save then Undo removes the created dose', (tester) async {
+      final provider = await _leadProvider();
+      await _pumpForm(tester, provider);
+      final beforeIds = provider.dosages.map((dose) => dose.id).toSet();
+
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Log ALPHA 2.5g'));
+      await tester.pumpAndSettle();
+
+      final created = provider.dosages.singleWhere(
+        (dose) => !beforeIds.contains(dose.id),
+      );
+      expect(created.amount, 2.5);
+      expect(find.text('Logged ALPHA · 2.5g'), findsOneWidget);
+      final bar = tester.widget<SnackBar>(find.byType(SnackBar));
+      expect(bar.elevation, 0);
+      expect(bar.duration, const Duration(seconds: 5));
+      expect(bar.behavior, SnackBarBehavior.floating);
+      expect(bar.margin, const EdgeInsets.fromLTRB(16, 0, 88, 24));
+
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+
+      expect(provider.dosages.map((dose) => dose.id).toSet(), beforeIds);
     });
   });
 
   group('strain stock partition', () {
-    // Same seed as `searchSeed`: frozen order is CEDR, CINN, BASL, ALOE.
     Future<KratomProvider> partitionSeed() async {
       final provider = await searchSeed();
-      // Mark CINN and ALOE out of stock. In-stock group keeps frozen relative
-      // order [CEDR, BASL]; out-of-stock group keeps [CINN, ALOE].
       await provider.setStrainInStock('s-d', inStock: false);
       await provider.setStrainInStock('s-a', inStock: false);
       return provider;
     }
-
-    Finder codeFinder(List<String> codes) => find.byWidgetPredicate(
-          (widget) =>
-              widget is Text &&
-              codes.contains(widget.data) &&
-              widget.style?.fontWeight == FontWeight.w600,
-        );
-
-    List<String> visibleCodes(WidgetTester tester, List<String> all) =>
-        tester.widgetList<Text>(codeFinder(all)).map((t) => t.data!).toList();
 
     testWidgets('in-stock group first, then divider, then out-of-stock group',
         (tester) async {
       final provider = await partitionSeed();
       await _pumpForm(tester, provider);
 
-      // Divider is present.
       expect(find.text('Out of stock'), findsOneWidget);
-
-      // Visible order: in-stock frozen order, then out-of-stock frozen order.
       expect(
-        visibleCodes(tester, ['ALOE', 'BASL', 'CEDR', 'CINN']),
+        _visibleCodes(tester, ['ALOE', 'BASL', 'CEDR', 'CINN']),
         ['CEDR', 'BASL', 'CINN', 'ALOE'],
       );
     });
 
-    testWidgets('out-of-stock rows carry a one-tap back-in-stock affordance',
+    testWidgets('out-of-stock tiles stay selectable and Back in stock works',
         (tester) async {
       final provider = await partitionSeed();
       await _pumpForm(tester, provider);
 
-      expect(find.text('Back in stock'), findsNWidgets(2));
+      expect(find.text('Back in stock'), findsNothing);
 
-      // Tap the first one (belongs to CINN, the first out-of-stock row).
-      await tester.tap(find.text('Back in stock').first);
+      await tester.tap(find.byKey(const Key('dose-strain-s-d')));
       await tester.pumpAndSettle();
 
-      expect(provider.getStrain('s-d')!.inStock, true);
-      // CINN moved up into the in-stock group; divider still present (ALOE
-      // remains out).
-      expect(find.text('Out of stock'), findsOneWidget);
+      expect(find.textContaining('Cinnamon Bark'), findsOneWidget);
+      expect(find.text('Back in stock'), findsOneWidget);
       expect(
-        visibleCodes(tester, ['ALOE', 'BASL', 'CEDR', 'CINN']),
+        tester.widget<ElevatedButton>(find.byType(ElevatedButton)).onPressed,
+        isNotNull,
+      );
+
+      await tester.tap(find.text('Back in stock'));
+      await tester.pumpAndSettle();
+
+      expect(provider.getStrain('s-d')!.inStock, isTrue);
+      expect(find.text('Out of stock'), findsOneWidget);
+      expect(find.text('Back in stock'), findsNothing);
+      expect(
+        _visibleCodes(tester, ['ALOE', 'BASL', 'CEDR', 'CINN']),
         ['CEDR', 'CINN', 'BASL', 'ALOE'],
       );
     });
 
-    testWidgets('out-of-stock rows remain fully selectable', (tester) async {
-      final provider = await partitionSeed();
-      await _pumpForm(tester, provider);
-
-      // Tap ALOE — the last row, out of stock — should still open the dose
-      // details form (identified by its back arrow, unique to that step).
-      await tester.tap(find.text('ALOE'));
-      await tester.pumpAndSettle();
-
-      expect(find.byIcon(Icons.arrow_back), findsOneWidget);
-      expect(find.widgetWithText(ElevatedButton, 'Add Dose'), findsOneWidget);
-    });
-
-    testWidgets('all in stock: no divider, no header, frozen order unchanged',
+    testWidgets('all in stock: no divider, frozen order unchanged',
         (tester) async {
       final provider = await searchSeed();
       final frozenOrder =
@@ -353,7 +457,7 @@ void main() {
 
       expect(find.text('Out of stock'), findsNothing);
       expect(find.text('Back in stock'), findsNothing);
-      expect(visibleCodes(tester, frozenOrder), frozenOrder);
+      expect(_visibleCodes(tester, frozenOrder), frozenOrder);
     });
   });
 
@@ -375,100 +479,169 @@ void main() {
 ///   then BASL (used 4d ago), then ALOE (used 1d ago).
 Future<KratomProvider> searchSeed() async {
   final now = DateTime.now();
+  return _provider(
+    strains: [
+      _strain(id: 's-a', code: 'ALOE', name: 'Aloe Vera'),
+      _strain(id: 's-b', code: 'BASL', name: 'Basil Fresh', color: 0xFF4CAF50),
+      _strain(id: 's-c', code: 'CEDR', name: 'Cedar Wood', color: 0xFFFF9800),
+      _strain(id: 's-d', code: 'CINN', name: 'Cinnamon Bark', color: 0xFFE91E63),
+    ],
+    dosages: [
+      _dose(
+        id: 'd1',
+        strainId: 's-a',
+        amount: 2,
+        timestamp: now.subtract(const Duration(days: 1)),
+      ),
+      _dose(
+        id: 'd2',
+        strainId: 's-b',
+        amount: 2,
+        timestamp: now.subtract(const Duration(days: 4)),
+      ),
+    ],
+  );
+}
+
+/// ALPHA rested 5 calendar days (2.5g), BETA rested 1 day (1g).
+Future<KratomProvider> _leadProvider() {
+  return _provider(
+    strains: [
+      _strain(id: 's-alpha', code: 'ALPHA', name: 'Alpha Strain'),
+      _strain(id: 's-beta', code: 'BETA', name: 'Beta Strain', color: 0xFF4CAF50),
+    ],
+    dosages: [
+      _dose(id: 'd-a', strainId: 's-alpha', amount: 2.5, timestamp: _daysAgo(5)),
+      _dose(id: 'd-b', strainId: 's-beta', amount: 1, timestamp: _daysAgo(1)),
+    ],
+  );
+}
+
+Future<KratomProvider> _seededProvider() {
+  return _provider(
+    strains: [
+      _strain(id: 's-alpha', code: 'ALPHA', name: 'Alpha Strain'),
+      _strain(id: 's-beta', code: 'BETA', name: 'Beta Strain', color: 0xFF4CAF50),
+    ],
+    dosages: const [],
+  );
+}
+
+Future<KratomProvider> _provider({
+  required List<Map<String, dynamic>> strains,
+  required List<Map<String, dynamic>> dosages,
+}) async {
   SharedPreferences.setMockInitialValues({
-    'strains': jsonEncode([
-      {
-        'id': 's-a',
-        'name': 'Aloe Vera',
-        'code': 'ALOE',
-        'color': 0xFF00ACC1,
-        'icon': 'Leaf',
-      },
-      {
-        'id': 's-b',
-        'name': 'Basil Fresh',
-        'code': 'BASL',
-        'color': 0xFF4CAF50,
-        'icon': 'Plant',
-      },
-      {
-        'id': 's-c',
-        'name': 'Cedar Wood',
-        'code': 'CEDR',
-        'color': 0xFFFF9800,
-        'icon': 'Forest',
-      },
-      {
-        'id': 's-d',
-        'name': 'Cinnamon Bark',
-        'code': 'CINN',
-        'color': 0xFFE91E63,
-        'icon': 'Leaf',
-      },
-    ]),
-    'dosages': jsonEncode([
-      {
-        'id': 'd1',
-        'strainId': 's-a',
-        'amount': 2.0,
-        'timestamp':
-            now.subtract(const Duration(days: 1)).toIso8601String(),
-      },
-      {
-        'id': 'd2',
-        'strainId': 's-b',
-        'amount': 2.0,
-        'timestamp':
-            now.subtract(const Duration(days: 4)).toIso8601String(),
-      },
-    ]),
+    'strains': jsonEncode(strains),
+    'dosages': jsonEncode(dosages),
   });
   return KratomProvider.create(await SharedPreferences.getInstance());
 }
 
-Future<KratomProvider> _seededProvider() async {
-  SharedPreferences.setMockInitialValues({
-    'strains': jsonEncode([
-      {
-        'id': 's-alpha',
-        'name': 'Alpha Strain',
-        'code': 'ALPHA',
-        'color': 0xFF00ACC1,
-        'icon': 'Leaf',
-      },
-      {
-        'id': 's-beta',
-        'name': 'Beta Strain',
-        'code': 'BETA',
-        'color': 0xFF4CAF50,
-        'icon': 'Plant',
-      },
-    ]),
-    'dosages': '[]',
-  });
-  return KratomProvider.create(await SharedPreferences.getInstance());
+Map<String, dynamic> _strain({
+  required String id,
+  required String code,
+  required String name,
+  int color = 0xFF00ACC1,
+  String icon = 'Leaf',
+  bool inStock = true,
+}) =>
+    {
+      'id': id,
+      'name': name,
+      'code': code,
+      'color': color,
+      'icon': icon,
+      'inStock': inStock,
+    };
+
+Map<String, dynamic> _dose({
+  required String id,
+  required String strainId,
+  required double amount,
+  required DateTime timestamp,
+}) =>
+    {
+      'id': id,
+      'strainId': strainId,
+      'amount': amount,
+      'timestamp': timestamp.toIso8601String(),
+    };
+
+DateTime _daysAgo(int days) {
+  final now = DateTime.now();
+  return DateTime(now.year, now.month, now.day - days, 12);
 }
 
-Future<void> _pumpForm(WidgetTester tester, KratomProvider provider) async {
-  final prefs = await SharedPreferences.getInstance();
-  final theme = ThemeProvider(prefs);
+String _chipText(WidgetTester tester) {
+  return tester
+      .widget<Text>(
+        find.descendant(
+          of: find.byKey(const Key('add-dose-time-chip')),
+          matching: find.byType(Text),
+        ),
+      )
+      .data!;
+}
+
+String _amountText(WidgetTester tester) {
+  return tester
+      .widget<TextFormField>(find.byKey(DoseAmountControl.fieldKey))
+      .controller!
+      .text;
+}
+
+List<String> _visibleCodes(WidgetTester tester, List<String> codes) {
+  final finder = find.byWidgetPredicate(
+    (widget) =>
+        widget is Text &&
+        codes.contains(widget.data) &&
+        widget.style?.fontWeight == FontWeight.w600,
+  );
+  return tester.widgetList<Text>(finder).map((text) => text.data!).toList();
+}
+
+Future<void> _pumpForm(
+  WidgetTester tester,
+  KratomProvider provider, {
+  String? preselectedStrainId,
+}) async {
+  tester.view.physicalSize = const Size(400, 1000);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
 
   await tester.pumpWidget(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider.value(value: provider),
-        ChangeNotifierProvider.value(value: theme),
-      ],
+    ChangeNotifierProvider.value(
+      value: provider,
       child: MaterialApp(
-        theme: theme.theme,
-        home: const Scaffold(
-          body: SizedBox(
-            height: 800,
-            child: AddDosageForm(),
+        theme: ThemeProvider.lightTheme,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true),
+          child: child!,
+        ),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) {
+              return TextButton(
+                onPressed: () {
+                  showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: Colors.transparent,
+                    builder: (_) => AddDosageForm(
+                      preselectedStrainId: preselectedStrainId,
+                    ),
+                  );
+                },
+                child: const Text('open-sheet'),
+              );
+            },
           ),
         ),
       ),
     ),
   );
+  await tester.tap(find.text('open-sheet'));
   await tester.pumpAndSettle();
 }

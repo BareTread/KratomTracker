@@ -10,6 +10,7 @@ import 'report_screen.dart';
 import 'stats/stats_bundle.dart';
 import 'stats/stats_common.dart';
 import 'stats/stats_headline.dart';
+import 'stats/stats_herbarium.dart';
 import 'stats/stats_insights.dart';
 import 'stats/stats_rest.dart';
 import 'stats/stats_rotation.dart';
@@ -90,6 +91,7 @@ class _StatsScreenState extends State<StatsScreen> with WidgetsBindingObserver {
       child: Consumer<KratomProvider>(
         builder: (context, provider, child) {
           final bundle = _resolveBundle(provider);
+          final c = context.c;
 
           return CustomScrollView(
             physics: const ClampingScrollPhysics(),
@@ -108,15 +110,35 @@ class _StatsScreenState extends State<StatsScreen> with WidgetsBindingObserver {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _RangePicker(
-                        range: _range,
-                        onChanged: (range) => setState(() => _range = range),
+                      // Same head the other tabs carry: serif screen title,
+                      // with the range switch riding its row.
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Stats',
+                            style: AppType.display(
+                              size: 36,
+                              color: c.textPrimary,
+                            ),
+                          ),
+                          const Spacer(),
+                          _RangePicker(
+                            range: _range,
+                            onChanged: (range) =>
+                                setState(() => _range = range),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 22),
                       ..._body(bundle),
-                      const SizedBox(height: 26),
-                      const FadedRule(),
-                      const _HistoryLink(),
+                      // No history, nothing to report: the link only exists
+                      // once there is a history to show.
+                      if (bundle.hasHistory) ...[
+                        const SizedBox(height: 26),
+                        const FadedRule(),
+                        const _HistoryLink(),
+                      ],
                       SizedBox(
                         height: MediaQuery.of(context).padding.bottom + 32,
                       ),
@@ -147,7 +169,12 @@ class _StatsScreenState extends State<StatsScreen> with WidgetsBindingObserver {
         const SizedBox(height: 20),
         IntakeEquation(drift: bundle.drift),
         const SizedBox(height: 28),
-        TrajectoryChart(bundle: bundle),
+        // 30 days fit as a page of pressed sprigs, one a day; 90d and All
+        // would be thirteen-plus rows of them, so they keep the bar chart.
+        if (bundle.selected == StatsRange.thirty)
+          StatsHerbarium(bundle: bundle)
+        else
+          TrajectoryChart(bundle: bundle),
         StatsSection(
           label: 'When',
           child: WhenSection(rhythm: bundle.rhythm),
@@ -194,7 +221,8 @@ class _StatsScreenState extends State<StatsScreen> with WidgetsBindingObserver {
 
 /// Three words, one of them lit. A segmented control would put a box and two
 /// borders at the top of a page whose whole argument is that typography can
-/// carry it.
+/// carry it. Each option still owns a real 48dp tap target; the selection
+/// mark is a short accent rule under the lit word.
 class _RangePicker extends StatelessWidget {
   const _RangePicker({required this.range, required this.onChanged});
 
@@ -205,31 +233,44 @@ class _RangePicker extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.c;
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        for (final option in StatsRange.values) ...[
+        for (final option in StatsRange.values)
           InkWell(
             onTap: () => onChanged(option),
             borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-              child: Text(
-                option.label,
-                style: TextStyle(
-                  color: option == range ? c.textPrimary : c.textTertiary,
-                  fontSize: 13.5,
-                  height: 1.1,
-                  fontWeight:
-                      option == range ? FontWeight.w700 : FontWeight.w400,
-                ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    option.label,
+                    style: TextStyle(
+                      color:
+                          option == range ? c.textPrimary : c.textSecondary,
+                      fontSize: 13.5,
+                      height: 1.1,
+                      fontWeight: option == range
+                          ? FontWeight.w600
+                          : FontWeight.w400,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Container(
+                    width: 16,
+                    height: 2,
+                    decoration: BoxDecoration(
+                      color:
+                          option == range ? c.accent : Colors.transparent,
+                      borderRadius: BorderRadius.circular(1),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-          if (option != StatsRange.values.last)
-            Text(
-              '·',
-              style: TextStyle(color: c.hairline, fontSize: 13.5),
-            ),
-        ],
       ],
     );
   }
@@ -256,7 +297,9 @@ class _NothingYet extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          'Log a few days and this page starts saying something.',
+          'After a few days of doses this page shows your daily trend, '
+          'when you dose, and how your strains rotate. '
+          'Log doses from Home with the + button.',
           style: quietStyle(context),
         ),
       ],
@@ -271,25 +314,29 @@ class _HistoryLink extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.c;
     return InkWell(
+      key: const Key('stats-history'),
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const ReportScreen()),
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 18),
-        child: Row(
-          children: [
-            Text(
-              'Dosage history',
-              style: TextStyle(
-                color: c.textSecondary,
-                fontSize: 14,
-                height: 1.2,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          child: Row(
+            children: [
+              Text(
+                'Dosage history',
+                style: TextStyle(
+                  color: c.textSecondary,
+                  fontSize: 14,
+                  height: 1.2,
+                ),
               ),
-            ),
-            const Spacer(),
-            Icon(Icons.chevron_right, size: 18, color: c.textTertiary),
-          ],
+              const Spacer(),
+              Icon(Icons.chevron_right, size: 18, color: c.textTertiary),
+            ],
+          ),
         ),
       ),
     );

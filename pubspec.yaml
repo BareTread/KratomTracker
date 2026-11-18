@@ -1,7 +1,7 @@
 name: kratom_tracker_plus
 description: A comprehensive herbal supplement dosage tracking application (Enhanced)
 publish_to: 'none'
-version: 2.16.3+22
+version: 2.18.0+28
 
 environment:
   sdk: ^3.5.4
@@ -46,12 +46,32 @@ dev_dependencies:
 # following page: https://dart.dev/tools/pub/pubspec
 
 # The following section is specific to Flutter packages.
+  shared_preferences_platform_interface: any
 flutter:
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Bundled, never fetched at runtime. Both are SIL OFL; licences sit beside
+  # the files in assets/fonts.
+  fonts:
+    - family: Hanken
+      fonts:
+        - asset: assets/fonts/HankenGrotesk-400.ttf
+          weight: 400
+        - asset: assets/fonts/HankenGrotesk-500.ttf
+          weight: 500
+        - asset: assets/fonts/HankenGrotesk-600.ttf
+          weight: 600
+        - asset: assets/fonts/HankenGrotesk-700.ttf
+          weight: 700
+    - family: InstrumentSerif
+      fonts:
+        - asset: assets/fonts/InstrumentSerif-Regular.ttf
+        - asset: assets/fonts/InstrumentSerif-Italic.ttf
+          style: italic
 
   # To add assets to your application, add an assets section, like this:
   # assets:

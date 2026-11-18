@@ -9,6 +9,7 @@ import 'dart:io';
 import 'dart:convert';
 import '../providers/theme_provider.dart';
 import '../widgets/edit_profile_sheet.dart';
+import '../widgets/sheet_header.dart';
 import 'privacy_policy_screen.dart';
 import 'terms_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -98,7 +99,8 @@ class _ManageScreenState extends State<ManageScreen> {
           title: const Text('Replace current data?'),
           content: Text(
             'Import ${summary.strainCount} strains and '
-            '${summary.dosageCount} doses. This replaces current data.',
+            '${summary.dosageCount} doses. This replaces current data.'
+            '${summary.warnings.isEmpty ? '' : '\n\n${summary.warnings.join('\n')}'}',
           ),
           actions: [
             TextButton(
@@ -136,9 +138,10 @@ class _ManageScreenState extends State<ManageScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Clear All Data?'),
-        content: Text(
-          'This action cannot be undone. Consider creating a backup first.',
-          style: TextStyle(color: context.c.caution),
+        content: const Text(
+          'This deletes all strains, all logged doses, and your profile name, '
+          'and resets your tracking settings. Your appearance choice is kept. '
+          'This cannot be undone. Create a backup first if you may want this back.',
         ),
         actions: [
           TextButton(
@@ -174,52 +177,36 @@ class _ManageScreenState extends State<ManageScreen> {
             elevation: 0,
             title: Text(
               'Manage',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.5,
-                color: context.c.textPrimary,
-              ),
+              style: AppType.display(size: 34, color: context.c.textPrimary),
             ),
           ),
           body: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 24),
-                // App Settings Section
-                _buildSectionHeader(
-                  'App Settings',
-                  Icons.settings_outlined,
-                ),
+                if (provider.loadWarnings.isNotEmpty)
+                  _buildLoadWarnings(provider),
+                _buildSectionHeader('Profile & display'),
                 _buildProfileCard(context),
-                _buildThemeSettings(context),
-                _buildNotificationSettings(context, provider),
-
-                const SizedBox(height: 24),
-                // Backup & Restore Section
-                _buildSectionHeader(
-                  'Backup & Restore',
-                  Icons.cloud_outlined,
-                ),
+                _buildSectionHeader('Backup & restore'),
                 _buildBackupCard(context, provider),
-
-                const SizedBox(height: 24),
-                // Data Management Section
-                _buildSectionHeader(
-                  'Data Management',
-                  Icons.storage_outlined,
-                ),
+                _buildSectionHeader('Data'),
                 _buildDataManagementCard(context, provider),
-
-                const SizedBox(height: 24),
-                // About Section
-                _buildSectionHeader(
-                  'About',
-                  Icons.info_outline,
-                ),
+                _buildSectionHeader('About'),
                 _buildAboutCard(context),
-                const SizedBox(height: 24),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                  child: Center(
+                    child: Text(
+                      'Herbal Tracker+ $kAppVersion',
+                      style: TextStyle(
+                        fontFamily: AppType.sans,
+                        fontSize: 12,
+                        color: context.c.textTertiary,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -228,24 +215,104 @@ class _ManageScreenState extends State<ManageScreen> {
     );
   }
 
-  Widget _buildSectionHeader(String title, IconData icon) {
+  /// Quiet section label: sentence-case grey text, no rule, no tracked caps.
+  Widget _buildSectionHeader(String title) {
     final c = context.c;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: c.textTertiary),
-          const SizedBox(width: 8),
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: c.textTertiary,
-              letterSpacing: 0.5,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontFamily: AppType.sans,
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+          color: c.textTertiary,
+          letterSpacing: 0,
+        ),
+      ),
+    );
+  }
+
+  /// The one quiet trailing mark for rows that navigate or open elsewhere:
+  /// an 18dp chevron (or external-link glyph) in tertiary ink at 0.7 alpha.
+  Widget _trailingIcon(IconData icon) =>
+      Icon(icon, size: 18, color: context.c.textTertiary.withValues(alpha: 0.7));
+
+  /// Persistent calm notice shown when the provider reports load warnings.
+  /// Border-only caution styling — no alert icon stack, no dismiss.
+  Widget _buildLoadWarnings(KratomProvider provider) {
+    final c = context.c;
+    return Padding(
+      key: const Key('manage-load-warnings'),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: c.surfaceRaised,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: c.caution.withValues(alpha: 0.5)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Some saved data could not be loaded',
+              style: TextStyle(
+                fontFamily: AppType.sans,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: c.textPrimary,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 6),
+            Text(
+              'Your other data is intact. Make a backup now, or restore one '
+              'if something is missing.',
+              style: TextStyle(
+                fontFamily: AppType.sans,
+                fontSize: 14,
+                color: c.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            for (final warning in provider.loadWarnings)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  '– $warning',
+                  style: TextStyle(
+                    fontFamily: AppType.sans,
+                    fontSize: 13,
+                    color: c.textSecondary,
+                  ),
+                ),
+              ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(0, 48),
+                    ),
+                    onPressed: () => _createBackup(context, provider),
+                    child: const Text('Create backup'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextButton(
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(0, 48),
+                    ),
+                    onPressed: () => _restoreBackup(context, provider),
+                    child: const Text('Restore backup'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -253,7 +320,7 @@ class _ManageScreenState extends State<ManageScreen> {
   Widget _panel({required Widget child}) {
     final c = context.c;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Material(
         color: c.surfaceRaised,
         shape: RoundedRectangleBorder(
@@ -267,63 +334,56 @@ class _ManageScreenState extends State<ManageScreen> {
   }
 
   Widget _buildProfileCard(BuildContext context) {
-    return _panel(
-      child: ListTile(
-        leading: const Icon(Icons.person_outline),
-        title: const Text('Profile'),
-        subtitle: const Text('Set the name shown in the app'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => showModalBottomSheet<void>(
-          context: context,
-          isScrollControlled: true,
-          backgroundColor: Colors.transparent,
-          builder: (_) => const EditProfileSheet(),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildThemeSettings(BuildContext context) {
+    final c = context.c;
     return _panel(
       child: Column(
-        children: [
-          Consumer<ThemeProvider>(
-            builder: (context, themeProvider, child) {
-              return ListTile(
-                leading: const Icon(Icons.brightness_6_outlined),
-                title: const Text('Dark Mode'),
-                subtitle: const Text('Enable dark theme'),
-                trailing: Switch(
-                  value: themeProvider.isDarkMode,
-                  onChanged: (value) {
-                    themeProvider.toggleTheme();
-                  },
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNotificationSettings(
-    BuildContext context,
-    KratomProvider provider,
-  ) {
-    return _panel(
-      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ListTile(
-            leading: Icon(Icons.notifications_outlined),
-            title: Text('Dosage Reminders'),
-            subtitle: Text(
-              'Currently not implemented. We aim to provide tracking tools without encouraging unnecessary usage.',
-              style: TextStyle(fontSize: 13),
+            title: const Text('Profile'),
+            trailing: _trailingIcon(Icons.chevron_right),
+            onTap: () => showAppSheet<void>(
+              context,
+              builder: (_) => const EditProfileSheet(),
             ),
-            trailing: Switch(
-              value: false,
-              onChanged: null, // Disabled switch
+          ),
+          Divider(height: 1, color: c.hairline),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Appearance'),
+                const SizedBox(height: 8),
+                Consumer<ThemeProvider>(
+                  builder: (context, theme, _) => Container(
+                    height: 48,
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: c.surfaceSunken,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        for (final mode in ThemeMode.values)
+                          Expanded(
+                            child: _AppearanceSegment(
+                              label: switch (mode) {
+                                ThemeMode.system => 'System',
+                                ThemeMode.light => 'Light',
+                                ThemeMode.dark => 'Dark',
+                              },
+                              selected: theme.themeMode == mode,
+                              onTap: () => context
+                                  .read<ThemeProvider>()
+                                  .setThemeMode(mode),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -337,18 +397,14 @@ class _ManageScreenState extends State<ManageScreen> {
       child: Column(
         children: [
           ListTile(
-            leading: const Icon(Icons.upload_outlined),
-            title: const Text('Create Backup'),
-            subtitle: const Text('Export your data as JSON file'),
-            trailing: const Icon(Icons.chevron_right),
+            title: const Text('Create backup'),
+            trailing: _trailingIcon(Icons.chevron_right),
             onTap: () => _createBackup(context, provider),
           ),
           Divider(height: 1, color: hairline),
           ListTile(
-            leading: const Icon(Icons.download_outlined),
-            title: const Text('Restore Backup'),
-            subtitle: const Text('Import data from backup file'),
-            trailing: const Icon(Icons.chevron_right),
+            title: const Text('Restore backup'),
+            trailing: _trailingIcon(Icons.chevron_right),
             onTap: () => _restoreBackup(context, provider),
           ),
         ],
@@ -365,13 +421,11 @@ class _ManageScreenState extends State<ManageScreen> {
       child: Column(
         children: [
           ListTile(
-            leading: Icon(Icons.delete_outline, color: caution),
             title: Text(
-              'Clear All Data',
+              'Clear all data',
               style: TextStyle(color: caution),
             ),
-            subtitle: const Text('Delete all tracked data'),
-            trailing: Icon(Icons.chevron_right, color: caution),
+            trailing: _trailingIcon(Icons.chevron_right),
             onTap: () => _showClearDataDialog(context, provider),
           ),
         ],
@@ -416,16 +470,10 @@ class _ManageScreenState extends State<ManageScreen> {
     return _panel(
       child: Column(
         children: [
-          const ListTile(
-            leading: Icon(Icons.info_outline),
-            title: Text('Version'),
-            subtitle: Text(kAppVersion),
-          ),
-          Divider(height: 1, color: c.hairline),
+          
           ListTile(
-            leading: const Icon(Icons.privacy_tip_outlined),
-            title: const Text('Privacy Policy'),
-            trailing: const Icon(Icons.chevron_right),
+            title: const Text('Privacy policy'),
+            trailing: _trailingIcon(Icons.chevron_right),
             onTap: () {
               Navigator.push(
                 context,
@@ -437,9 +485,8 @@ class _ManageScreenState extends State<ManageScreen> {
           ),
           Divider(height: 1, color: c.hairline),
           ListTile(
-            leading: const Icon(Icons.description_outlined),
-            title: const Text('Terms of Service'),
-            trailing: const Icon(Icons.chevron_right),
+            title: const Text('Terms of service'),
+            trailing: _trailingIcon(Icons.chevron_right),
             onTap: () {
               Navigator.push(
                 context,
@@ -451,13 +498,8 @@ class _ManageScreenState extends State<ManageScreen> {
           ),
           Divider(height: 1, color: c.hairline),
           ListTile(
-            leading: Icon(
-              Icons.favorite_outline,
-              color: c.accent,
-            ),
-            title: const Text('Support Development'),
-            subtitle: const Text('Buy me a coffee if you find the app useful'),
-            trailing: const Icon(Icons.open_in_new),
+            title: const Text('Support development'),
+            trailing: _trailingIcon(Icons.open_in_new),
             onTap: () => _openSupportLink(context),
           ),
         ],
@@ -489,5 +531,54 @@ class _ManageScreenState extends State<ManageScreen> {
         ),
       );
     }
+  }
+}
+
+/// One segment of the Appearance control: transparent on the sunken track,
+/// a raised pill (surface + hairline) when selected.
+class _AppearanceSegment extends StatelessWidget {
+  const _AppearanceSegment({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            height: double.infinity,
+            decoration: selected
+                ? BoxDecoration(
+                    color: c.surfaceRaised,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: c.hairline),
+                  )
+                : null,
+            alignment: Alignment.center,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: selected ? c.textPrimary : c.textSecondary,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

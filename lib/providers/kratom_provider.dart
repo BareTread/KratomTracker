@@ -11,6 +11,7 @@ import '../domain/strain_usage.dart';
 import '../models/dosage.dart';
 import '../models/settings.dart';
 import '../models/strain.dart';
+import '../widgets/strain_mark.dart';
 
 enum ImportMode { replace, merge }
 
@@ -35,15 +36,18 @@ class KratomProvider with ChangeNotifier {
   final Uuid _uuid = const Uuid();
   List<Strain> _strains = [];
   List<Dosage> _dosages = [];
-  UserSettings _settings = const UserSettings(
-    enableNotifications: false,
-    toleranceBreakInterval: 7,
-  );
+  UserSettings _settings = const UserSettings();
   DateTime _selectedDate = DateTime.now();
   String? _userName;
   bool _isReady = false;
   int _lastMutationStamp = 0;
   Future<void> _writeChain = Future<void>.value();
+  List<String> _loadWarnings = const [];
+
+  /// Damaged raw values found at load whose canonical key a later save
+  /// would rewrite (key -> raw bytes). The next write must quarantine each
+  /// value first or fail, so a save can never silently drop damaged data.
+  final Map<String, String> _pendingQuarantine = {};
   final Map<DateTime, double> _dailyTotalCache = {};
   List<StrainUsage>? _strainUsageCache;
   DateTime? _strainUsageCacheDay;
@@ -63,6 +67,12 @@ class KratomProvider with ChangeNotifier {
   String? get userName => _userName;
   DateTime get selectedDate => _selectedDate;
   int get lastMutationStamp => _lastMutationStamp;
+
+  /// Problems found while loading persisted state — corrupt records,
+  /// quarantined data, or damage an interrupted save's recovery had to
+  /// preserve before overwriting it. Every entry describes real evidence
+  /// left on disk; nothing is rewritten silently.
+  List<String> get loadWarnings => _loadWarnings;
 
   Strain? getStrain(String id) {
     for (final strain in _strains) {
@@ -130,7 +140,10 @@ class KratomProvider with ChangeNotifier {
             name: name.trim(),
             code: code.trim(),
             color: color,
-            icon: icon,
+            // Store the canonical LeafShape name — the same value
+            // Strain.fromJson produces on read — so an export reproduces
+            // stored data verbatim instead of a legacy alias.
+            icon: resolveLeafShape(icon, code.trim()).name,
             inStock: inStock,
           ),
         ];
@@ -159,11 +172,12 @@ class KratomProvider with ChangeNotifier {
             icon != null && icon.trim().isEmpty) {
           throw ArgumentError('Strain name, code, and icon must not be empty');
         }
+        final nextCode = code?.trim() ?? _strains[index].code;
         final updated = _strains[index].copyWith(
           name: name?.trim(),
           code: code?.trim(),
           color: color,
-          icon: icon,
+          icon: icon == null ? null : resolveLeafShape(icon, nextCode).name,
           inStock: inStock,
         );
         _strains = List<Strain>.of(_strains)..[index] = updated;
@@ -320,8 +334,20 @@ class KratomProvider with ChangeNotifier {
     final result = parseBackup(jsonText);
     switch (result) {
       case BackupOk(:final payload, :final summary):
-        _prepareImport(payload, mode);
-        return summary;
+        final plan = _prepareImport(payload, mode);
+        return plan.previewWarnings.isEmpty
+            ? summary
+            : BackupSummary(
+                strainCount: summary.strainCount,
+                dosageCount: summary.dosageCount,
+                earliestDose: summary.earliestDose,
+                latestDose: summary.latestDose,
+                totalGrams: summary.totalGrams,
+                warnings: List.unmodifiable([
+                  ...summary.warnings,
+                  ...plan.previewWarnings,
+                ]),
+              );
       case BackupError(:final message, :final details):
         throw FormatException([message, ...details].join('\n'));
     }
@@ -344,11 +370,9 @@ class KratomProvider with ChangeNotifier {
     );
   }
 
+
   Future<void> clearAllData() {
-    const settings = UserSettings(
-      enableNotifications: false,
-      toleranceBreakInterval: 7,
-    );
+    const settings = UserSettings();
     return _persistMutation(
       mutate: () {
         _strains = [];
@@ -361,30 +385,35 @@ class KratomProvider with ChangeNotifier {
     );
   }
 
-  Future<void> refreshData() async {
-    await _writeChain;
-    await _loadData();
-    _notifyMutation();
+  Future<void> refreshData() {
+    // Serialized on the same chain as writes: a reload must never overlap a
+    // queued mutation, or it could read pre-mutation storage and assign the
+    // stale generation over freshly mutated memory.
+    return _enqueueWrite(() async {
+      await _loadData();
+      _notifyMutation();
+    });
   }
 
   Future<void> _loadData() async {
-    final generation = await _resolvePendingTransaction(reload: true);
-    final strainsEncoded = generation == null
-        ? _prefs.getString(_strainsKey)
-        : generation[_strainsKey];
-    final dosagesEncoded = generation == null
-        ? _prefs.getString(_dosagesKey)
-        : generation[_dosagesKey];
+    final warnings = <String>[];
+    _pendingQuarantine.clear();
+    final recovery = await _resolvePendingTransaction(reload: true);
+    final generation = recovery.generation;
+    final generationOrPrefs = generation ??
+        {
+          for (final key in _transactionGenerationKeys)
+            key: _prefs.getString(key),
+        };
+    final strainsEncoded = generationOrPrefs[_strainsKey];
+    final dosagesEncoded = generationOrPrefs[_dosagesKey];
     final strains = _decodeList(strainsEncoded, Strain.fromJson);
     final dosages = _decodeList(dosagesEncoded, Dosage.fromJson);
     final seenStrainIds = <String>{};
     final validStrains = <Strain>[];
     var strainsCorrupt = strains.hadMalformed;
     for (final strain in strains.values) {
-      if (strain.id.isEmpty ||
-          strain.name.isEmpty ||
-          strain.code.isEmpty ||
-          !seenStrainIds.add(strain.id)) {
+      if (!_isReadableStrainRow(strain, seenStrainIds)) {
         strainsCorrupt = true;
         continue;
       }
@@ -393,45 +422,92 @@ class KratomProvider with ChangeNotifier {
     final strainIds = seenStrainIds;
     final seenDoseIds = <String>{};
     final validDosages = <Dosage>[];
+    final missingStrainIds = <String>{};
     var dosagesCorrupt = dosages.hadMalformed;
     for (final dose in dosages.values) {
-      if (dose.id.isEmpty ||
-          dose.strainId.isEmpty ||
-          !dose.amount.isFinite ||
-          dose.amount <= 0 ||
-          dose.amount > 1000 ||
-          !strainIds.contains(dose.strainId) ||
-          !seenDoseIds.add(dose.id)) {
+      if (!_isReadableDosageRow(dose, seenDoseIds)) {
         dosagesCorrupt = true;
         continue;
       }
+      if (!strainIds.contains(dose.strainId)) {
+        // The strain row is missing or unreadable. Keep the dose under a
+        // placeholder carrying the original strain ID rather than dropping
+        // real history.
+        missingStrainIds.add(dose.strainId);
+      }
       validDosages.add(dose);
     }
-    await _quarantineCorrupt(_strainsKey, strainsEncoded, strainsCorrupt);
-    await _quarantineCorrupt(_dosagesKey, dosagesEncoded, dosagesCorrupt);
+    for (final id in missingStrainIds) {
+      validStrains.add(_placeholderStrain(id));
+    }
+    if (strainsCorrupt && strainsEncoded != null) {
+      _pendingQuarantine[_strainsKey] = strainsEncoded;
+    }
+    if (dosagesCorrupt && dosagesEncoded != null) {
+      _pendingQuarantine[_dosagesKey] = dosagesEncoded;
+    }
+    if (strainsCorrupt || dosagesCorrupt) {
+      warnings.add(
+        'Some saved records were damaged and were preserved in place; '
+        'unaffected data was loaded normally.',
+      );
+    }
+    if (missingStrainIds.isNotEmpty) {
+      warnings.add(
+        'Some doses referenced a strain that could not be loaded and were '
+        'kept under a placeholder.',
+      );
+    }
     _strains = validStrains;
     _dosages = validDosages;
-    final settingsJson = generation == null
-        ? _prefs.getString(_settingsKey)
-        : generation[_settingsKey];
+    final settingsJson = generationOrPrefs[_settingsKey];
     if (settingsJson != null) {
+      var settingsLoaded = false;
       try {
         final decoded = jsonDecode(settingsJson);
         if (decoded is Map) {
           _settings = UserSettings.fromJson(
             decoded.map((key, value) => MapEntry(key.toString(), value)),
           );
+          settingsLoaded = true;
         }
       } catch (error) {
         debugPrint('Could not load settings: $error');
       }
+      if (!settingsLoaded) {
+        _pendingQuarantine[_settingsKey] = settingsJson;
+        warnings.add(
+          'Saved settings were damaged and defaults are in use; the damaged '
+          'copy was preserved.',
+        );
+      }
     }
-    _userName = generation == null
-        ? _prefs.getString(_userNameKey)
-        : generation[_userNameKey];
+    if (recovery.encounteredDamaged) {
+      warnings.add(
+        'An interrupted save was rolled back; damaged data found '
+        'underneath was preserved.',
+      );
+    }
+    _userName = generationOrPrefs[_userNameKey];
+    // Best effort at load: a failure here keeps the entry pending, and the
+    // next save refuses to overwrite the damaged raw until it succeeds.
+    try {
+      await _flushQuarantine();
+    } catch (error) {
+      debugPrint('Could not quarantine damaged data yet: $error');
+    }
+    _loadWarnings = List.unmodifiable(warnings);
     _invalidateComputedData();
   }
 
+  /// Copies every pending damaged value to quarantine with checked writes.
+  /// Throws while any copy is not durably stored.
+  Future<void> _flushQuarantine() async {
+    for (final key in _pendingQuarantine.keys.toList()) {
+      await _quarantineCorrupt(key, _pendingQuarantine[key], true);
+      _pendingQuarantine.remove(key);
+    }
+  }
 
   _DecodedList<T> _decodeList<T>(
     String? encoded,
@@ -464,15 +540,36 @@ class KratomProvider with ChangeNotifier {
     }
   }
 
+  /// Preserves a corrupt raw value under a quarantine key. The base key is
+  /// used first; when it already holds DIFFERENT damage, the new value goes
+  /// to the next free numbered slot — first-wins must never silently lose a
+  /// later corrupt source that a routine save would otherwise overwrite.
   Future<void> _quarantineCorrupt(
     String key,
     String? encoded,
     bool shouldQuarantine,
   ) async {
     if (!shouldQuarantine || encoded == null) return;
-    final quarantineKey = '$_quarantinePrefix$key';
-    if (_prefs.getString(quarantineKey) == null) {
-      await _prefs.setString(quarantineKey, encoded);
+    final base = '$_quarantinePrefix$key';
+    var candidate = base;
+    for (var slot = 2; ; slot++) {
+      final held = _prefs.getString(candidate);
+      if (held == null) {
+        try {
+          await _requireWriteSucceeded(
+            _prefs.setString(candidate, encoded),
+            candidate,
+          );
+        } catch (_) {
+          // The preferences cache already holds the value even though the
+          // platform write failed; resync so a retry is not skipped as done.
+          await _prefs.reload();
+          rethrow;
+        }
+        return;
+      }
+      if (held == encoded) return;
+      candidate = '$base.$slot';
     }
   }
 
@@ -480,15 +577,21 @@ class KratomProvider with ChangeNotifier {
     required bool Function() mutate,
   }) {
     return _enqueueWrite(() async {
-      final pending = await _resolvePendingTransaction(reload: true);
+      final recovery = await _resolvePendingTransaction(reload: true);
       final previousStrains = _strains;
       final previousDosages = _dosages;
       final previousSettings = _settings;
       final previousUserName = _userName;
-      final previousPersisted = pending ?? _readCanonicalGeneration();
+      final previousPersisted =
+          recovery.generation ?? _readCanonicalGeneration();
 
       try {
         if (!mutate()) return;
+        // The canonical values get rewritten below: every damaged raw whose
+        // only copy sits in one of those keys must be durably quarantined
+        // first, or this save fails and rolls back.
+        await _quarantineUnreadableCanonical();
+        await _flushQuarantine();
         await _runTransaction(previousPersisted, _currentGeneration());
       } catch (error, stackTrace) {
         _strains = previousStrains;
@@ -520,6 +623,109 @@ class KratomProvider with ChangeNotifier {
         _userNameKey: _userName,
       };
 
+  /// Stages any unreadable canonical value for quarantine. Called before a
+  /// generation write overwrites the canonical keys, so damage that appeared
+  /// since the last load is preserved exactly once instead of erased.
+  Future<void> _quarantineUnreadableCanonical() async {
+    for (final key in _transactionGenerationKeys) {
+      final stored = _prefs.getString(key);
+      if (stored != null &&
+          stored != _pendingQuarantine[key] &&
+          _isUnreadableStoredValue(key, stored)) {
+        _pendingQuarantine[key] = stored;
+      }
+    }
+  }
+
+  /// The row checks [_loadData] applies, kept as shared predicates so an
+  /// "unreadable" stored value means exactly what load would flag damaged.
+  static bool _isReadableStrainRow(Strain strain, Set<String> seenIds) =>
+      strain.id.isNotEmpty &&
+      strain.name.isNotEmpty &&
+      strain.code.isNotEmpty &&
+      seenIds.add(strain.id);
+
+  static bool _isReadableDosageRow(Dosage dose, Set<String> seenIds) =>
+      dose.id.isNotEmpty &&
+      dose.strainId.isNotEmpty &&
+      dose.amount.isFinite &&
+      dose.amount > 0 &&
+      dose.amount <= 1000 &&
+      seenIds.add(dose.id);
+
+  /// Row-level unreadability: the collection parses, every row decodes, and
+  /// each row passes the validity checks load applies — including unique,
+  /// non-empty IDs. A dose whose strain is missing is still readable; load
+  /// keeps it under a placeholder.
+  static bool _decodedRowsUnreadable<T>(
+    Object? decoded,
+    T Function(Map<String, dynamic>) decode,
+    bool Function(T, Set<String>) isReadableRow,
+  ) {
+    if (decoded is! List) return true;
+    final seenIds = <String>{};
+    for (final item in decoded) {
+      if (item is! Map) return true;
+      try {
+        final row = decode(item.map((k, v) => MapEntry(k.toString(), v)));
+        if (!isReadableRow(row, seenIds)) return true;
+      } catch (_) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _isUnreadableStoredValue(String key, String value) {
+    // user_name is stored raw — every string is a valid value.
+    if (key != _strainsKey && key != _dosagesKey && key != _settingsKey) {
+      return false;
+    }
+    try {
+      final decoded = jsonDecode(value);
+      switch (key) {
+        case _strainsKey:
+          return _decodedRowsUnreadable<Strain>(
+            decoded,
+            Strain.fromJson,
+            _isReadableStrainRow,
+          );
+        case _dosagesKey:
+          return _decodedRowsUnreadable<Dosage>(
+            decoded,
+            Dosage.fromJson,
+            _isReadableDosageRow,
+          );
+        default:
+          if (decoded is! Map) return true;
+          try {
+            UserSettings.fromJson(
+              decoded.map((k, v) => MapEntry(k.toString(), v)),
+            );
+            return false;
+          } catch (_) {
+            return true;
+          }
+      }
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// A journal recovery that overwrites a canonical key carrying unreadable
+  /// raw data must first stage that raw for quarantine — recovery otherwise
+  /// erases the only copy of damaged bytes it never parses.
+  void _preserveDamagedBeforeOverwrite(Map<String, String?> incoming) {
+    for (final key in _transactionGenerationKeys) {
+      final stored = _prefs.getString(key);
+      if (stored != null &&
+          stored != incoming[key] &&
+          _isUnreadableStoredValue(key, stored)) {
+        _pendingQuarantine[key] = stored;
+      }
+    }
+  }
+
   Future<void> _runTransaction(
     Map<String, String?> previous,
     Map<String, String?> target,
@@ -550,18 +756,37 @@ class KratomProvider with ChangeNotifier {
     }
   }
 
-  Future<Map<String, String?>?> _resolvePendingTransaction({
+  /// `encounteredDamaged` is true when a prepared-journal recovery found
+  /// damaged canonical bytes it must preserve before restoring the recorded
+  /// generation — evidence produced by THIS recovery, so the load that ran
+  /// it warns even though the recovered rows themselves decode fine. It is
+  /// set when the damage is discovered, before the quarantine copy runs:
+  /// whether or not that copy lands, the damaged raw is preserved (copied
+  /// before repair, or left in place while the journal still waits).
+  Future<({Map<String, String?>? generation, bool encounteredDamaged})>
+      _resolvePendingTransaction({
     bool reload = false,
   }) async {
+    var encounteredDamaged = false;
     if (reload) await _prefs.reload();
     final encoded = _prefs.getString(_transactionKey);
-    if (encoded == null) return null;
+    if (encoded == null) {
+      return (generation: null, encounteredDamaged: false);
+    }
     final transaction = _Transaction.decode(encoded);
-    if (transaction == null) return null;
+    if (transaction == null) {
+      return (generation: null, encounteredDamaged: false);
+    }
     final generation = transaction.targetForRecovery;
     var canClearJournal = true;
     if (transaction.phase == _TransactionPhase.prepared) {
       try {
+        _preserveDamagedBeforeOverwrite(generation);
+        // Damage discovered by this recovery is evidence now — even if the
+        // quarantine copy fails and the raw survives only in place, this
+        // load must not report a clean state.
+        encounteredDamaged = _pendingQuarantine.isNotEmpty;
+        await _flushQuarantine();
         await _writeGeneration(generation);
       } catch (_) {
         canClearJournal = false;
@@ -580,7 +805,7 @@ class KratomProvider with ChangeNotifier {
         // a partially written canonical set.
       }
     }
-    return generation;
+    return (generation: generation, encounteredDamaged: encounteredDamaged);
   }
 
   Future<void> _writeTransaction(_Transaction transaction) {
@@ -600,6 +825,7 @@ class KratomProvider with ChangeNotifier {
       }
     }
   }
+
 
   Future<void> _requireWriteSucceeded(Future<bool> result, String key) async {
     if (!await result) {
@@ -634,31 +860,52 @@ class KratomProvider with ChangeNotifier {
   _ImportPlan _prepareImport(BackupPayload p, ImportMode mode) {
     _validatePayload(p);
 
-    // Bare dose lists have no strain collection. Replace cannot reconstruct
-    // strains from the file, so keep local strains when they can attach every
-    // dose; otherwise reject with the same error preview uses.
-    final legacyDoseOnly =
-        p.strains.isEmpty && p.orphanedDosages.isEmpty;
-    final nextStrains = mode == ImportMode.replace
-        ? List<Strain>.of(legacyDoseOnly ? _strains : p.strains)
-        : _mergeById(_strains, p.strains, (strain) => strain.id);
-    final strainIds = nextStrains.map((strain) => strain.id).toSet();
+    // Replace must never guess: a backup missing explicit `strains` or
+    // `dosages` collections (absent, null, or not a list) cannot express
+    // "replace everything" and is rejected outright. Explicit lists —
+    // including empty ones — are honoured. Merge is additive, so a bare
+    // legacy dose list is still allowed to attach to local strains.
+    if (mode == ImportMode.replace &&
+        !(p.hasStrainCollection && p.hasDosageCollection)) {
+      throw ArgumentError(
+        'Replace requires a backup with explicit strains and dosages lists',
+      );
+    }
     final importedDosages = <Dosage>[
       ...p.dosages,
-      if (mode == ImportMode.merge)
-        ...p.orphanedDosages.where(
-          (dose) => strainIds.contains(dose.strainId),
-        ),
+      ...p.orphanedDosages,
     ];
-    final droppedOrphans = mode == ImportMode.replace
-        ? p.orphanedDosages
-        : p.orphanedDosages.where(
-            (dose) => !strainIds.contains(dose.strainId),
-          );
-    if (droppedOrphans.isNotEmpty ||
-        importedDosages.any((dose) => !strainIds.contains(dose.strainId))) {
-      throw ArgumentError('Imported dosage data references an unknown strain');
+    // Merge fills gaps only: existing strain IDs win — except a local
+    // placeholder, which an incoming real strain with the same ID
+    // legitimately repairs.
+    final nextStrains = mode == ImportMode.replace
+        ? List<Strain>.of(p.strains)
+        : _mergeStrains(_strains, p.strains);
+    final strainIds = nextStrains.map((strain) => strain.id).toSet();
+    final missingStrainIds = <String>{};
+    for (final dose in importedDosages) {
+      if (!strainIds.contains(dose.strainId)) {
+        missingStrainIds.add(dose.strainId);
+      }
     }
+    for (final id in missingStrainIds) {
+      nextStrains.add(_placeholderStrain(id));
+    }
+    // Preview boundary: parseBackup cannot see local strain IDs, so warn
+    // here for doses that will restore under a placeholder WITHOUT already
+    // being reported as orphaned against the backup's own strain list.
+    final orphanStrainIds =
+        p.orphanedDosages.map((dose) => dose.strainId).toSet();
+    final unreported = missingStrainIds.difference(orphanStrainIds);
+    final unreportedDoseCount = importedDosages
+        .where((dose) => unreported.contains(dose.strainId))
+        .length;
+    final previewWarnings = <String>[
+      if (unreportedDoseCount > 0)
+        '$unreportedDoseCount '
+        '${unreportedDoseCount == 1 ? 'dose' : 'doses'} will restore under '
+        'a placeholder because the strain is missing from the backup',
+    ];
     _validateImportedDosages(importedDosages);
     return _ImportPlan(
       strains: nextStrains,
@@ -667,7 +914,38 @@ class KratomProvider with ChangeNotifier {
           : _mergeById(_dosages, importedDosages, (dose) => dose.id),
       settings: mode == ImportMode.merge ? _settings : p.settings ?? _settings,
       userName: mode == ImportMode.merge ? _userName : p.userName ?? _userName,
+      previewWarnings: previewWarnings,
     );
+  }
+
+  /// A neutral, deterministic stand-in for a strain the data references but
+  /// no longer describes. The original strain ID is kept so records stay
+  /// linked; `inStock` is false so the placeholder reads as history, not an
+  /// available strain. Merge compares against this exact shape to detect
+  /// placeholders, so keep it stable.
+  Strain _placeholderStrain(String missingId) => Strain(
+        id: missingId,
+        name: 'Missing strain',
+        code: 'LOST',
+        color: 0xFF9E9E9E,
+        icon: 'oval',
+        inStock: false,
+      );
+
+  /// Union by ID where the local row wins — unless the local row is exactly
+  /// the placeholder a damaged load or earlier import created for that ID,
+  /// in which case the incoming real strain replaces it.
+  List<Strain> _mergeStrains(List<Strain> existing, List<Strain> incoming) {
+    final merged = List<Strain>.of(existing);
+    for (final strain in incoming) {
+      final index = merged.indexWhere((local) => local.id == strain.id);
+      if (index < 0) {
+        merged.add(strain);
+      } else if (merged[index] == _placeholderStrain(strain.id)) {
+        merged[index] = strain;
+      }
+    }
+    return merged;
   }
 
   void _validatePayload(BackupPayload payload) {
@@ -780,11 +1058,16 @@ class _ImportPlan {
   final UserSettings settings;
   final String? userName;
 
+  /// Warnings the parser could not know about because they depend on local
+  /// strain IDs — surfaced by [previewImport] only; commit ignores them.
+  final List<String> previewWarnings;
+
   const _ImportPlan({
     required this.strains,
     required this.dosages,
     required this.settings,
     required this.userName,
+    this.previewWarnings = const [],
   });
 }
 

@@ -33,11 +33,13 @@ class TrajectoryChart extends StatelessWidget {
             days: bundle.days,
             grams: bundle.dailyGrams,
             trend: bundle.trend,
-            day: c.textTertiary,
-            lineFrom: c.accentMuted,
-            lineTo: c.accent,
+            day: c.textSecondary,
+            // Ink, not cyan: cyan is reserved for "now" and "act".
+            lineFrom: c.textTertiary,
+            lineTo: c.textPrimary,
             axis: c.hairline,
             labelColor: c.textTertiary,
+            medianColor: c.textSecondary,
           ),
         ),
       ),
@@ -55,6 +57,7 @@ class _TrajectoryPainter extends CustomPainter {
     required this.lineTo,
     required this.axis,
     required this.labelColor,
+    required this.medianColor,
   });
 
   final List<DateTime> days;
@@ -65,9 +68,10 @@ class _TrajectoryPainter extends CustomPainter {
   final Color lineTo;
   final Color axis;
   final Color labelColor;
+  final Color medianColor;
 
   static const double _topPad = 15;
-  static const double _bottomPad = 18;
+  static const double _bottomPad = 29;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -103,13 +107,6 @@ class _TrajectoryPainter extends CustomPainter {
         ..strokeWidth = 1
         ..style = PaintingStyle.stroke,
     );
-    canvas.drawLine(
-      Offset(0, plotBottom),
-      Offset(size.width, plotBottom),
-      Paint()
-        ..color = axis
-        ..strokeWidth = 1,
-    );
 
     // One day, one stroke — until the days are thinner than the strokes. Past
     // that, drawing them all just stacks translucent ink on the same pixel
@@ -121,8 +118,11 @@ class _TrajectoryPainter extends CustomPainter {
         ? [for (var i = 0; i < grams.length; i++) (x: x(i), value: grams[i])]
         : _bucket(grams, size.width, minStep);
     final barWidth = (step * 0.5).clamp(1.0, 3.5);
+    // Days need to read as ground against the ink-dark surface: tertiary at
+    // the old 0.36 alpha vanished in dark theme. Secondary text at half
+    // alpha keeps them plainly behind the accent vine without tinting them.
     final barPaint = Paint()
-      ..color = day.withValues(alpha: 0.36)
+      ..color = day.withValues(alpha: 0.5)
       ..strokeWidth = barWidth
       ..strokeCap = barWidth >= 2 ? StrokeCap.round : StrokeCap.butt
       ..isAntiAlias = true;
@@ -134,6 +134,17 @@ class _TrajectoryPainter extends CustomPainter {
         barPaint,
       );
     }
+
+    // Zero baseline on top of the bars' feet: they end exactly on it and
+    // would bury it if it were painted under them. 1px hairline reads
+    // stronger than the half-alpha bars, so the "0" has something to sit on.
+    canvas.drawLine(
+      Offset(0, plotBottom),
+      Offset(size.width, plotBottom),
+      Paint()
+        ..color = axis
+        ..strokeWidth = 1,
+    );
 
     if (trend.isNotEmpty) {
       final points = [
@@ -182,30 +193,66 @@ class _TrajectoryPainter extends CustomPainter {
       );
     }
 
+    // The scale explains itself: ceiling over its dashed line, the solid
+    // hairline as zero (a "0" glyph there collided with the first bar), and
+    // the vine's level named at the top-right —
+    // out of the plot, so no bar or line ever crosses a glyph.
     _text(canvas, '${_trim(ceiling)}g', Offset(0, y(ceiling) - 14), false);
+    if (trend.isNotEmpty && trend.last > 0) {
+      _text(
+        canvas,
+        'median ${_trim(trend.last)}g',
+        Offset(size.width, y(ceiling) - 14),
+        true,
+        color: medianColor,
+        fontSize: 11,
+      );
+    }
     final format = DateFormat('MMM d');
-    _text(canvas, format.format(days.first), Offset(0, plotBottom + 4), false);
+    _text(
+      canvas,
+      format.format(days.first),
+      Offset(0, plotBottom + 15),
+      false,
+    );
     if (days.length > 1) {
       _text(
         canvas,
         format.format(days.last),
-        Offset(size.width, plotBottom + 4),
+        Offset(size.width, plotBottom + 15),
         true,
       );
     }
   }
 
-  void _text(Canvas canvas, String value, Offset at, bool rightAlign) {
+  void _text(
+    Canvas canvas,
+    String value,
+    Offset at,
+    bool rightAlign, {
+    Color? color,
+    double fontSize = 10.5,
+    bool vCenter = false,
+  }) {
     final painter = TextPainter(
       text: TextSpan(
         text: value,
-        style: TextStyle(color: labelColor, fontSize: 10, height: 1.2),
+        style: TextStyle(
+          fontFamily: AppType.sans,
+          color: color ?? labelColor,
+          fontSize: fontSize,
+          fontWeight: FontWeight.w500,
+          height: 1.2,
+        ),
       ),
       textDirection: ui.TextDirection.ltr,
     )..layout();
     painter.paint(
       canvas,
-      rightAlign ? Offset(at.dx - painter.width, at.dy) : at,
+      Offset(
+        rightAlign ? at.dx - painter.width : at.dx,
+        vCenter ? at.dy - painter.height / 2 : at.dy,
+      ),
     );
   }
 
@@ -218,7 +265,8 @@ class _TrajectoryPainter extends CustomPainter {
       old.lineFrom != lineFrom ||
       old.lineTo != lineTo ||
       old.axis != axis ||
-      old.labelColor != labelColor;
+      old.labelColor != labelColor ||
+      old.medianColor != medianColor;
 }
 
 /// Collapse a long day series into evenly spaced columns, each carrying the

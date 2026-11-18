@@ -116,6 +116,10 @@ void main() {
     expect(ok.payload.dosages.single.id, 'dose-1');
     expect(ok.payload.orphanedDosages.single.id, 'dose-orphan');
     expect(ok.summary.warnings, isNotEmpty);
+    // The dose is recovered under a placeholder at import — the summary must
+    // not claim it was dropped and must count it as an imported dose.
+    expect(ok.summary.warnings.join('\n'), isNot(contains('dropped')));
+    expect(ok.summary.dosageCount, 2);
   });
 
   test('drops an orphaned effect silently (legacy backups keep effects)', () {
@@ -138,6 +142,66 @@ void main() {
     expect(ok.summary.dosageCount, 1);
   });
 
+
+  test('accepts a valid empty backup with settings and a name', () {
+    // The app must restore its own export of a default/empty provider:
+    // settings and userName are real content even with no records.
+    final result = parseBackup(jsonEncode({
+      'version': 1,
+      'timestamp': '2025-01-01T00:00:00.000',
+      'strains': <dynamic>[],
+      'dosages': <dynamic>[],
+      'settings': {'dailyLimit': 12.5, 'measurementUnit': 'oz'},
+      'userName': 'Alin',
+    }),);
+
+    final ok = result as BackupOk;
+    expect(ok.payload.strains, isEmpty);
+    expect(ok.payload.dosages, isEmpty);
+    expect(ok.payload.settings?.dailyLimit, 12.5);
+    expect(ok.payload.userName, 'Alin');
+    expect(ok.summary.dosageCount, 0);
+  });
+
+  test('still rejects a backup object with no recoverable content', () {
+    for (final garbage in [
+      '{}',
+      jsonEncode({'unrelated': true}),
+      jsonEncode({'version': 1, 'timestamp': '2025-01-01T00:00:00.000'}),
+      '[]',
+      jsonEncode([
+        {'not': 'a dose'},
+      ]),
+      jsonEncode({'strains': 'garbage', 'dosages': 42}),
+    ]) {
+      expect(parseBackup(garbage), isA<BackupError>(), reason: garbage);
+    }
+  });
+
+  test('a malformed strain row keeps the rest of the backup', () {
+    // color = 1e999 decodes to double.infinity (a valid JSON number, not
+    // encodable from Dart); Strain.fromJson's asInt throws on it. One bad
+    // row must not abort the whole backup — the dose referencing the bad
+    // row's id stays on the payload as an orphan.
+    var encoded = jsonEncode(_backup());
+    encoded = encoded.replaceFirst(
+      '"strains":[',
+      '"strains":[{"id":"strain-bad","name":"Broken","code":"BAD",'
+      '"color":1e999,"icon":"Leaf"},',
+    );
+    encoded = encoded.replaceFirst(
+      '"dosages":[',
+      '"dosages":[{"id":"dose-orphan","strainId":"strain-bad","amount":2,'
+      '"timestamp":"2025-01-03T08:00:00.000"},',
+    );
+
+    final ok = parseBackup(encoded) as BackupOk;
+
+    expect(ok.payload.strains.single.id, 'strain-1');
+    expect(ok.payload.dosages.single.id, 'dose-1');
+    expect(ok.payload.orphanedDosages.single.id, 'dose-orphan');
+    expect(ok.summary.warnings.join('\n'), contains('malformed'));
+  });
   test('rejects malformed JSON', () {
     final result = parseBackup('{not json');
 

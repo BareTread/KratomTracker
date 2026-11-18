@@ -132,7 +132,13 @@ class _HoursPainter extends CustomPainter {
       final painter = TextPainter(
         text: TextSpan(
           text: tick.value,
-          style: TextStyle(color: labelColor, fontSize: 10, height: 1.2),
+          style: TextStyle(
+            fontFamily: AppType.sans,
+            color: labelColor,
+            fontSize: 10.5,
+            fontWeight: FontWeight.w500,
+            height: 1.2,
+          ),
         ),
         textDirection: ui.TextDirection.ltr,
       )..layout();

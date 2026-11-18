@@ -5,7 +5,8 @@ import 'package:provider/provider.dart';
 import '../domain/date_utils.dart';
 import '../export/csv_export.dart';
 import '../models/dosage.dart';
-import '../models/strain.dart';
+import '../widgets/sheet_header.dart';
+import '../widgets/strain_mark.dart';
 import '../providers/kratom_provider.dart';
 import '../theme/app_theme.dart';
 import '../widgets/edit_dosage_form.dart';
@@ -15,24 +16,20 @@ class ReportScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.c;
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Dosage History',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
         ),
         actions: [
           Consumer<KratomProvider>(
             builder: (context, provider, _) {
               if (provider.dosages.isEmpty) return const SizedBox.shrink();
               return IconButton(
-                icon: const Icon(Icons.download),
+                icon: Icon(Icons.download, color: c.textSecondary),
                 tooltip: 'Export CSV',
                 onPressed: () => _exportCsv(context, provider),
               );
@@ -40,157 +37,215 @@ class ReportScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: Consumer<KratomProvider>(
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Dosage history',
+              style: AppType.display(size: 30, color: c.textPrimary),
+            ),
+          ),
+          Expanded(
+            child: Consumer<KratomProvider>(
         builder: (context, provider, child) {
           final dosages = provider.dosages;
           if (dosages.isEmpty) {
             return Center(
-              child: Text(
-                'No dosage history yet',
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: context.c.textTertiary,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'No doses logged yet',
+                      style: TextStyle(
+                        fontFamily: AppType.sans,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                        color: c.textPrimary,
+                      ),
                     ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Doses you log on Home appear here, newest first.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: AppType.sans,
+                        color: c.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           }
 
           final groupedDosages = _groupDosagesByDate(dosages);
-
+          final dates = groupedDosages.keys.toList();
           return ListView.builder(
             physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.only(bottom: 24),
-            itemCount: groupedDosages.length,
+            itemCount: dates.length,
             itemBuilder: (context, index) {
-              final date = groupedDosages.keys.elementAt(index);
+              final date = dates[index];
               final dayDosages = groupedDosages[date]!;
-              final totalDayAmount = dayDosages.fold<double>(
-                0,
-                (sum, dosage) => sum + dosage.amount,
+              final total = dayDosages.fold<double>(
+                0, (sum, dosage) => sum + dosage.amount,
               );
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (index == 0 ||
-                      _isNewMonth(
-                        date,
-                        groupedDosages.keys.elementAt(index - 1),
-                      ))
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (index == 0 || _isNewMonth(date, dates[index - 1]))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 28, bottom: 16),
+                        child: Text(
+                          DateFormat('MMMM yyyy').format(date),
+                          style: sectionLabelStyle(context)
+                              .copyWith(color: c.textSecondary, fontSize: 14),
+                        ),
+                      ),
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                      child: Text(
-                        DateFormat('MMMM yyyy').format(date),
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: context.c.textSecondary,
-                              fontWeight: FontWeight.w600,
+                      padding: const EdgeInsets.only(top: 12, bottom: 10),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              DateFormat('EEEE, MMM d').format(date),
+                              style: TextStyle(
+                                fontFamily: AppType.sans,
+                                fontWeight: FontWeight.w600,
+                                color: c.textPrimary,
+                              ),
                             ),
+                          ),
+                          Text(
+                            '${total.toStringAsFixed(1)}g · ${dayDosages.length} ${dayDosages.length == 1 ? 'dose' : 'doses'}',
+                            style: TextStyle(
+                              fontFamily: AppType.sans,
+                              fontSize: 12,
+                              color: c.textTertiary,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 4,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              DateFormat('EEEE, MMM d').format(date),
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            Text(
-                              '${totalDayAmount.toStringAsFixed(1)}g total',
-                              style:
-                                  Theme.of(context).textTheme.bodySmall?.copyWith(
-                                        color: context.c.textSecondary,
-                                      ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        for (final dosage in dayDosages)
-                          _buildDosageCard(context, dosage, provider),
-                      ],
-                    ),
-                  ),
-                ],
+                    for (final dosage in dayDosages)
+                      _buildDosageRow(context, dosage, provider),
+                    const SizedBox(height: 12),
+                  ],
+                ),
               );
             },
           );
         },
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildDosageCard(
+  Widget _buildDosageRow(
     BuildContext context,
     Dosage dosage,
     KratomProvider provider,
   ) {
     final c = context.c;
-    final localTimestamp = dosage.timestamp.toLocal();
-    final strain = provider.getStrain(dosage.strainId) ??
-        const Strain(
-          id: '',
-          name: 'Unknown strain',
-          code: '?',
-          color: 0xFF757575,
-          icon: 'Leaf',
-        );
-
+    final strain = provider.getStrain(dosage.strainId);
+    final strainColor = strain == null
+        ? c.textSecondary
+        : legibleStrainColor(Color(strain.color), Theme.of(context).brightness);
+    final note = dosage.notes?.trim();
+    const figures = [FontFeature.tabularFigures()];
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: c.surfaceRaised,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: c.hairline),
+        border: Border(top: BorderSide(color: c.hairline)),
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
           onTap: () => _showDosageDetails(context, dosage, provider),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                Container(
-                  width: 4,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: Color(strain.color),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        strain.name,
-                        style: Theme.of(context).textTheme.titleMedium,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 76,
+                    child: Text(
+                      DateFormat('h:mm a').format(dosage.timestamp.toLocal()),
+                      style: TextStyle(
+                        fontFamily: AppType.sans,
+                        fontSize: 13,
+                        color: c.textSecondary,
+                        fontFeatures: figures,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        DateFormat('h:mm a').format(localTimestamp),
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: c.textSecondary,
+                    ),
+                  ),
+                  if (strain != null) ...[
+                    StrainMark(
+                      shape: resolveLeafShape(strain.icon, strain.code),
+                      color: strainColor,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Wrap(
+                          spacing: 6,
+                          children: [
+                            if (strain != null)
+                              Text(
+                                strain.code,
+                                style: TextStyle(
+                                  fontFamily: AppType.sans,
+                                  fontWeight: FontWeight.w600,
+                                  color: strainColor,
+                                ),
+                              ),
+                            Text(
+                              strain?.name ?? 'Unknown strain',
+                              style: TextStyle(
+                                fontFamily: AppType.sans,
+                                color: c.textSecondary,
+                              ),
                             ),
-                      ),
-                    ],
+                          ],
+                        ),
+                        if (note != null && note.isNotEmpty)
+                          Text(
+                            note,
+                            style: TextStyle(
+                              fontFamily: AppType.sans,
+                              fontSize: 12,
+                              color: c.textTertiary,
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-                Text(
-                  '${dosage.amount.toStringAsFixed(1)}g',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  Text(
+                    '${dosage.amount.toStringAsFixed(1)}g',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      fontFamily: AppType.sans,
+                      fontWeight: FontWeight.w600,
+                      color: c.textPrimary,
+                      fontFeatures: figures,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -205,11 +260,10 @@ class ReportScreen extends StatelessWidget {
       grouped.putIfAbsent(date, () => []).add(dosage);
     }
     for (final day in grouped.values) {
-      day.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      day.sort((a, b) => b.timestamp.compareTo(a.timestamp));
     }
     return Map.fromEntries(
-      grouped.entries.toList()
-        ..sort((a, b) => b.key.compareTo(a.key)),
+      grouped.entries.toList()..sort((a, b) => b.key.compareTo(a.key)),
     );
   }
 
@@ -223,137 +277,94 @@ class ReportScreen extends StatelessWidget {
   ) {
     final c = context.c;
     final localTimestamp = dosage.timestamp.toLocal();
-    final strain = provider.getStrain(dosage.strainId) ??
-        const Strain(
-          id: '',
-          name: 'Unknown strain',
-          code: '?',
-          color: 0xFF757575,
-          icon: 'Leaf',
-        );
+    final strain = provider.getStrain(dosage.strainId);
+    final name = strain?.name ?? 'Unknown strain';
+    final identity = strain == null ? name : '${strain.code} · $name';
+    final note = dosage.notes?.trim();
 
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: c.surfaceRaised,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-        ),
-        child: SafeArea(
+    showAppSheet<void>(
+      context,
+      builder: (sheetContext) => SafeArea(
+        child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                margin: const EdgeInsets.symmetric(vertical: 8),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: c.hairline,
-                  borderRadius: BorderRadius.circular(2),
-                ),
+              SheetHeader(
+                title: '${dosage.amount.toStringAsFixed(1)}g',
+                subtitle: '$identity · ${DateFormat('EEE d MMM, h:mm a').format(localTimestamp)}',
               ),
               Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.symmetric(horizontal: SheetHeader.inset),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    _detailRow(context, 'Strain', name),
+                    _detailRow(
+                      context, 'Date',
+                      DateFormat('EEEE, MMMM d, y').format(localTimestamp),
+                    ),
+                    _detailRow(
+                      context, 'Time',
+                      DateFormat('h:mm a').format(localTimestamp),
+                    ),
+                    if (note != null && note.isNotEmpty)
+                      _detailRow(context, 'Note', note),
+                    const SizedBox(height: 16),
                     Row(
                       children: [
-                        Container(
-                          width: 4,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: Color(strain.color),
-                            borderRadius: BorderRadius.circular(2),
+                        OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: c.accent,
+                            side: BorderSide(color: c.accent),
+                            minimumSize: const Size(80, 48),
                           ),
+                          onPressed: () {
+                            Navigator.pop(sheetContext);
+                            _showEditDose(context, dosage);
+                          },
+                          child: const Text('Edit'),
                         ),
                         const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                strain.name,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleLarge
-                                    ?.copyWith(fontWeight: FontWeight.w600),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                DateFormat('EEEE, MMMM d, y • h:mm a')
-                                    .format(localTimestamp),
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(color: c.textSecondary),
-                              ),
-                            ],
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            foregroundColor: c.caution,
+                            minimumSize: const Size(80, 48),
                           ),
-                        ),
-                        Text(
-                          '${dosage.amount.toStringAsFixed(1)}g',
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineSmall
-                              ?.copyWith(fontWeight: FontWeight.w600),
+                          onPressed: () {
+                            Navigator.pop(sheetContext);
+                            _confirmDelete(context, dosage, provider);
+                          },
+                          child: const Text('Delete'),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 24),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            icon: const Icon(Icons.edit_outlined),
-                            label: const Text('Edit'),
-                            style: OutlinedButton.styleFrom(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 12),
-                              side: BorderSide(color: c.hairline),
-                            ),
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _showEditDose(context, dosage);
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextButton.icon(
-                            icon: const Icon(
-                              Icons.delete_outline,
-                              color: Colors.red,
-                            ),
-                            label: const Text(
-                              'Delete',
-                              style: TextStyle(color: Colors.red),
-                            ),
-                            style: TextButton.styleFrom(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 12),
-                              backgroundColor:
-                                  Colors.red.withValues(alpha: 0.08),
-                            ),
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _confirmDelete(context, dosage, provider);
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
+                    const SizedBox(height: 16),
                   ],
                 ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _detailRow(BuildContext context, String label, String value) {
+    final c = context.c;
+    return Container(
+      decoration: BoxDecoration(border: Border(top: BorderSide(color: c.hairline))),
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text(label, style: TextStyle(fontFamily: AppType.sans, color: c.textTertiary)),
+          ),
+          Expanded(
+            child: Text(value, style: TextStyle(fontFamily: AppType.sans, color: c.textPrimary)),
+          ),
+        ],
       ),
     );
   }
@@ -379,9 +390,9 @@ class ReportScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Dose'),
-        content: const Text(
-          'Are you sure you want to delete this dose? This action cannot be undone.',
+        title: const Text('Delete dose?'),
+        content: Text(
+          'Delete ${dosage.amount.toStringAsFixed(1)}g of ${provider.getStrain(dosage.strainId)?.name ?? 'Unknown strain'} at ${DateFormat('h:mm a').format(dosage.timestamp.toLocal())}? This action cannot be undone.',
         ),
         actions: [
           TextButton(
@@ -389,9 +400,9 @@ class ReportScreen extends StatelessWidget {
             onPressed: () => Navigator.pop(context),
           ),
           TextButton(
-            child: const Text(
+            child: Text(
               'Delete',
-              style: TextStyle(color: Colors.red),
+              style: TextStyle(color: context.c.caution),
             ),
             onPressed: () async {
               final messenger = ScaffoldMessenger.of(context);

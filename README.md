@@ -5,21 +5,35 @@ with light and dark themes. All data stays on the device — no account, no netw
 analytics.
 
 - **Package**: `org.kratomtracker.plus`
-- **Current release**: 2.16.3+22 (`pubspec.yaml`, mirrored in
+- **Current release**: 2.18.0+28 (`pubspec.yaml`, mirrored in
   `lib/constants/app_version.dart` and enforced by `test/app_version_test.dart`)
 - **Flutter**: 3.44.x stable, Dart SDK `^3.5.4`
 - **Min Android**: API 23 (6.0)
-- **Release**: [v2.16.3](https://github.com/BareTread/KratomTracker/releases/tag/v2.16.3)
+- **Previous release**: [v2.17.4](https://github.com/BareTread/KratomTracker/releases/tag/v2.17.4)
 
 ## What it does
 
-- **Doses** — log a dose in two taps (strain, then amount). Timestamps are editable.
+- **Doses** — log from one sheet with a preselected suggestion, or repeat the last dose.
+  Timestamps are editable; one-tap logs and deletes offer Undo.
 - **The day view** — the home screen is a horizontal pager of days. Each day draws a
   botanical "vine": a painted stem with one leaf mark per dose, and a live dashed tail
   running from the last dose down to a NOW node so elapsed time is readable at a glance.
 - **Strains** — around thirty, each with its own colour and leaf shape. Stock tracking.
-- **Stats & reports** — range-aware totals, trajectory and rotation insights, per-strain
-  breakdowns, and CSV/JSON export and import.
+- **Stats & reports** — range-aware totals, trajectory and rotation insights, a 30-day
+  herbarium, per-strain breakdowns, and CSV/JSON export and import.
+
+## 2.18.0
+
+- One-sheet dose logging preselects the top in-stock suggestion and its last amount;
+  repeat the last dose from the FAB menu. One-tap logs and deletes offer Undo.
+- Day-sprig glyphs show doses in the Stats 30-day herbarium and Home week strip.
+- Strains, Stats, Manage, Report and sheets are redesigned. Appearance follows System,
+  Light or Dark; the bottom navigation uses an active dot instead of the Material pill.
+- Restore keeps doses with missing strains under out-of-stock placeholders. Replace import
+  requires explicit strain and dosage lists. Damaged rows no longer hide other history;
+  Manage shows load warnings.
+- Removed unused reminder, notification and tolerance settings. Storage remains the
+  per-key journal; batching commits is deferred.
 
 ## Layout
 
@@ -28,7 +42,8 @@ lib/
 ├── constants/      app_version.dart (kept in sync with pubspec)
 ├── domain/         analytics, date maths, strain usage rollups
 ├── models/         Dosage, Strain, Effect, Settings (+ _coerce.dart for tolerant parsing)
-├── providers/      KratomProvider (all state), ThemeProvider (the dark theme)
+├── providers/      KratomProvider (all state), ThemeProvider (builds both themes)
+├── theme/          app_theme.dart: AppColors (light + dark), AppType, AppMotion
 ├── screens/
 │   ├── home/       day card, dosage list, calendar strip, FAB menu, empty state
 │   └── *.dart      manage, strains, stats, report, privacy, terms
@@ -45,12 +60,48 @@ Two files carry the visual identity and deserve care:
 
 ### Design law
 
-Four rules the UI does not break:
+Rules the UI does not break:
 
-1. **Cyan means interactive.** Nothing decorative is cyan.
-2. **Strain colour means identity.** It marks which strain a dose was, nothing else.
-3. **Everything else is greyscale** on a near-black ground.
-4. **Hairlines are 1.5px.**
+1. **Cyan means now or act.** Nothing decorative is cyan.
+2. **Strain colour means identity.** Use it on the strain mark and code only.
+3. **Everything else is warm ink/paper neutrals** (`AppColors`, dark and light). Take colours
+   from `context.c`; do not hard-code.
+4. **Two typefaces, bundled in `assets/fonts`:** Hanken Grotesk (`AppType.sans`) for UI,
+   Instrument Serif (`AppType.display`) for figures and screen titles only. Tracked-caps
+   labels are reserved for Stats section heads; labels elsewhere are sentence-case grey.
+   `CustomPainter` text does not inherit the theme font; set `fontFamily` explicitly.
+5. **Show the exception, not the default.**
+
+### Home screen hierarchy
+
+Decided with the user; do not drift back:
+
+- **The strain code is the headline of a dose row** (26px, bold, in the strain's colour).
+  Amount and full name are small supporting text under it. Amounts barely change between
+  doses; the strain is what the eye reads the day by. Never lead with the full name or amount.
+- **Nothing is pinned to a row's right edge.** The FAB sits over the last row of a full day
+  and covered right-aligned amounts.
+- **Headline figure is state-dependent and modest (30px):** today = time since last dose
+  (the most important number), past day = that day's total.
+- **Strain colour is clamped for legibility** (`legibleStrainColor`). Small text in the
+  light theme is additionally darkened (`codeColor` in `home_dosage_list.dart`); yellow and
+  white strains sit near 2:1 on cream otherwise.
+- **Motion:** each day page plays one staggered reveal (`_Entrance`, one controller per
+  page), not on every dose edit. After a log, the new row's strain mark settles once;
+  motion honours `AppMotion.reduced`.
+- Gram-leaves on dose rows were tried behind the text and then under it; both were
+  rejected as clutter. Do not re-add them.
+- Under a minute since the last dose the header reads `0m` and the live gap is silent;
+  gap labels start at 1m. The word "now" appears only at the NOW tip.
+- The week strip shows micro-sprigs instead of presence dots. Tap the FAB for the log
+  sheet; long-press for Add Strain, Add Dose and repeat last dose. Back closes the menu.
+  The suggested in-stock strain and its last amount are preselected, and Save names both;
+  one-tap logs and deletes offer Undo for 5 seconds.
+
+In the Stats 30-day herbarium, each stem runs midnight to midnight. Each leaf is a dose
+at its time, with length in grams on a shared scale and colour by strain; a bud marks a
+rest day. The heaviest day shows its total. The week strip uses the same encoding with a
+scale shared across that week.
 
 ## Build
 
@@ -59,9 +110,20 @@ flutter pub get
 flutter test
 flutter analyze
 flutter run                         # debug — NOT representative of animation smoothness
-flutter build apk --release
+flutter build apk --release --split-per-abi   # the only APK form that installs; see below
 flutter build appbundle --release
+# Screenshots without a device (the Linux desktop build is not possible here):
+flutter test test/tools/design_shots_test.dart --dart-define=SHOTS_DIR=/abs/dir
+flutter test test/tools/home_shots_test.dart --dart-define=SHOTS_DIR=/abs/dir
+flutter test test/tools/sprig_shots_test.dart --dart-define=SHOTS_DIR=/abs/dir
+#   -> <dir>/<dark|light>_<home|home_past|home2|strains|stats|manage|adddose>.png
 ```
+
+Concurrent Flutter runs on this machine should use `flock /tmp/kt-flutter.lock flutter ...`
+to serialize access.
+
+Screenshots show layout and colour only; animation feel needs a device. Any visible change
+needs a version bump in both `pubspec.yaml` and `lib/constants/app_version.dart`.
 
 ### Release signing
 
@@ -75,16 +137,21 @@ The only update-capable signing key is
 `android/key.properties` points to it. Losing the key means future builds cannot upgrade
 the installed Plus app.
 
+**Install gotcha:** a phone running a split build rejects the universal `app-release.apk`
+as "app not installed as it appears to be invalid" (versionCode downgrade, see the ABI
+offsets in the polish notes below). Always install `app-arm64-v8a-release.apk`, and bump the
+`+N` build number for every build you hand over.
+
 Verify what you actually built, independently of the build's exit code. The APK must report
-package `org.kratomtracker.plus`, the intended version/code, and signing certificate SHA-256
+package `org.kratomtracker.plus`, the intended version/code (arm64 = 2000 + `N`), and
+signing certificate SHA-256
 `d6febe8e8dea5ae5d483c2145095e2ea04958353e68743be195deab55439180c`:
 
 ```bash
-tracker_android_sdk=$(sed -n 's/^sdk.dir=//p' android/local.properties)
-$tracker_android_sdk/cmdline-tools/latest/bin/apkanalyzer manifest application-id build/app/outputs/flutter-apk/app-release.apk
-$tracker_android_sdk/cmdline-tools/latest/bin/apkanalyzer manifest version-name build/app/outputs/flutter-apk/app-release.apk
-$tracker_android_sdk/cmdline-tools/latest/bin/apkanalyzer manifest version-code build/app/outputs/flutter-apk/app-release.apk
-apksigner verify --print-certs build/app/outputs/flutter-apk/app-release.apk
+apk=build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+bt=~/dev-sdks/android/build-tools/35.0.0
+$bt/apksigner verify --print-certs $apk | grep SHA-256
+$bt/aapt2 dump badging $apk | head -1     # package, versionCode, versionName
 jarsigner -verify build/app/outputs/bundle/release/app-release.aab
 ```
 
@@ -121,13 +188,18 @@ The August 2026 audit re-derived the analytics calculations and found no arithme
 It fixed calendar/DST indexing, local display of imported UTC timestamps, the Android CI
 Jetifier heap failure, Flutter API deprecations, and remaining public-facing old names.
 
-Three recovery-hardening items remain intentionally deferred; address them in a focused
-change with failure-path tests and an explicit data-recovery policy:
+Recovery-hardening items still open:
 
 1. Reject or bound malformed/far-future timestamps before all-range Theil–Sen work.
-2. Define rollback and UI error behavior when persistence fails after an in-memory mutation.
-3. Preserve corrupt raw stored JSON instead of allowing a later write to replace it with an
-   empty decoded list.
+2. Review batching storage commits separately; the shipped per-key journal remains in use.
+3. Replace the iOS bundle ID placeholder before an iOS release.
+
+Damaged rows are isolated and raw damaged strings are copied to additive quarantine keys
+before overwrite; quarantine is evidence for manual recovery, not an automatic restore
+source. Load and import warnings reflect current evidence, not old quarantine entries.
+Replace import requires both explicit lists (empty lists are allowed); historical bare dose
+lists can be merged. Backup format remains version 1. Old reminder and tolerance fields
+are accepted and ignored.
 
 ## Polish pass — 2026-08-15 (post-v2.16.2)
 
@@ -155,10 +227,9 @@ corrections to the review itself are appended in `improvement-ideas-2026-08-15.m
    between phase steps skip the raster entirely — ~13 repaints/s instead of ~120 on
    a dosed today. The sprout keeps full phase resolution for smooth growth.
 4. **Dark cold start** (`android/.../res/values*/styles.xml`, `launch_background.xml`,
-   `colors.xml`). Launch and normal windows are pinned to the scaffold colour
-   `#090B0C`, and `windowSplashScreenBackground` is set for the Android 12+ system
-   splash. The app defaults to its dark theme regardless of system theme, so the
-   launch window now follows the app instead of flashing white/cyan into it.
+   `colors.xml`). Launch and normal windows were pinned to the dark scaffold colour
+   `#090B0C`, with `windowSplashScreenBackground` set for Android 12+; appearance now
+   also supports System and Light.
 5. **Split-per-ABI release APK** (`.github/workflows/main.yml`). `--split-per-abi`;
    arm64 keeps the plain `kratom-tracker-vX-release.apk` name (phone install and
    GitHub Release attachment unchanged); armeabi-v7a and x86_64 ride along as
@@ -169,11 +240,9 @@ corrections to the review itself are appended in `improvement-ideas-2026-08-15.m
    would need a base code above the highest installed split code or Android
    rejects it as a downgrade.
 
-Not done, deliberately: the day-indexed dose map, incremental persistence, and stats
-isolate (no felt symptom at current scale — the "next performance change if one is
-ever needed" bar below); the `performanceMode` Manage toggle (the dash cache removes
-the cost it would have toggled); a system-follow theme mode (single user, dark-only
-in practice).
+Not done at the time: the day-indexed dose map, incremental persistence, stats isolate,
+`performanceMode` Manage toggle, and system-follow theme mode. System appearance was
+added in 2.18.0.
 
 ### On-device check (2026-08-15, OnePlus 12, after the polish pass)
 
@@ -210,11 +279,13 @@ and is sound — record this so it is not re-litigated:
 - `ListView.builder` wraps each row in a `RepaintBoundary` itself (framework default,
   `addRepaintBoundaries: true`). Do not add another by hand; grepping this repo for
   `RepaintBoundary` will not show it.
-- Every `shouldRepaint` compares primitives only, and `VineRhythm.compute` runs inside
+- Vine painter `shouldRepaint` compares primitives, and `VineRhythm.compute` runs inside
   `LayoutBuilder` — per layout, not per frame.
 - Day swipes are smooth because `home_screen.dart` drives the focused day through a
   `ValueNotifier` and defers the provider commit to `ScrollEndNotification`, with each page
   in its own `RepaintBoundary`.
+- The herbarium uses one `CustomPainter` per day; its `shouldRepaint` compares sorted
+  dose lists.
 
 Known remaining cost, not yet addressed: `LeafMarkPainter` rebuilds its stroke `Path`s and
 recomputes per-shape ink bounds on every paint (`strain_mark.dart:94`, `:115`), and the vine

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
+
 class PrivacyPolicyScreen extends StatelessWidget {
   const PrivacyPolicyScreen({super.key});
 
@@ -10,24 +12,30 @@ class PrivacyPolicyScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
-        title: const Text('Privacy Policy'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 20),
+              child: Text(
+                'Privacy policy',
+                style: AppType.display(size: 36, color: context.c.textPrimary),
+              ),
+            ),
             _buildSection(
-              'Data Collection and Storage',
+              'Data collection and storage',
               'All data is stored locally on your device. We do not collect, store, '
               'or transmit any personal information or usage data to external servers.',
             ),
             _buildSection(
-              'Your Data',
+              'Your data',
               'Your dosage history, strain information, and settings are stored '
               'only on your device. You have full control over your data and can '
               'delete it at any time through the app settings.',
@@ -44,7 +52,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
               'access to storage for backup/restore functionality.',
             ),
             _buildSection(
-              'Third-Party Services',
+              'Third-party services',
               'This app does not integrate with any third-party services or '
               'analytics platforms. Your usage remains completely private.',
             ),
@@ -79,7 +87,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
             Text(
               'Last updated: ${DateTime.now().year}',
               style: TextStyle(
-                color: Colors.grey[500],
+                color: context.c.textTertiary,
                 fontSize: 14,
               ),
             ),
@@ -90,28 +98,37 @@ class PrivacyPolicyScreen extends StatelessWidget {
   }
 
   Widget _buildSection(String title, String content) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
+    return Builder(builder: (context) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 680),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontFamily: AppType.sans,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  color: context.c.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                content,
+                style: TextStyle(
+                  fontFamily: AppType.sans,
+                  fontSize: 15,
+                  height: 1.5,
+                  color: context.c.textSecondary,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            content,
-            style: const TextStyle(
-              fontSize: 16,
-              height: 1.5,
-            ),
-          ),
-        ],
-      ),
-    );
+        ),
+      );
+    },);
   }
 } 

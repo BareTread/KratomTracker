@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../domain/analytics_service.dart';
 import '../../models/strain.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/strain_mark.dart';
 import 'stats_common.dart';
 
 /// Thirty strains in a list is a list, not an answer. Eight rows plus a
@@ -21,10 +22,6 @@ class RotationSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.c;
-    final widest = rotation.rows.fold<double>(
-      0,
-      (most, row) => row.share > most ? row.share : most,
-    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -34,14 +31,31 @@ class RotationSection extends StatelessWidget {
             color: rotation.concentrated ? c.caution : c.textSecondary,
           ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 10),
+        // Names the trailing column once instead of stamping "days" on every
+        // row — the 17d figures sit directly under it.
+        Row(
+          children: [
+            const Spacer(),
+            for (final (label, width) in const [('share', 40.0), ('days', 42.0)])
+              SizedBox(
+                width: width,
+                child: Text(
+                  label,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    color: c.textTertiary,
+                    fontSize: 11,
+                    height: 1.2,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
         for (final row in rotation.rows)
           _RotationRow(
             share: row,
-            // Bars are scaled against the heaviest row, not against 100%.
-            // Eight strains sharing a rotation are all small fractions of
-            // the whole; against each other they have a readable shape.
-            scale: widest <= 0 ? 0 : row.share / widest,
             strain: row.strainId == null ? null : strainsById[row.strainId],
           ),
       ],
@@ -69,12 +83,10 @@ String rotationCaption(
 class _RotationRow extends StatelessWidget {
   const _RotationRow({
     required this.share,
-    required this.scale,
     required this.strain,
   });
 
   final StrainShare share;
-  final double scale;
   final Strain? strain;
 
   @override
@@ -98,26 +110,47 @@ class _RotationRow extends StatelessWidget {
       child: Row(
         children: [
           SizedBox(
-            width: 52,
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: color,
-                fontSize: 12.5,
-                height: 1.1,
-                fontWeight: folded ? FontWeight.w400 : FontWeight.w600,
-              ),
+            width: 78,
+            child: Row(
+              children: [
+                // Shape carries identity where colour cannot: two red
+                // strains stay distinct by mark + code.
+                if (strain != null && !folded) ...[
+                  StrainMark(
+                    shape: resolveLeafShape(strain!.icon, strain!.code),
+                    color: color,
+                    size: 14,
+                  ),
+                  const SizedBox(width: 7),
+                ] else
+                  const SizedBox(width: 21),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 12.5,
+                      height: 1.1,
+                      fontWeight:
+                          folded ? FontWeight.w400 : FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
+          const SizedBox(width: 8),
           Expanded(
             child: CustomPaint(
               size: const Size(double.infinity, 5),
-              painter: _ShareBarPainter(
-                share: scale,
+              // A 21% share fills 21% of the track. The old version scaled
+              // bars to the heaviest strain, so 19–21% all drew full.
+              painter: ShareBarPainter(
+                share: share.share,
                 fill: color,
-                track: c.surfaceSunken,
+                track: c.hairline,
               ),
             ),
           ),
@@ -155,8 +188,10 @@ class _RotationRow extends StatelessWidget {
   }
 }
 
-class _ShareBarPainter extends CustomPainter {
-  const _ShareBarPainter({
+/// Public so tests can read the fraction off the widget: the share is the
+/// whole contract of this bar.
+class ShareBarPainter extends CustomPainter {
+  const ShareBarPainter({
     required this.share,
     required this.fill,
     required this.track,
@@ -195,6 +230,6 @@ class _ShareBarPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _ShareBarPainter old) =>
+  bool shouldRepaint(covariant ShareBarPainter old) =>
       old.share != share || old.fill != fill || old.track != track;
 }

@@ -100,11 +100,13 @@ void main() {
 
     expect(ok.payload.strains.length, 2);
 
-    // d4 references a deleted strain and is dropped with a warning; the three
+    // d4 references a deleted strain: it stays on the payload as an orphan
+    // with a warning and is restored under a placeholder at import; the three
     // real doses survive regardless of how `amount` was encoded.
     final ids = ok.payload.dosages.map((d) => d.id).toList();
     expect(ids, containsAll(<String>['d1', 'd2', 'd3']));
     expect(ids, isNot(contains('d4')));
+    expect(ok.payload.orphanedDosages.single.id, 'd4');
 
     final byId = {for (final d in ok.payload.dosages) d.id: d};
     expect(byId['d1']!.amount, 2.0); // int coerced
@@ -119,18 +121,18 @@ void main() {
     final ok = parseBackup(legacyExport()) as BackupOk;
     // Effects are no longer modelled, but the legacy `effects` array (with
     // the old `pain_relief` spelling) must not break the import.
-    expect(ok.summary.dosageCount, 3);
+    expect(ok.summary.dosageCount, 4);
   });
 
   test('orphaned effect is dropped rather than crashing the import', () {
     final ok = parseBackup(legacyExport()) as BackupOk;
-    expect(ok.summary.dosageCount, 3);
+    expect(ok.summary.dosageCount, 4);
   });
 
   test('summary reports a truthful preview before anything is committed', () {
     final ok = parseBackup(legacyExport()) as BackupOk;
-    expect(ok.summary.dosageCount, 3);
-    expect(ok.summary.totalGrams, closeTo(2 + 1.5 + 3.25, 0.0001));
+    expect(ok.summary.dosageCount, 4);
+    expect(ok.summary.totalGrams, closeTo(2 + 1.5 + 3.25 + 1, 0.0001));
     expect(ok.summary.earliestDose, DateTime.parse('2024-09-01T08:30:00.000'));
     expect(ok.summary.latestDose, DateTime.parse('2025-03-13T21:40:00.000'));
   });

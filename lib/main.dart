@@ -5,11 +5,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'providers/kratom_provider.dart';
 import 'providers/theme_provider.dart';
+import 'theme/app_theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/manage_screen.dart';
 import 'screens/stats_screen.dart';
 import 'screens/strains_screen.dart';
-import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -136,7 +136,9 @@ class MyApp extends StatelessWidget {
       builder: (context, themeProvider, kratomProvider, child) {
         return MaterialApp(
           title: 'Herbal Tracker+',
-          theme: themeProvider.theme,
+          theme: ThemeProvider.lightTheme,
+          darkTheme: ThemeProvider.darkTheme,
+          themeMode: themeProvider.themeMode,
           home: kratomProvider.isReady
               ? const MainScreen()
               : const _LoadingScreen(),
@@ -168,43 +170,133 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    // Once per launch: if storage reported load problems, say so where the
+    // person is, before they log a day of doses without knowing.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final warnings = context.read<KratomProvider>().loadWarnings;
+      if (warnings.isEmpty) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 10),
+          content: const Text(
+            'Some saved data could not be loaded. Details in Manage.',
+          ),
+          action: SnackBarAction(
+            label: 'Open',
+            onPressed: () => _onItemTapped(3),
+          ),
+        ),
+      );
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: _screens[_selectedIndex],
-      bottomNavigationBar: Theme(
-        data: Theme.of(context).copyWith(
-          splashColor: Colors.transparent,
-          highlightColor: Colors.transparent,
+      bottomNavigationBar: _TabBar(
+        selectedIndex: _selectedIndex,
+        onSelected: _onItemTapped,
+      ),
+    );
+  }
+}
+
+/// The tab bar, drawn rather than Material's: no pill. The active tab is ink
+/// with one small cyan dot under its label; the others are muted.
+class _TabBar extends StatelessWidget {
+  const _TabBar({required this.selectedIndex, required this.onSelected});
+
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  static const _tabs = [
+    (icon: Icons.home_outlined, active: Icons.home, label: 'Home'),
+    (icon: Icons.spa_outlined, active: Icons.spa, label: 'Strains'),
+    (icon: Icons.bar_chart_outlined, active: Icons.bar_chart, label: 'Stats'),
+    (icon: Icons.tune_outlined, active: Icons.tune, label: 'Manage'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        border: Border(top: BorderSide(color: c.hairline)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 62,
+          child: Row(
+            children: [
+              for (var i = 0; i < _tabs.length; i++)
+                Expanded(
+                  child: _TabItem(
+                    icon: i == selectedIndex ? _tabs[i].active : _tabs[i].icon,
+                    label: _tabs[i].label,
+                    selected: i == selectedIndex,
+                    onTap: () => onSelected(i),
+                  ),
+                ),
+            ],
+          ),
         ),
-        child: BottomNavigationBar(
-          type: BottomNavigationBarType.fixed,
-          currentIndex: _selectedIndex,
-          onTap: _onItemTapped,
-          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-          selectedItemColor: context.c.accent,
-          unselectedItemColor: context.c.textTertiary,
-          items: const [
-            // Outline when inactive, filled when active — same Material
-            // family and optical weight across all four tabs.
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home),
-              label: 'Home',
+      ),
+    );
+  }
+}
+
+class _TabItem extends StatelessWidget {
+  const _TabItem({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final ink = selected ? c.textPrimary : c.textTertiary;
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: InkResponse(
+        onTap: onTap,
+        radius: 32,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 22, color: ink),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: AppType.sans,
+                fontSize: 11.5,
+                letterSpacing: 0.2,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                color: ink,
+              ),
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.spa_outlined),
-              activeIcon: Icon(Icons.spa),
-              label: 'Strains',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.bar_chart_outlined),
-              activeIcon: Icon(Icons.bar_chart),
-              label: 'Stats',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.tune_outlined),
-              activeIcon: Icon(Icons.tune),
-              label: 'Manage',
+            const SizedBox(height: 4),
+            Container(
+              width: 4,
+              height: 4,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: selected ? c.accent : Colors.transparent,
+              ),
             ),
           ],
         ),

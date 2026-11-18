@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/dosage.dart';
@@ -7,7 +8,7 @@ import '../../providers/kratom_provider.dart';
 import '../../theme/app_theme.dart';
 import 'home_calendar_section.dart';
 
-/// Calendar card plus one quiet status line. The vine timeline carries the
+/// Week strip plus one quiet status line. The vine timeline carries the
 /// day's story; this line is insurance so "how long since last" is never
 /// below the fold.
 class HomeDayCard extends StatelessWidget {
@@ -39,34 +40,27 @@ class HomeDayCard extends StatelessWidget {
     final isToday = day == today;
     final dayDoses = provider.getDosagesForDate(day);
 
-    // Two left edges only: the card at 16, and the status line + its rule at
-    // 12 — the vine's own grid (see _HomeDayPage's horizontal padding). The
-    // rule then caps the timeline at exactly the timeline's width instead of
-    // stopping short of it.
+    // One content edge at 16 (this 12 + the 4 below): the week grid, the
+    // chevron glyph, and the status text. Hairlines stay on the vine's 12
+    // grid so they match the timeline width.
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Container(
+            child: HomeCalendarSection(
               key: const Key('home-day-card-surface'),
-              decoration: BoxDecoration(
-                color: context.c.surfaceRaised,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: context.c.hairline),
-              ),
-              child: HomeCalendarSection(
-                focusedDay: focusedDay,
-                onDaySelected: onDaySelected,
-                totalForDate: provider.totalForDate,
-              ),
+              focusedDay: focusedDay,
+              onDaySelected: onDaySelected,
+              totalForDate: provider.totalForDate,
             ),
           ),
-          const SizedBox(height: 10),
+          const _StatusRule(),
           _QuietStatusLine(
             key: const Key('home-status-card-surface'),
+            day: day,
             isToday: isToday,
             dayDoses: dayDoses,
             allDoses: provider.dosages,
@@ -78,19 +72,21 @@ class HomeDayCard extends StatelessWidget {
   }
 }
 
-/// One greyscale line — the single summary for the day:
-/// today → `3h 16m since last dose · 49.4g · 3 doses`
-/// past  → `49.4g · 3 doses`
-/// The elapsed figure is the only weight.
+/// The day's headline. A quiet label says what the figure is; the figure
+/// itself is the one thing set large, in the display face.
+/// today → `3h 16m` over Since last dose, with `49.4g · 3 doses` at the right
+/// past  → `49.4g` over the date, with `3 doses` at the right
 class _QuietStatusLine extends StatelessWidget {
   const _QuietStatusLine({
     super.key,
+    required this.day,
     required this.isToday,
     required this.dayDoses,
     required this.allDoses,
     this.now,
   });
 
+  final DateTime day;
   final bool isToday;
   final List<Dosage> dayDoses;
   final List<Dosage> allDoses;
@@ -100,86 +96,150 @@ class _QuietStatusLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final total = dayDoses.fold<double>(0, (sum, dose) => sum + dose.amount);
+    final count = dayDoses.length;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.only(top: 6),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            // Only this Text rebuilds on a tick — never the calendar above.
-            child: now == null
-                ? _line(context, DateTime.now())
-                : ValueListenableBuilder<DateTime>(
-                    valueListenable: now!,
-                    builder: (context, tick, _) => _line(context, tick),
-                  ),
+          Padding(
+            // Same left edge as the week strip (16), not the rule's (12).
+            padding: const EdgeInsets.fromLTRB(4, 8, 4, 12),
+            child: isToday
+                ? _today(context, total, count)
+                : _past(context, total, count),
           ),
-          const SizedBox(height: 8),
-          // Soft hairline that fades at both ends — not a hard divider.
           const _StatusRule(),
         ],
       ),
     );
   }
 
-  Widget _line(BuildContext context, DateTime now) => Text.rich(
-        TextSpan(children: _spans(context, now)),
+  // ── Today ───────────────────────────────────────────────────────────────
+
+  Widget _today(BuildContext context, double total, int count) {
+    if (allDoses.isEmpty) {
+      return _row(
+        context,
+        eyebrow: 'Today',
+        figure: Text(
+          'No doses yet',
+          style: AppType.display(size: 26, color: context.c.textSecondary),
+        ),
+      );
+    }
+    final last = allDoses.reduce(
+      (a, b) => a.timestamp.isAfter(b.timestamp) ? a : b,
+    );
+    Widget figure(DateTime tick) => _figured(
+          _elapsedText(tick.difference(last.timestamp)),
+          _figureStyle(context.c.textPrimary, 30),
+        );
+    return _row(
+      context,
+      eyebrow: 'Since last dose',
+      // Only this Text rebuilds on a tick — never the calendar above.
+      figure: now == null
+          ? figure(DateTime.now())
+          : ValueListenableBuilder<DateTime>(
+              valueListenable: now!,
+              builder: (context, tick, _) => figure(tick),
+            ),
+      trailing: dayDoses.isEmpty
+          ? null
+          : _Tally(
+              amount: '${_formatAmount(total)}g',
+              count: count,
+            ),
+    );
+  }
+
+  // ── Past day ────────────────────────────────────────────────────────────
+
+  Widget _past(BuildContext context, double total, int count) {
+    final eyebrow = DateFormat('EEEE d MMMM').format(day);
+    if (dayDoses.isEmpty) {
+      return _row(
+        context,
+        eyebrow: eyebrow,
+        figure: Text(
+          'No doses this day',
+          style: AppType.display(size: 26, color: context.c.textSecondary),
+        ),
+      );
+    }
+    // A finished day's headline is what it added up to. It counts up from the
+    // day it replaces, so paging reads as one number changing, not two
+    // screens swapping.
+    final duration =
+        AppMotion.reduced(context) ? Duration.zero : AppMotion.slow;
+    return _row(
+      context,
+      eyebrow: eyebrow,
+      figure: TweenAnimationBuilder<double>(
+        tween: Tween(end: total),
+        duration: duration,
+        curve: AppMotion.emphasized,
+        builder: (context, value, _) => _figured(
+          '${_formatAmount(value)}g',
+          _figureStyle(context.c.textPrimary, 30),
+        ),
+      ),
+      trailing: Text(
+        '$count ${count == 1 ? 'dose' : 'doses'}',
         style: TextStyle(
+          fontFamily: AppType.sans,
           color: context.c.textTertiary,
           fontSize: 13,
-          height: 1.3,
+          fontWeight: FontWeight.w500,
+          height: 1.2,
           fontFeatures: const [FontFeature.tabularFigures()],
         ),
-      );
+      ),
+    );
+  }
 
-  List<InlineSpan> _spans(BuildContext context, DateTime now) {
-    if (isToday) {
-      if (allDoses.isEmpty) {
-        return const [TextSpan(text: 'No doses yet')];
-      }
-      final last = allDoses.reduce(
-        (a, b) => a.timestamp.isAfter(b.timestamp) ? a : b,
-      );
-      final elapsed = now.difference(last.timestamp);
-      final total =
-          dayDoses.fold<double>(0, (sum, dose) => sum + dose.amount);
-      final count = dayDoses.length;
-      return [
-        TextSpan(
-          text: _elapsedText(elapsed),
-          style: TextStyle(
-            color: context.c.textPrimary,
-            fontWeight: FontWeight.w700,
+  Widget _row(
+    BuildContext context, {
+    required String eyebrow,
+    required Widget figure,
+    Widget? trailing,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                eyebrow,
+                style: TextStyle(
+                  fontFamily: AppType.sans,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 0,
+                  height: 1.2,
+                  color: context.c.textTertiary,
+                ),
+              ),
+              const SizedBox(height: 5),
+              figure,
+            ],
           ),
         ),
-        const TextSpan(text: ' since last dose'),
-        if (dayDoses.isNotEmpty)
-          TextSpan(
-            text:
-                ' · ${_formatAmount(total)}g · $count ${count == 1 ? 'dose' : 'doses'}',
+        if (trailing != null) ...[
+          const SizedBox(width: 12),
+          Padding(
+            // Sits on the figure's baseline rather than the box bottom.
+            padding: const EdgeInsets.only(bottom: 3),
+            child: trailing,
           ),
-      ];
-    }
-
-    if (dayDoses.isEmpty) {
-      return const [TextSpan(text: 'No doses this day')];
-    }
-    final total = dayDoses.fold<double>(0, (sum, dose) => sum + dose.amount);
-    final count = dayDoses.length;
-    return [
-      TextSpan(
-        text: '${_formatAmount(total)}g',
-        style: TextStyle(
-          color: context.c.textPrimary,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-      TextSpan(
-        text: ' · $count ${count == 1 ? 'dose' : 'doses'}',
-      ),
-    ];
+        ],
+      ],
+    );
   }
 
   String _elapsedText(Duration elapsed) {
@@ -189,40 +249,99 @@ class _QuietStatusLine extends StatelessWidget {
     if (elapsed.inHours > 0) {
       return '${elapsed.inHours}h ${elapsed.inMinutes % 60}m';
     }
-    return elapsed.inMinutes < 1 ? 'now' : '${elapsed.inMinutes}m';
+    // Under a minute (or a future-dated dose) is "0m": the figure stays a
+    // duration like every other state, and the word "now" is left to the
+    // NOW tip on the vine. '<1m' set in the serif read as "<lm".
+    return elapsed.inMinutes < 1 ? '0m' : '${elapsed.inMinutes}m';
   }
 
   String _formatAmount(double value) {
+    // Same precision as the dose rows below, so one 2.25 g dose never reads
+    // "2.3g" in the summary and "2.25g" on its row.
     if (value == value.roundToDouble()) return value.toStringAsFixed(0);
-    return value.toStringAsFixed(1);
+    return value
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
   }
 }
 
-/// Full-width 1px rule under the quiet status line, spanning the vine's grid.
-/// Fades symmetrically at both ends via a linear gradient rather than stopping
-/// on a hard divider edge.
+/// Today's running total, right-aligned beside the elapsed figure.
+class _Tally extends StatelessWidget {
+  const _Tally({required this.amount, required this.count});
+
+  final String amount;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        _figured(
+          amount,
+          _figureStyle(context.c.textSecondary, 20),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          '$count ${count == 1 ? 'dose' : 'doses'}',
+          style: TextStyle(
+            fontFamily: AppType.sans,
+            color: context.c.textTertiary,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            height: 1.1,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Full-width 1px hairline. Same rule under the week strip and the status line.
 class _StatusRule extends StatelessWidget {
   const _StatusRule();
 
   @override
   Widget build(BuildContext context) {
-    final border = context.c.hairline;
     return SizedBox(
       width: double.infinity,
       height: 1,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              border.withValues(alpha: 0),
-              border,
-              border,
-              border.withValues(alpha: 0),
-            ],
-            stops: const [0, 0.1, 0.9, 1],
-          ),
-        ),
-      ),
+      child: ColoredBox(color: context.c.hairline),
     );
   }
 }
+
+TextStyle _figureStyle(Color color, double size) => AppType.display(
+      size: size,
+      color: color,
+      height: 1.0,
+      letterSpacing: -0.2,
+    ).copyWith(
+      fontFeatures: const [
+        FontFeature.liningFigures(),
+        FontFeature.tabularFigures(),
+      ],
+    );
+
+/// Serif figure. Unit letters (g, h, m, d) sit at 70% on the same baseline.
+/// No characters are inserted, so plain text is unchanged.
+Text _figured(String text, TextStyle style) {
+  final unit = style.copyWith(fontSize: (style.fontSize ?? 0) * 0.7);
+  return Text.rich(
+    TextSpan(
+      style: style,
+      children: [
+        for (final match in RegExp(r'[ghmd]|[^ghmd]+').allMatches(text))
+          TextSpan(
+            text: match[0],
+            style: _isUnitLetter(match[0]!) ? unit : null,
+          ),
+      ],
+    ),
+  );
+}
+
+bool _isUnitLetter(String part) => part.length == 1 && 'ghmd'.contains(part);

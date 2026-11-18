@@ -38,7 +38,7 @@ void main() {
     );
     await _pumpHome(tester, provider, tall: true);
     expect(
-      find.textContaining('since last dose', findRichText: true),
+      find.text('Since last dose'),
       findsOneWidget,
     );
 
@@ -49,7 +49,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.textContaining('since last dose', findRichText: true),
+      find.text('Since last dose'),
       findsOneWidget,
     );
   });
@@ -62,7 +62,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(AddDosageForm), findsOneWidget);
-    expect(find.text('Select Strain'), findsOneWidget);
+    // One-sheet logger: the serif title replaces the old 'Select Strain'.
+    expect(find.text('Select Strain'), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is Text && w.data == 'Log dose' && w.style?.fontSize == 30,
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('seeded doses render in chronological order', (tester) async {
@@ -87,18 +94,27 @@ void main() {
     expect(middleY, lessThan(lateY));
   });
 
-  testWidgets('light theme resolves the calendar surface colour',
+  testWidgets('week strip sits on the page, not a raised card',
       (tester) async {
     final provider = await _provider();
 
     await _pumpHome(tester, provider, theme: ThemeProvider.lightTheme);
 
-    final container = tester.widget<Container>(
-      find.byKey(const Key('home-day-card-surface')),
+    final strip = find.byKey(const Key('home-day-card-surface'));
+    expect(strip, findsOneWidget);
+    expect(tester.widget(strip), isA<HomeCalendarSection>());
+    // Fill, hairline border, and radius 24 are gone — the key only names
+    // the strip so other tests can still find it.
+    expect(
+      find.byWidgetPredicate((widget) {
+        if (widget is! Container) return false;
+        final decoration = widget.decoration;
+        return decoration is BoxDecoration &&
+            decoration.borderRadius == BorderRadius.circular(24) &&
+            decoration.color == AppColors.light.surfaceRaised;
+      }),
+      findsNothing,
     );
-    final decoration = container.decoration! as BoxDecoration;
-    expect(decoration.color, AppColors.light.surfaceRaised);
-    expect(decoration.color, isNot(AppColors.dark.surfaceRaised));
   });
 
   testWidgets('month grid aligns day 1 with its weekday column',

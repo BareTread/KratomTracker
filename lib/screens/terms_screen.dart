@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
+
 class TermsScreen extends StatelessWidget {
   const TermsScreen({super.key});
 
@@ -10,19 +12,25 @@ class TermsScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
-        title: const Text('Terms of Service'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 20),
+              child: Text(
+                'Terms of service',
+                style: AppType.display(size: 36, color: context.c.textPrimary),
+              ),
+            ),
             _buildSection(
-              'Acceptance of Terms',
+              'Acceptance of terms',
               'By using this app, you agree to these terms of service. If you do not '
               'agree, please do not use the app.',
             ),
@@ -32,7 +40,7 @@ class TermsScreen extends StatelessWidget {
               'intended to provide medical advice or encourage substance use.',
             ),
             _buildSection(
-              'User Responsibilities',
+              'User responsibilities',
               'You are responsible for:\n'
               '• All data entered into the app\n'
               '• Maintaining the security of your device\n'
@@ -51,7 +59,7 @@ class TermsScreen extends StatelessWidget {
               'to use this app.',
             ),
             _buildSection(
-              'Data Ownership',
+              'Data ownership',
               'You retain full ownership of all data entered into the app. We do '
               'not claim any rights to your personal information or usage data.',
             ),
@@ -61,7 +69,7 @@ class TermsScreen extends StatelessWidget {
               'use of the app constitutes acceptance of any changes.',
             ),
             _buildSection(
-              'Legal Compliance',
+              'Legal compliance',
               'You agree to use this app in compliance with all applicable laws in your '
               'jurisdiction. The app is intended for personal tracking only and should not '
               'be used for any illegal purposes.',
@@ -72,7 +80,7 @@ class TermsScreen extends StatelessWidget {
               'violates these terms or uses the app for illegal purposes.',
             ),
             _buildSection(
-              'Governing Law',
+              'Governing law',
               'These terms are governed by applicable laws. Any disputes shall be resolved '
               'in accordance with the laws of your jurisdiction.',
             ),
@@ -80,7 +88,7 @@ class TermsScreen extends StatelessWidget {
             Text(
               'Last updated: ${DateTime.now().year}',
               style: TextStyle(
-                color: Colors.grey[500],
+                color: context.c.textTertiary,
                 fontSize: 14,
               ),
             ),
@@ -91,28 +99,37 @@ class TermsScreen extends StatelessWidget {
   }
 
   Widget _buildSection(String title, String content) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
+    return Builder(builder: (context) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 680),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontFamily: AppType.sans,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  color: context.c.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                content,
+                style: TextStyle(
+                  fontFamily: AppType.sans,
+                  fontSize: 15,
+                  height: 1.5,
+                  color: context.c.textSecondary,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            content,
-            style: const TextStyle(
-              fontSize: 16,
-              height: 1.5,
-            ),
-          ),
-        ],
-      ),
-    );
+        ),
+      );
+    },);
   }
 } 

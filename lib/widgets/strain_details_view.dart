@@ -8,265 +8,282 @@ import '../providers/kratom_provider.dart';
 import '../theme/app_theme.dart';
 import '../widgets/add_dosage_form.dart';
 import '../widgets/edit_strain_form.dart';
+import '../widgets/sheet_header.dart';
 import '../widgets/strain_mark.dart';
 
+/// One strain, in full: identity header, use figures, dose-size spread,
+/// stock toggle, and the three actions a strain owns — log a dose, edit,
+/// delete. Opened as a bottom sheet through [showAppSheet], so the surface
+/// is painted by the sheet itself, not here.
 class StrainDetailsView extends StatelessWidget {
   final Strain strain;
 
   const StrainDetailsView({super.key, required this.strain});
+
+  static final _gramFormat = NumberFormat('#,##0.0');
+  static final _dateFormat = DateFormat('d MMM y');
 
   @override
   Widget build(BuildContext context) {
     final c = context.c;
     return Consumer<KratomProvider>(
       builder: (context, provider, child) {
-        final insight = computeStrainInsight(
-          strain.id,
-          provider.dosages,
+        // The copy passed in goes stale the moment stock is toggled; read
+        // the live one so the switch reflects provider state.
+        final live = provider.strains.firstWhere(
+          (s) => s.id == strain.id,
+          orElse: () => strain,
         );
+        final insight = computeStrainInsight(strain.id, provider.dosages);
 
         return SingleChildScrollView(
-          child: Container(
-            decoration: BoxDecoration(
-              color: c.surfaceRaised,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(20),
-              ),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _Header(strain: strain),
-                Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _SectionTitle(strain: strain, text: 'Statistics'),
-                      const SizedBox(height: 16),
-                      _StatsGrid(strain: strain, insight: insight),
-                      const SizedBox(height: 20),
-                      _SectionTitle(strain: strain, text: 'Dose size spread'),
-                      const SizedBox(height: 12),
-                      _DoseSpread(insight: insight),
-                    ],
+          padding: const EdgeInsets.only(bottom: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SheetHeader(
+                leading: StrainMark(
+                  shape: resolveLeafShape(strain.icon, strain.code),
+                  color: legibleStrainColor(
+                    Color(strain.color),
+                    Theme.of(context).brightness,
                   ),
+                  size: 28,
                 ),
-                _AddDoseButton(strain: strain),
-                const SizedBox(height: 24),
-              ],
-            ),
+                title: strain.code,
+                titleColor: legibleStrainColor(
+                  Color(strain.color),
+                  Theme.of(context).brightness,
+                ),
+                subtitle: strain.name == strain.code ? null : strain.name,
+                trailing: IconButton(
+                  key: const Key('strain-details-edit'),
+                  tooltip: 'Edit strain',
+                  icon: Icon(Icons.edit_outlined, color: c.textSecondary),
+                  iconSize: 22,
+                  onPressed: () {
+                    final current = provider.getStrain(strain.id);
+                    if (current == null) return;
+                    Navigator.pop(context);
+                    showAppSheet(
+                      context,
+                      builder: (_) => EditStrainForm(strain: current),
+                    );
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: SheetHeader.inset,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const _Eyebrow('Use'),
+                    _FigureRow(label: 'Doses', value: '${insight.totalDoses}'),
+                    _FigureRow(
+                      label: 'Total',
+                      value: '${_gramFormat.format(insight.totalGrams)}g',
+                    ),
+                    _FigureRow(
+                      label: 'Average dose',
+                      value: insight.totalDoses == 0
+                          ? '—'
+                          : '${_gramFormat.format(insight.avgDoseSize)}g',
+                    ),
+                    _FigureRow(
+                      label: 'First used',
+                      value: insight.firstUsed == null
+                          ? '—'
+                          : _dateFormat.format(insight.firstUsed!),
+                    ),
+                    _FigureRow(
+                      label: 'Last used',
+                      value: insight.lastUsed == null
+                          ? '—'
+                          : '${_dateFormat.format(insight.lastUsed!)}'
+                              '${_relative(insight.lastUsed!)}',
+                    ),
+                    const SizedBox(height: 24),
+                    const _Eyebrow('Dose size'),
+                    _DoseSpread(insight: insight),
+                    const SizedBox(height: 24),
+                    const _Eyebrow('Stock'),
+                    SwitchListTile(
+                      title: const Text('In stock'),
+                      subtitle: const Text(
+                        "Turn off when you don't have it on hand. Keeps the "
+                        'history; drops it below the picker line.',
+                      ),
+                      value: live.inStock,
+                      contentPadding: EdgeInsets.zero,
+                      onChanged: (inStock) => provider.setStrainInStock(
+                        live.id,
+                        inStock: inStock,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(0, 48),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            foregroundColor: c.caution,
+                          ),
+                          onPressed: () => _confirmDelete(
+                            context,
+                            provider,
+                            strain,
+                            insight.totalDoses,
+                          ),
+                          child: const Text('Delete strain'),
+                        ),
+                        const Spacer(),
+                        FilledButton(
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size(48, 48),
+                          ),
+                          onPressed: () {
+                            Navigator.pop(context);
+                            showAppSheet(
+                              context,
+                              builder: (_) => AddDosageForm(
+                                preselectedStrainId: strain.id,
+                              ),
+                            );
+                          },
+                          child: const Text('Log a dose'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         );
       },
     );
   }
-}
 
-class _Header extends StatelessWidget {
-  const _Header({required this.strain});
+  static String _relative(DateTime lastUsed) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(lastUsed.year, lastUsed.month, lastUsed.day);
+    final days = today.difference(day).inDays;
+    return switch (days) {
+      0 => ' (today)',
+      1 => ' (yesterday)',
+      _ => ' ($days days ago)',
+    };
+  }
 
-  final Strain strain;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.c;
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: Color(strain.color).withValues(alpha: 0.2),
-            width: 1,
-          ),
+  Future<void> _confirmDelete(
+    BuildContext context,
+    KratomProvider provider,
+    Strain strain,
+    int doseCount,
+  ) async {
+    final navigator = Navigator.of(context);
+    final route = ModalRoute.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final doseClause = doseCount == 0
+        ? 'It has no logged doses.'
+        : 'Its $doseCount logged ${doseCount == 1 ? 'dose is' : 'doses are'} '
+            'deleted too.';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Delete ${strain.name}?'),
+        content: Text(
+          '$doseClause This cannot be undone.\n\n'
+          'Create a backup in Manage first if you may want them back.',
+          style: TextStyle(color: dialogContext.c.textSecondary),
         ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: Color(strain.color).withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Color(strain.color).withValues(alpha: 0.3),
-                width: 1,
-              ),
-            ),
-            child: Center(
-              child: StrainMark(
-                shape: resolveLeafShape(strain.icon, strain.code),
-                color: Color(strain.color),
-                size: 28,
-              ),
-            ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  strain.code,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: c.textPrimary,
-                      ),
-                ),
-                Text(
-                  strain.name,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: c.textSecondary,
-                      ),
-                ),
-              ],
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: dialogContext.c.caution,
             ),
-          ),
-          IconButton(
-            icon: Icon(Icons.edit_outlined, color: Color(strain.color)),
-            onPressed: () {
-              Navigator.pop(context);
-              showModalBottomSheet(
-                context: context,
-                isScrollControlled: true,
-                backgroundColor: Colors.transparent,
-                builder: (_) => EditStrainForm(strain: strain),
-              );
-            },
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
           ),
         ],
       ),
     );
+    if (confirmed != true || !context.mounted) return;
+    try {
+      await provider.deleteStrain(strain.id);
+      if (context.mounted && route?.isCurrent == true) navigator.pop();
+    } catch (_) {
+      if (context.mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Could not delete ${strain.name}')),
+        );
+      }
+    }
   }
 }
 
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.strain, required this.text});
+class _Eyebrow extends StatelessWidget {
+  const _Eyebrow(this.text);
 
-  final Strain strain;
   final String text;
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-            color: Color(strain.color),
-          ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Text(
+        text,
+        style: sectionLabelStyle(context),
+      ),
     );
   }
 }
 
-class _StatsGrid extends StatelessWidget {
-  const _StatsGrid({required this.strain, required this.insight});
+/// One figure in the use list: quiet label left, value right on a hairline
+/// baseline shared with the rows around it.
+class _FigureRow extends StatelessWidget {
+  const _FigureRow({required this.label, required this.value});
 
-  final Strain strain;
-  final StrainInsight insight;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = Color(strain.color);
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: [
-        _StatChip(
-          title: 'Total doses',
-          value: '${insight.totalDoses}',
-          icon: Icons.history,
-          color: color,
-        ),
-        _StatChip(
-          title: 'Total grams',
-          value: '${insight.totalGrams.toStringAsFixed(1)}g',
-          icon: Icons.monitor_weight_outlined,
-          color: color,
-        ),
-        _StatChip(
-          title: 'Avg dose size',
-          value: insight.totalDoses == 0
-              ? '—'
-              : '${insight.avgDoseSize.toStringAsFixed(1)}g',
-          icon: Icons.local_pharmacy_outlined,
-          color: color,
-        ),
-        _StatChip(
-          title: 'First used',
-          value: insight.firstUsed == null
-              ? '—'
-              : DateFormat('MMM d, y').format(insight.firstUsed!),
-          icon: Icons.play_arrow_outlined,
-          color: color,
-        ),
-        _StatChip(
-          title: 'Last used',
-          value: insight.lastUsed == null
-              ? '—'
-              : DateFormat('MMM d, y').format(insight.lastUsed!),
-          icon: Icons.access_time,
-          color: color,
-        ),
-      ],
-    );
-  }
-}
-
-class _StatChip extends StatelessWidget {
-  const _StatChip({
-    required this.title,
-    required this.value,
-    required this.icon,
-    required this.color,
-  });
-
-  final String title;
+  final String label;
   final String value;
-  final IconData icon;
-  final Color color;
 
   @override
   Widget build(BuildContext context) {
     final c = context.c;
     return Container(
-      width: (MediaQuery.sizeOf(context).width - 48 - 12) / 2,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.symmetric(vertical: 11),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.2), width: 1),
+        border: Border(bottom: BorderSide(color: c.hairline)),
       ),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(8),
+          Text(
+            label,
+            style: TextStyle(
+              fontFamily: AppType.sans,
+              fontSize: 14,
+              color: c.textSecondary,
             ),
-            child: Icon(icon, color: color, size: 18),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: c.textSecondary,
-                      ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: c.textPrimary,
-                      ),
-                ),
-              ],
+          Text(
+            value,
+            style: TextStyle(
+              fontFamily: AppType.sans,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: c.textPrimary,
+              fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
         ],
@@ -287,26 +304,33 @@ class _DoseSpread extends StatelessWidget {
     if (spread == null) {
       return Text(
         'No doses logged yet.',
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: c.textTertiary,
-            ),
+        style: TextStyle(
+          fontFamily: AppType.sans,
+          fontSize: 14,
+          color: c.textTertiary,
+        ),
       );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            _spreadChip(context, 'p25', '${spread.p25.toStringAsFixed(1)}g'),
-            const SizedBox(width: 8),
-            _spreadChip(
-              context,
-              'median',
-              '${spread.median.toStringAsFixed(1)}g',
-              emphasized: true,
+            _SpreadFigure(
+              label: 'p25',
+              value: '${spread.p25.toStringAsFixed(1)}g',
             ),
-            const SizedBox(width: 8),
-            _spreadChip(context, 'p75', '${spread.p75.toStringAsFixed(1)}g'),
+            const SizedBox(width: 32),
+            _SpreadFigure(
+              label: 'median',
+              value: '${spread.median.toStringAsFixed(1)}g',
+            ),
+            const SizedBox(width: 32),
+            _SpreadFigure(
+              label: 'p75',
+              value: '${spread.p75.toStringAsFixed(1)}g',
+            ),
           ],
         ),
         const SizedBox(height: 8),
@@ -314,85 +338,43 @@ class _DoseSpread extends StatelessWidget {
           'Half of your doses of this strain fall between '
           '${spread.p25.toStringAsFixed(1)}g and ${spread.p75.toStringAsFixed(1)}g; '
           'the median is ${spread.median.toStringAsFixed(1)}g.',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: c.textSecondary,
-              ),
+          style: TextStyle(
+            fontFamily: AppType.sans,
+            fontSize: 13,
+            height: 1.4,
+            color: c.textSecondary,
+          ),
         ),
       ],
     );
   }
-
-  Widget _spreadChip(
-    BuildContext context,
-    String label,
-    String value, {
-    bool emphasized = false,
-  }) {
-    final c = context.c;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: emphasized ? c.accent.withValues(alpha: 0.12) : c.surfaceSunken,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: c.hairline),
-      ),
-      child: Column(
-        children: [
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: c.textTertiary,
-                ),
-          ),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: c.textPrimary,
-                ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
-class _AddDoseButton extends StatelessWidget {
-  const _AddDoseButton({required this.strain});
+/// A bare percentile figure — serif number over a quiet label, no box.
+class _SpreadFigure extends StatelessWidget {
+  const _SpreadFigure({required this.label, required this.value});
 
-  final Strain strain;
+  final String label;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: SizedBox(
-        width: double.infinity,
-        height: 56,
-        child: ElevatedButton(
-          onPressed: () {
-            Navigator.pop(context);
-            showModalBottomSheet(
-              context: context,
-              isScrollControlled: true,
-              backgroundColor: Colors.transparent,
-              builder: (_) => AddDosageForm(preselectedStrainId: strain.id),
-            );
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Color(strain.color),
-            foregroundColor: Colors.white,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-          ),
-          child: const Text(
-            'Add Dose',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+    final c = context.c;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(value, style: AppType.display(size: 22, color: c.textPrimary)),
+        const SizedBox(height: 6),
+        Text(
+          label,
+          style: TextStyle(
+            fontFamily: AppType.sans,
+            fontSize: 12,
+            color: c.textTertiary,
           ),
         ),
-      ),
+      ],
     );
   }
 }

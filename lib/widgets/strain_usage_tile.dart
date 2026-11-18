@@ -34,7 +34,7 @@ class StrainUsageTile extends StatelessWidget {
     final showName = strain.name.trim().isNotEmpty &&
         strain.name.trim().toLowerCase() != strain.code.trim().toLowerCase();
 
-    final recency = _recencyLine(usage);
+    final recency = strainRecencyLine(usage);
     final semantics = _semanticsLabel(
       code: strain.code,
       name: showName ? strain.name : null,
@@ -182,37 +182,6 @@ class StrainUsageTile extends StatelessWidget {
     );
   }
 
-  /// Rest, then load — the same two facts the ranking is built from, so the
-  /// order of the list can be read off the rows instead of guessed at. The old
-  /// line described the last day the strain was touched, which is an arbitrary
-  /// snapshot and had nothing to do with where the row sat.
-  static String _recencyLine(StrainUsage usage) {
-    if (usage.lastUsed == null) return 'never used';
-
-    final when = _whenLabel(usage.daysSinceLastUse);
-    if (usage.grams30d <= 0) return '$when · none this month';
-    return '$when · ${_formatGrams(usage.grams30d)}g in 30d';
-  }
-
-  static String _whenLabel(double daysSince) {
-    final days = daysSince.floor();
-    if (days <= 0) return 'today';
-    if (days == 1) return 'yesterday';
-    if (days < 30) return '${days}d ago';
-    final months = (days / 30).floor();
-    if (months < 12) return '${months}mo ago';
-    final years = (days / 365).floor();
-    return years <= 1 ? '1y ago' : '${years}y ago';
-  }
-
-  static String _formatGrams(double grams) {
-    if (grams == grams.roundToDouble()) {
-      return grams.toStringAsFixed(0);
-    }
-    final one = grams.toStringAsFixed(1);
-    return one.endsWith('.0') ? one.substring(0, one.length - 2) : one;
-  }
-
   static String _semanticsLabel({
     required String code,
     required String? name,
@@ -227,6 +196,39 @@ class StrainUsageTile extends StatelessWidget {
     buffer.write(inStock ? ', in stock' : ', out of stock');
     return buffer.toString();
   }
+}
+
+/// The one-line "rest, then load" summary the dose sheet prints under each
+/// strain — e.g. "2d ago · 262.7g in 30d", "yesterday · none this month",
+/// "never used" — the same two facts the ranking is built from, so the order
+/// of the list can be read off the rows. Pulled out of the tile so the
+/// strains index can render the same phrasing without duplicating the
+/// buckets.
+String strainRecencyLine(StrainUsage usage) {
+  if (usage.lastUsed == null) return 'never used';
+
+  final when = _whenLabel(usage.daysSinceLastUse);
+  if (usage.grams30d <= 0) return '$when · none this month';
+  return '$when · ${_formatGrams(usage.grams30d)}g in 30d';
+}
+
+String _whenLabel(double daysSince) {
+  final days = daysSince.floor();
+  if (days <= 0) return 'today';
+  if (days == 1) return 'yesterday';
+  if (days < 30) return '${days}d ago';
+  final months = (days / 30).floor();
+  if (months < 12) return '${months}mo ago';
+  final years = (days / 365).floor();
+  return years <= 1 ? '1y ago' : '${years}y ago';
+}
+
+String _formatGrams(double grams) {
+  if (grams == grams.roundToDouble()) {
+    return grams.toStringAsFixed(0);
+  }
+  final one = grams.toStringAsFixed(1);
+  return one.endsWith('.0') ? one.substring(0, one.length - 2) : one;
 }
 
 class _RotationPickMarker extends StatelessWidget {

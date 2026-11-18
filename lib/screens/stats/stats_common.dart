@@ -19,21 +19,16 @@ class StatsSection extends StatelessWidget {
         const SizedBox(height: 26),
         const FadedRule(),
         const SizedBox(height: 18),
-        Text(label, style: sectionLabelStyle(context)),
+        Text(
+          label.toUpperCase(),
+          style: AppType.eyebrow(context.c.textTertiary),
+        ),
         const SizedBox(height: 14),
         child,
       ],
     );
   }
 }
-
-TextStyle sectionLabelStyle(BuildContext context) => TextStyle(
-      color: context.c.textTertiary,
-      fontSize: 12,
-      height: 1.2,
-      fontWeight: FontWeight.w600,
-      letterSpacing: 0.4,
-    );
 
 /// Quiet secondary line — the register the home screen's status line uses.
 TextStyle quietStyle(BuildContext context) => TextStyle(

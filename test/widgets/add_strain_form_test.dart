@@ -33,11 +33,8 @@ void main() {
     expect(find.text('Forest'), findsOneWidget);
     expect(find.text('Ruby'), findsNothing);
 
-    await tester.tap(
-      find.byWidgetPredicate(
-        (widget) => widget is Radio<String> && widget.value == 'Red',
-      ),
-    );
+    // Colour types are now compact buttons rather than radio controls.
+    await tester.tap(find.text('Red'));
     await tester.pumpAndSettle();
 
     expect(find.text('Forest'), findsNothing);

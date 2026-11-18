@@ -14,6 +14,31 @@ import 'home_dose_actions.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
+/// Sans amount. Digits keep [style]; the unit letter drops to 85%.
+/// No characters are inserted, so plain text is unchanged.
+Text _amountText(String text, TextStyle style) {
+  final unit = style.copyWith(fontSize: (style.fontSize ?? 13) * 0.85);
+  return Text.rich(
+    TextSpan(
+      style: style,
+      children: [
+        for (final match in RegExp(r'[ghmd]|[^ghmd]+').allMatches(text))
+          TextSpan(
+            text: match[0],
+            style: _isUnitLetter(match[0]!) ? unit : null,
+          ),
+      ],
+    ),
+  );
+}
+
+bool _isUnitLetter(String part) => part.length == 1 && 'ghmd'.contains(part);
+
+/// Dose ids the ledger has already shown, keyed by day. A row whose id first
+/// appears on a later build — one just logged — is the only row whose mark
+/// settles in; a day's first build records its ids without animating.
+final Map<DateTime, Set<String>> _seenDoseIdsByDay = {};
+
 /// The day's doses as leaves on a single vine. Three fixed columns:
 /// time gutter (64) · vine band (~72) · content. Only the vine itself curves.
 ///
@@ -26,6 +51,7 @@ class HomeDosageList extends StatelessWidget {
     required this.strainsById,
     this.isToday = true,
     this.now,
+    this.reveal,
     this.header = const SizedBox.shrink(),
   });
 
@@ -39,6 +65,10 @@ class HomeDosageList extends StatelessWidget {
   /// embeds) keeps the label computed once at build, as before.
   final ValueListenable<DateTime>? now;
 
+  /// 0→1 entrance clock for the day. Rows rise in on it one beat apart; null
+  /// (tests, static embeds) shows everything at rest.
+  final Animation<double>? reveal;
+
   /// Optional widget rendered above the vine (kept for call-site compatibility).
   final Widget header;
 
@@ -46,6 +76,19 @@ class HomeDosageList extends StatelessWidget {
   Widget build(BuildContext context) {
     final sorted = [...dosages]
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+    // Ids already shown for this day: on the day's first build everything is
+    // recorded quietly; on later builds an unseen id is a just-logged dose
+    // whose mark settles in once (see [_MarkSettle]).
+    final dayKey = DateUtils.dateOnly(
+      sorted.isEmpty ? DateTime.now() : sorted.first.timestamp.toLocal(),
+    );
+    final daySeen = _seenDoseIdsByDay.containsKey(dayKey);
+    final seen = _seenDoseIdsByDay.putIfAbsent(dayKey, () => <String>{});
+    final justLogged = <String>{};
+    for (final dose in sorted) {
+      if (seen.add(dose.id) && daySeen) justLogged.add(dose.id);
+    }
 
     // Build the flat item list: optional header, then dose rows interleaved
     // with gap strips, then the NOW node on today (or a trailing stem end).
@@ -108,49 +151,53 @@ class HomeDosageList extends StatelessWidget {
             final item = items[index - 1];
             return switch (item.kind) {
               _Kind.dose => _DoseRow(
-                dosage: item.dosage!,
-                strain: strainsById[item.dosage!.strainId],
-                nodeIndex: item.nodeIndex,
-                rowPitch: rhythm.rowPitch,
-                prevColor: item.nodeIndex > 0
-                    ? _strainColor(
-                        context,
-                        strainsById[sorted[item.nodeIndex - 1].strainId],
-                      )
-                    : null,
-                nextColor: item.nodeIndex < sorted.length - 1
-                    ? _strainColor(
-                        context,
-                        strainsById[sorted[item.nodeIndex + 1].strainId],
-                      )
-                    : (isToday ? _nowColor(context) : null),
-                isFirst: item.nodeIndex == 0,
-                isLast: item.nodeIndex == sorted.length - 1 && !isToday,
-              ),
-              _Kind.gap => _GapRow(
-                gap: item.gap!,
-                gapStrip: rhythm.gapStrip,
-                fromIndex: item.fromIndex,
-                toIndex: item.toIndex,
-                liveFrom: item.liveFrom,
-                now: now,
-                fromColor: _strainColor(
-                  context,
-                  strainsById[sorted[item.fromIndex].strainId],
+                  dosage: item.dosage!,
+                  strain: strainsById[item.dosage!.strainId],
+                  nodeIndex: item.nodeIndex,
+                  rowPitch: rhythm.rowPitch,
+                  reveal: reveal,
+                  prevColor: item.nodeIndex > 0
+                      ? _strainColor(
+                          context,
+                          strainsById[sorted[item.nodeIndex - 1].strainId],
+                        )
+                      : null,
+                  nextColor: item.nodeIndex < sorted.length - 1
+                      ? _strainColor(
+                          context,
+                          strainsById[sorted[item.nodeIndex + 1].strainId],
+                        )
+                      : (isToday ? _nowColor(context) : null),
+                  isFirst: item.nodeIndex == 0,
+                  isLast: item.nodeIndex == sorted.length - 1 && !isToday,
+                  settles: justLogged.contains(item.dosage!.id),
                 ),
-                toColor: item.toNow
-                    ? _nowColor(context)
-                    : _strainColor(
-                        context,
-                        strainsById[sorted[item.toIndex].strainId],
-                      ),
-                toNow: item.toNow,
-              ),
+              _Kind.gap => _GapRow(
+                  gap: item.gap!,
+                  gapStrip: rhythm.gapStrip,
+                  reveal: reveal,
+                  fromIndex: item.fromIndex,
+                  toIndex: item.toIndex,
+                  liveFrom: item.liveFrom,
+                  now: now,
+                  fromColor: _strainColor(
+                    context,
+                    strainsById[sorted[item.fromIndex].strainId],
+                  ),
+                  toColor: item.toNow
+                      ? _nowColor(context)
+                      : _strainColor(
+                          context,
+                          strainsById[sorted[item.toIndex].strainId],
+                        ),
+                  toNow: item.toNow,
+                ),
               _Kind.now => _NowRow(
-                nodeIndex: item.nodeIndex,
-                nowPitch: rhythm.nowPitch,
-                lastColor: item.lastColor,
-              ),
+                  nodeIndex: item.nodeIndex,
+                  nowPitch: rhythm.nowPitch,
+                  reveal: reveal,
+                  lastColor: item.lastColor,
+                ),
             };
           },
         );
@@ -193,14 +240,15 @@ class _VineItem {
     required int toIndex,
     bool toNow = false,
     DateTime? liveFrom,
-  }) => _VineItem._(
-    kind: _Kind.gap,
-    gap: gap,
-    fromIndex: fromIndex,
-    toIndex: toIndex,
-    toNow: toNow,
-    liveFrom: liveFrom,
-  );
+  }) =>
+      _VineItem._(
+        kind: _Kind.gap,
+        gap: gap,
+        fromIndex: fromIndex,
+        toIndex: toIndex,
+        toNow: toNow,
+        liveFrom: liveFrom,
+      );
 
   factory _VineItem.now({required int nodeIndex, Color? lastColor}) =>
       _VineItem._(kind: _Kind.now, nodeIndex: nodeIndex, lastColor: lastColor);
@@ -218,6 +266,67 @@ class _VineItem {
   final Color? lastColor;
 }
 
+// ── Entrance ──────────────────────────────────────────────────────────────
+
+/// One beat of the day's entrance. Each step starts a little after the one
+/// above it and eases out, so the ledger settles top to bottom instead of
+/// appearing as a single block. Rows built later by scrolling see the clock
+/// already finished and show at rest.
+class _Entrance extends StatelessWidget {
+  const _Entrance({
+    required this.reveal,
+    required this.step,
+    required this.child,
+    this.delay = 0,
+    this.rise = 12,
+    this.scaleFrom,
+    this.curve = AppMotion.spring,
+  });
+
+  final Animation<double>? reveal;
+  final int step;
+  final Widget child;
+
+  /// Extra start offset, in fractions of the whole entrance.
+  final double delay;
+
+  /// Pixels the content travels up while it fades in.
+  final double rise;
+  final double? scaleFrom;
+  final Curve curve;
+
+  @override
+  Widget build(BuildContext context) {
+    final clock = reveal;
+    if (clock == null || clock.isCompleted) return child;
+    final start = math.min(step, 7) * 0.075 + delay;
+    final t = clock.drive(
+      CurveTween(curve: Interval(start, math.min(1, start + 0.45))),
+    );
+    return AnimatedBuilder(
+      animation: t,
+      child: child,
+      builder: (context, child) {
+        final v = curve.transform(t.value);
+        Widget out = child!;
+        if (scaleFrom != null) {
+          out = Transform.scale(
+            scale: scaleFrom! + (1 - scaleFrom!) * v,
+            child: out,
+          );
+        }
+        if (rise != 0) {
+          out = Transform.translate(
+            offset: Offset(0, rise * (1 - v)),
+            child: out,
+          );
+        }
+        return Opacity(opacity: t.value.clamp(0.0, 1.0), child: out);
+      },
+    );
+  }
+}
+
 // ── Dose row ──────────────────────────────────────────────────────────────
 
 class _DoseRow extends StatelessWidget {
@@ -226,30 +335,48 @@ class _DoseRow extends StatelessWidget {
     required this.strain,
     required this.nodeIndex,
     required this.rowPitch,
+    required this.reveal,
     required this.prevColor,
     required this.nextColor,
     required this.isFirst,
     required this.isLast,
+    required this.settles,
   });
 
   final Dosage dosage;
   final Strain? strain;
   final int nodeIndex;
   final double rowPitch;
+  final Animation<double>? reveal;
   final Color? prevColor;
   final Color? nextColor;
   final bool isFirst;
   final bool isLast;
 
+  /// Fixed gram scale (max single dose across days) the gram-leaf maps onto.
+  /// True only for a dose that just appeared (logged while Home was
+  /// showing its day): its mark settles in once.
+  final bool settles;
+
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
-    final rawColor = strain == null
-        ? context.c.textTertiary
-        : Color(strain!.color);
+    final rawColor =
+        strain == null ? context.c.textTertiary : Color(strain!.color);
     final leafColor = legibleStrainColor(rawColor, brightness);
-    final amountColor = leafColor;
     final code = strain?.code ?? '???';
+    // Small text needs more than the leaf's own legibility band: pale hues
+    // (yellow, white) sit near 2:1 on cream at 13px, so on light the label
+    // is pulled darker while the leaf keeps the strain's true colour.
+    final leafHsl = HSLColor.fromColor(leafColor);
+    final codeColor = brightness == Brightness.light
+        ? leafHsl.withLightness(math.min(leafHsl.lightness, 0.33)).toColor()
+        : leafColor;
+    // The code is the identity; the full name only earns a line when it says
+    // something the code doesn't.
+    final fullName = strain?.name.trim() ?? '';
+    final showName =
+        fullName.isNotEmpty && fullName.toLowerCase() != code.toLowerCase();
     final shape = resolveLeafShape(strain?.icon ?? '', strain?.code ?? '');
     final xOff = VineGeometry.offsetFor(nodeIndex);
 
@@ -258,7 +385,7 @@ class _DoseRow extends StatelessWidget {
     final ampm = DateFormat('a').format(localTimestamp).toUpperCase();
 
     final semantics =
-        '$hour $ampm, $code, ${dosage.amount} grams';
+        '$hour $ampm, $code${showName ? ' ($fullName)' : ''}, ${dosage.amount} grams';
 
     // Stem colour above/below the leaf so segments join with neighbours.
     final above = prevColor ?? leafColor;
@@ -267,132 +394,179 @@ class _DoseRow extends StatelessWidget {
     return Semantics(
       button: true,
       label: semantics,
-      child: SizedBox(
-        height: rowPitch,
-        child: InkWell(
-          onTap: () => showDosageOptions(context, dosage),
-          onLongPress: () {
-            HapticFeedback.mediumImpact();
-            showDosageOptions(context, dosage);
-          },
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // Time gutter — right-aligned, fixed 64px.
-              SizedBox(
-                width: VineGeometry.timeGutter,
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.end,
+      child: _Entrance(
+        reveal: reveal,
+        step: nodeIndex,
+        child: SizedBox(
+          height: rowPitch,
+          child: InkWell(
+            onTap: () => showDosageOptions(context, dosage),
+            onLongPress: () {
+              HapticFeedback.mediumImpact();
+              showDosageOptions(context, dosage);
+            },
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Time gutter — right-aligned, fixed 64px.
+                SizedBox(
+                  width: VineGeometry.timeGutter,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    // scaleDown keeps "12:00" inside the fixed gutter when the
+                    // system font scale is large, instead of overflowing.
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            hour,
+                            style: TextStyle(
+                              color: context.c.textPrimary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              height: 1.1,
+                              fontFeatures: _tabular,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            ampm,
+                            style: TextStyle(
+                              color: context.c.textTertiary,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w500,
+                              height: 1.1,
+                              letterSpacing: 0.6, // ~0.06em at 10px
+                              fontFeatures: _tabular,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                // Vine band — stem runs beside the leaf; petiole attaches.
+                SizedBox(
+                  width: VineGeometry.vineBand,
+                  height: rowPitch,
+                  child: Stack(
+                    clipBehavior: Clip.none,
                     children: [
-                      Text(
-                        hour,
-                        style: TextStyle(
-                          color: context.c.textPrimary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          height: 1.1,
-                          fontFeatures: _tabular,
+                      CustomPaint(
+                        size: Size(VineGeometry.vineBand, rowPitch),
+                        painter: VineRowStemPainter(
+                          xOffset: xOff,
+                          colorAbove: above,
+                          colorMid: leafColor,
+                          colorBelow: below,
+                          extendUp: !isFirst,
+                          extendDown: !isLast,
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        ampm,
-                        style: TextStyle(
-                          color: context.c.textTertiary,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                          height: 1.1,
-                          letterSpacing: 0.6, // ~0.06em at 10px
-                          fontFeatures: _tabular,
+                      // Leaf stays band-centred so data columns remain stable.
+                      // The stem is offset beside it (see VineGeometry.offsetFor).
+                      Align(
+                        alignment: Alignment.center,
+                        child: _Entrance(
+                          reveal: reveal,
+                          step: nodeIndex,
+                          delay: 0.04,
+                          rise: 0,
+                          scaleFrom: 0.55,
+                          curve: Curves.easeOutBack,
+                          child: _MarkSettle(
+                            animate: settles,
+                            child: StrainMark(
+                              shape: shape,
+                              color: leafColor,
+                              size: VineGeometry.leafSize,
+                            ),
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
-              // Vine band — stem runs beside the leaf; petiole attaches.
-              SizedBox(
-                width: VineGeometry.vineBand,
-                height: rowPitch,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    CustomPaint(
-                      size: Size(VineGeometry.vineBand, rowPitch),
-                      painter: VineRowStemPainter(
-                        xOffset: xOff,
-                        colorAbove: above,
-                        colorMid: leafColor,
-                        colorBelow: below,
-                        extendUp: !isFirst,
-                        extendDown: !isLast,
-                      ),
-                    ),
-                    // Leaf stays band-centred so data columns remain stable.
-                    // The stem is offset beside it (see VineGeometry.offsetFor).
-                    Align(
-                      alignment: Alignment.center,
-                      child: StrainMark(
-                        shape: shape,
-                        color: leafColor,
-                        size: VineGeometry.leafSize,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Content — ledger line: identity left, amount on the right
-              // margin so the row spans the full width and the amounts form
-              // one scannable right-aligned column.
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 10, right: 4),
-                  child: Row(
-                    // Code and amount share a baseline so the row reads as
-                    // one line across the width rather than two blocks at
-                    // different heights.
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                // Content — the strain CODE leads: it is the identity people
+                // read the day by, and it changes from dose to dose while the
+                // amount barely does. It carries the strain's colour. Under it,
+                // quiet supporting text: the amount, then the full name.
+                // Nothing is pinned to the right margin, so the last row of a
+                // full day can't end up under the add button.
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 12, right: 4),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          code,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: codeColor,
+                            fontSize: 26,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.8,
+                            height: 1.05,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
                           children: [
-                            Text(
-                              code,
-                              style: TextStyle(
+                            _amountText(
+                              _formatAmount(dosage.amount),
+                              TextStyle(
+                                fontFamily: AppType.sans,
                                 color: context.c.textSecondary,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 1.1,
-                                height: 1.1,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                                height: 1.0,
+                                fontFeatures: _tabular,
                               ),
                             ),
+                            if (showName) ...[
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                ),
+                                child: Container(
+                                  width: 3,
+                                  height: 3,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: context.c.textTertiary
+                                        .withValues(alpha: 0.6),
+                                  ),
+                                ),
+                              ),
+                              Flexible(
+                                child: Text(
+                                  fullName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: context.c.textTertiary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.0,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ],
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        _formatAmount(dosage.amount),
-                        textAlign: TextAlign.right,
-                        style: TextStyle(
-                          color: amountColor,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700,
-                          height: 1.05,
-                          letterSpacing: -0.3,
-                          fontFeatures: _tabular,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -403,10 +577,67 @@ class _DoseRow extends StatelessWidget {
     final body = value == value.roundToDouble()
         ? value.toStringAsFixed(0)
         : value
-              .toStringAsFixed(2)
-              .replaceFirst(RegExp(r'0+$'), '')
-              .replaceFirst(RegExp(r'\.$'), '');
+            .toStringAsFixed(2)
+            .replaceFirst(RegExp(r'0+$'), '')
+            .replaceFirst(RegExp(r'\.$'), '');
     return '${body}g';
+  }
+}
+
+/// A just-logged dose's mark settles in once: scale 0.6→1 with a fade,
+/// 200 ms easeOutCubic, no bounce. [animate] false (or OS animations off)
+/// shows it at rest. The controller only ever forwards once, so rebuilds
+/// can't restart it.
+class _MarkSettle extends StatefulWidget {
+  const _MarkSettle({required this.animate, required this.child});
+
+  final bool animate;
+  final Widget child;
+
+  @override
+  State<_MarkSettle> createState() => _MarkSettleState();
+}
+
+class _MarkSettleState extends State<_MarkSettle>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 200),
+    value: widget.animate ? 0 : 1,
+  );
+  late final Animation<double> _settle = CurvedAnimation(
+    parent: _controller,
+    curve: Curves.easeOutCubic,
+  );
+  bool _played = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_played) return;
+    _played = true;
+    if (!widget.animate || MediaQuery.disableAnimationsOf(context)) {
+      _controller.value = 1;
+    } else {
+      _controller.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _settle,
+      child: ScaleTransition(
+        scale: Tween<double>(begin: 0.6, end: 1).animate(_settle),
+        child: widget.child,
+      ),
+    );
   }
 }
 
@@ -416,6 +647,7 @@ class _GapRow extends StatelessWidget {
   const _GapRow({
     required this.gap,
     required this.gapStrip,
+    required this.reveal,
     required this.fromIndex,
     required this.toIndex,
     required this.fromColor,
@@ -427,6 +659,7 @@ class _GapRow extends StatelessWidget {
 
   final Duration gap;
   final double gapStrip;
+  final Animation<double>? reveal;
   final int fromIndex;
   final int toIndex;
   final Color fromColor;
@@ -459,29 +692,26 @@ class _GapRow extends StatelessWidget {
             ),
           );
 
-    // The elapsed figure belongs in the time gutter beside the clock times,
-    // not punched through the stem: boxed on the vine it had to shrink to fit
-    // the 72px band and came out an illegible smudge across a broken stem.
-    //
-    // Every interval on the vine is labelled, including the live one. Leaving
-    // the last gap blank left a hole in the timeline's own grammar at exactly
-    // the interval that matters most. It reads brighter and heavier than a
-    // settled gap because it is the one number still moving; the status line
-    // above keeps saying it too, so the figure survives being scrolled off on
-    // a long day.
-    // The live label listens to the ticking clock; settled gaps stay static.
+    // Gap labels only exist from one minute up; under a minute the strip
+    // stays blank — the NOW row already says it, and a settled gap of 0m is
+    // not "now". The live label keeps ticking so it appears once a minute passes.
     final liveAnchor = liveFrom;
-    Widget gutterLabel(Duration d) => Text(
-          _gapLabel(d),
-          style: TextStyle(
-            color: toNow ? context.c.textSecondary : context.c.textTertiary,
-            fontSize: 10.5,
-            fontWeight: toNow ? FontWeight.w600 : FontWeight.w500,
-            height: 1.1,
-            letterSpacing: 0.42, // ~0.04em at 10.5px
-            fontFeatures: _tabular,
-          ),
-        );
+    Widget gutterLabel(Duration d) {
+      final text = _gapLabel(d);
+      if (text.isEmpty) return const SizedBox.shrink();
+      return Text(
+        text,
+        style: TextStyle(
+          color: toNow ? context.c.textSecondary : context.c.textTertiary,
+          fontSize: 11,
+          fontWeight: toNow ? FontWeight.w600 : FontWeight.w500,
+          height: 1.1,
+          letterSpacing: 0.42, // ~0.04em at 11px
+          fontFeatures: _tabular,
+        ),
+      );
+    }
+
     final label = (toNow && liveAnchor != null && now != null)
         ? ValueListenableBuilder<DateTime>(
             valueListenable: now!,
@@ -500,7 +730,12 @@ class _GapRow extends StatelessWidget {
               padding: const EdgeInsets.only(right: 6),
               child: Align(
                 alignment: Alignment.centerRight,
-                child: label,
+                child: _Entrance(
+                  reveal: reveal,
+                  step: toIndex,
+                  rise: 4,
+                  child: label,
+                ),
               ),
             ),
           ),
@@ -520,7 +755,7 @@ class _GapRow extends StatelessWidget {
     final minutes = d.inMinutes.remainder(60);
     if (hours > 0) return '${hours}h ${minutes}m';
     if (minutes > 0) return '${minutes}m';
-    return 'now';
+    return '';
   }
 }
 
@@ -586,16 +821,16 @@ class _LiveGapStemState extends State<_LiveGapStem>
     final animate = _shouldAnimate(context);
 
     Widget paint(double dashOffset) => CustomPaint(
-      painter: VineGapStemPainter(
-        fromOffset: widget.fromOffset,
-        toOffset: widget.toOffset,
-        fromColor: widget.fromColor,
-        toColor: widget.toColor,
-        live: true,
-        dashOffset: dashOffset,
-        liveColor: liveColor,
-      ),
-    );
+          painter: VineGapStemPainter(
+            fromOffset: widget.fromOffset,
+            toOffset: widget.toOffset,
+            fromColor: widget.fromColor,
+            toColor: widget.toColor,
+            live: true,
+            dashOffset: dashOffset,
+            liveColor: liveColor,
+          ),
+        );
 
     if (!animate) {
       return RepaintBoundary(child: paint(0));
@@ -625,11 +860,13 @@ class _NowRow extends StatelessWidget {
   const _NowRow({
     required this.nodeIndex,
     required this.nowPitch,
+    required this.reveal,
     required this.lastColor,
   });
 
   final int nodeIndex;
   final double nowPitch;
+  final Animation<double>? reveal;
   final Color? lastColor;
 
   @override
@@ -651,22 +888,7 @@ class _NowRow extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              SizedBox(
-                width: VineGeometry.timeGutter,
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: Text(
-                    'now',
-                    textAlign: TextAlign.right,
-                    style: TextStyle(
-                      color: context.c.textTertiary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.4,
-                    ),
-                  ),
-                ),
-              ),
+              const SizedBox(width: VineGeometry.timeGutter),
               SizedBox(
                 width: VineGeometry.vineBand,
                 height: band,
@@ -681,34 +903,38 @@ class _NowRow extends StatelessWidget {
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(left: 10),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        empty ? 'NO DOSES YET' : 'NOW',
-                        style: TextStyle(
-                          color: context.c.textSecondary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.4,
-                        ),
-                      ),
-                      // Mirrors the dose row's sub-line, so the empty
-                      // state sits on the same grid as a real one.
-                      if (empty) ...[
-                        const SizedBox(height: 5),
+                  child: _Entrance(
+                    reveal: reveal,
+                    step: nodeIndex,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Text(
-                          'tap + to log the first',
+                          empty ? 'NO DOSES YET' : 'NOW',
                           style: TextStyle(
-                            color: context.c.textTertiary,
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w500,
-                            letterSpacing: 0.3,
+                            color: context.c.textSecondary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.4,
                           ),
                         ),
+                        // Mirrors the dose row's sub-line, so the empty
+                        // state sits on the same grid as a real one.
+                        if (empty) ...[
+                          const SizedBox(height: 5),
+                          Text(
+                            'tap + to log the first',
+                            style: TextStyle(
+                              color: context.c.textTertiary,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w500,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -792,17 +1018,17 @@ class _LiveNowStemState extends State<_LiveNowStem>
     final animate = _shouldAnimate(context);
 
     Widget paint({double dashOffset = 0, double? sprout}) => CustomPaint(
-      painter: VineNowStemPainter(
-        xOffset: widget.xOffset,
-        fromColor: widget.fromColor,
-        tipColor: widget.tipColor,
-        hasPrior: widget.hasPrior,
-        live: true,
-        dashOffset: dashOffset,
-        liveColor: liveColor,
-        sproutPhase: sprout,
-      ),
-    );
+          painter: VineNowStemPainter(
+            xOffset: widget.xOffset,
+            fromColor: widget.fromColor,
+            tipColor: widget.tipColor,
+            hasPrior: widget.hasPrior,
+            live: true,
+            dashOffset: dashOffset,
+            liveColor: liveColor,
+            sproutPhase: sprout,
+          ),
+        );
 
     // Reduced motion gets the shoot fully grown, not mid-sprout.
     if (!animate) {

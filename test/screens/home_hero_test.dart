@@ -22,15 +22,11 @@ void main() {
 
     await _pumpCard(tester, provider, focusedDay: DateUtils.dateOnly(now));
 
-    // Quiet line: "<elapsed> since last dose · 2g · 1 dose"
-    expect(
-      find.textContaining('since last dose', findRichText: true),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining('2g · 1 dose', findRichText: true),
-      findsOneWidget,
-    );
+    // Headline: the elapsed figure under a Since last dose label, with the
+    // day's running total and count beside it.
+    expect(find.text('Since last dose'), findsOneWidget);
+    expect(find.text('2g'), findsOneWidget);
+    expect(find.text('1 dose'), findsOneWidget);
   });
 
   testWidgets('quiet line advances when the now clock ticks', (tester) async {
@@ -51,19 +47,13 @@ void main() {
       focusedDay: DateUtils.dateOnly(now),
       now: clock,
     );
-    expect(
-      find.textContaining('1h 2m since last dose', findRichText: true),
-      findsOneWidget,
-    );
+    expect(find.text('1h 2m'), findsOneWidget);
 
     // Hours pass (resume from background); the label must catch up without
     // any dose or strain change forcing a rebuild.
     clock.value = DateTime(now.year, now.month, now.day, 11, 30);
     await tester.pump();
-    expect(
-      find.textContaining('3h 30m since last dose', findRichText: true),
-      findsOneWidget,
-    );
+    expect(find.text('3h 30m'), findsOneWidget);
   });
 
   testWidgets('quiet line shows the day total for a past date', (tester) async {
@@ -79,16 +69,11 @@ void main() {
     await _pumpCard(tester, provider, focusedDay: past);
     await tester.pumpAndSettle();
 
-    // Past-day quiet line is the day's total and dose count.
-    expect(
-      find.textContaining('5g · 2 doses', findRichText: true),
-      findsOneWidget,
-    );
+    // Past-day headline is the day's total and dose count.
+    expect(find.text('5g'), findsOneWidget);
+    expect(find.text('2 doses'), findsOneWidget);
     // Elapsed "since last dose" must not appear for a past day.
-    expect(
-      find.textContaining('since last dose', findRichText: true),
-      findsNothing,
-    );
+    expect(find.text('Since last dose'), findsNothing);
   });
 }
 

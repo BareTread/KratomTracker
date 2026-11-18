@@ -101,10 +101,10 @@ void main() {
         expect(nowLabel.dy, greaterThan(listHeight * 0.55));
         expect(nowLabel.dy, lessThan(listHeight - 8));
 
-        // Amounts stay right-aligned as a stable column.
-        final a1 = tester.getTopRight(find.text('1g'));
-        final a2 = tester.getTopRight(find.text('2g'));
-        final a3 = tester.getTopRight(find.text('3g'));
+        // Amounts share one left edge as a stable column.
+        final a1 = tester.getTopLeft(find.text('1g'));
+        final a2 = tester.getTopLeft(find.text('2g'));
+        final a3 = tester.getTopLeft(find.text('3g'));
         expect(a1.dx, closeTo(a2.dx, 0.5));
         expect(a2.dx, closeTo(a3.dx, 0.5));
       },

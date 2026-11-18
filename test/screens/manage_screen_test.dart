@@ -15,13 +15,14 @@ void main() {
     launchSupportUrl = launchUrl;
   });
 
+  // Settings labels use sentence case throughout the grouped list.
   testWidgets('support link surfaces an error when launchUrl returns false',
       (tester) async {
     launchSupportUrl = (url, {mode = LaunchMode.platformDefault}) async => false;
 
     await _pumpManage(tester);
-    await tester.scrollUntilVisible(find.text('Support Development'), 300);
-    await tester.tap(find.text('Support Development'));
+    await tester.scrollUntilVisible(find.text('Support development'), 300);
+    await tester.tap(find.text('Support development'));
     await tester.pumpAndSettle();
 
     expect(find.text('Could not open link'), findsOneWidget);
@@ -34,8 +35,8 @@ void main() {
     };
 
     await _pumpManage(tester);
-    await tester.scrollUntilVisible(find.text('Support Development'), 300);
-    await tester.tap(find.text('Support Development'));
+    await tester.scrollUntilVisible(find.text('Support development'), 300);
+    await tester.tap(find.text('Support development'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Could not open link'), findsOneWidget);
@@ -44,17 +45,53 @@ void main() {
 
   testWidgets('privacy policy still navigates from Manage', (tester) async {
     await _pumpManage(tester);
-    await tester.scrollUntilVisible(find.text('Privacy Policy'), 300);
-    await tester.tap(find.text('Privacy Policy'));
+    await tester.scrollUntilVisible(find.text('Privacy policy'), 300);
+    await tester.tap(find.text('Privacy policy'));
     await tester.pumpAndSettle();
 
     expect(find.byType(PrivacyPolicyScreen), findsOneWidget);
-    expect(find.text('Data Collection and Storage'), findsOneWidget);
+    expect(find.text('Data collection and storage'), findsOneWidget);
+  });
+
+  testWidgets('appearance choices persist and reminders are absent',
+      (tester) async {
+    await _pumpManage(tester);
+    expect(find.text('Appearance'), findsOneWidget);
+    expect(find.text('System'), findsOneWidget);
+    expect(find.text('Light'), findsOneWidget);
+    expect(find.text('Dark'), findsOneWidget);
+    expect(find.text('Dosage Reminders'), findsNothing);
+
+    await tester.tap(find.text('Light'));
+    await tester.pumpAndSettle();
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('themeMode'), 'light');
+  });
+
+  // Corrupt settings JSON makes KratomProvider.create report load warnings;
+  // Manage must surface them in the persistent notice at the top.
+  testWidgets('load warnings show a persistent notice', (tester) async {
+    await _pumpManage(tester, initialValues: {'settings': '{not json'});
+
+    expect(find.byKey(const Key('manage-load-warnings')), findsOneWidget);
+    expect(
+      find.text('Some saved data could not be loaded'),
+      findsOneWidget,
+    );
+    // Each provider warning renders as a line prefixed with an en dash.
+    expect(find.textContaining('– '), findsWidgets);
+    expect(
+      find.textContaining('Saved settings were damaged'),
+      findsOneWidget,
+    );
   });
 }
 
-Future<void> _pumpManage(WidgetTester tester) async {
-  SharedPreferences.setMockInitialValues({});
+Future<void> _pumpManage(
+  WidgetTester tester, {
+  Map<String, Object> initialValues = const {},
+}) async {
+  SharedPreferences.setMockInitialValues(initialValues);
   final prefs = await SharedPreferences.getInstance();
   final provider = await KratomProvider.create(prefs);
 

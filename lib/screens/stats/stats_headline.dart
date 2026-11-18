@@ -66,12 +66,10 @@ class StatsHeadline extends StatelessWidget {
       children: [
         Text(
           driftHeadline(drift, bundle.selected),
-          style: TextStyle(
+          style: AppType.display(
+            size: 29,
             color: color,
-            fontSize: 21,
-            height: 1.3,
-            fontWeight: FontWeight.w600,
-            letterSpacing: -0.2,
+            height: 1.15,
           ),
         ),
         if (detail != null) ...[
@@ -117,8 +115,10 @@ class IntakeEquation extends StatelessWidget {
             child: _Factor(
               value: formatAmount(level.dosesPerDay),
               unit: 'doses a day',
-              delta: showDeltas ? drift.dosesChangePercent : null,
-              showDelta: showDeltas,
+              // One trend word, on the total: the sentence above already
+              // says which factor drove it.
+              delta: null,
+              showDelta: false,
             ),
           ),
           const _Operator('×'),
@@ -126,8 +126,10 @@ class IntakeEquation extends StatelessWidget {
             child: _Factor(
               value: formatAmount(level.gramsPerDose),
               unit: 'grams a dose',
-              delta: showDeltas ? drift.sizeChangePercent : null,
-              showDelta: showDeltas,
+              // One trend word, on the total: the sentence above already
+              // says which factor drove it.
+              delta: null,
+              showDelta: false,
             ),
           ),
         ],
@@ -158,14 +160,7 @@ class _Factor extends StatelessWidget {
         Text(
           value,
           maxLines: 1,
-          style: TextStyle(
-            color: c.textPrimary,
-            fontSize: 25,
-            height: 1.1,
-            fontWeight: FontWeight.w600,
-            letterSpacing: -0.5,
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
+          style: AppType.display(size: 36, color: c.textPrimary),
         ),
         const SizedBox(height: 3),
         Text(
@@ -174,7 +169,11 @@ class _Factor extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: TextStyle(color: c.textTertiary, fontSize: 11, height: 1.2),
         ),
-        if (showDelta) ...[
+        // The headline already says "holding steady" when nothing moved;
+        // three "flat" captions under the figures only repeat it. A factor's
+        // trend word exists to mark movement, so flat and unmeasurable both
+        // render nothing.
+        if (showDelta && delta != null && delta!.abs().round() > 0) ...[
           const SizedBox(height: 7),
           Text(
             formatDelta(delta),

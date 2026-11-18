@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../domain/date_utils.dart';
@@ -13,6 +14,7 @@ import '../theme/app_theme.dart';
 import '../widgets/add_dosage_form.dart';
 import '../widgets/add_strain_form.dart';
 import 'home/home_day_card.dart';
+import 'home/home_dose_actions.dart';
 import 'home/home_dosage_list.dart';
 import 'home/home_empty_state.dart';
 import 'home/home_fab_menu.dart';
@@ -164,6 +166,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_sameDay(mapped, _focusedDay.value)) return;
     final current = _pageController.page?.round() ?? _todayPage;
     final adjacent = (target - current).abs() == 1;
+    HapticFeedback.selectionClick();
     _focusedDay.value = mapped;
     if (!_pageController.hasClients) {
       _commitSelectedDate();
@@ -196,96 +199,137 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         builder: (_) => const AddStrainForm(),
       );
 
+  /// The most recent dose across all history, resolved to its strain so the
+  /// FAB's repeat pill and the one-tap re-log share one lookup. Null when the
+  /// log is empty or the dose's strain was deleted.
+  ({Strain strain, double amount})? _repeatTarget(KratomProvider provider) {
+    if (provider.dosages.isEmpty) return null;
+    var latest = provider.dosages.first;
+    for (final dose in provider.dosages) {
+      if (dose.timestamp.isAfter(latest.timestamp)) latest = dose;
+    }
+    final strain = provider.getStrain(latest.strainId);
+    if (strain == null) return null;
+    return (strain: strain, amount: latest.amount);
+  }
+
+  void _repeatLastDose() {
+    final target = _repeatTarget(context.read<KratomProvider>());
+    if (target == null) return;
+    logDoseNow(context, strainId: target.strain.id, amount: target.amount);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Scaffold(
-          // Parent MainScreen owns the bottom nav + system inset; don't pad
-          // the body again or the vine list shrinks for no reason.
-          body: SafeArea(
-            bottom: false,
-            child: Column(
-              children: [
-                ValueListenableBuilder<DateTime>(
-                  valueListenable: _focusedDay,
-                  builder: (context, day, _) => HomeDayCard(
-                    focusedDay: day,
-                    onDaySelected: _selectDay,
-                    now: _now,
+    // Rebuilds the FAB pill row whenever the latest dose (or its strain)
+    // changes; the record identity keeps unrelated notifications cheap.
+    final repeat =
+        context.select<KratomProvider, ({Strain strain, double amount})?>(
+      _repeatTarget,
+    );
+    // Back closes an open FAB menu instead of leaving the screen; with the
+    // menu closed the pop passes through untouched.
+    return PopScope(
+      canPop: !_fabOpen,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _fabKey.currentState?.close();
+      },
+      child: Stack(
+        children: [
+          Scaffold(
+            // Parent MainScreen owns the bottom nav + system inset; don't pad
+            // the body again or the vine list shrinks for no reason.
+            body: SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  ValueListenableBuilder<DateTime>(
+                    valueListenable: _focusedDay,
+                    builder: (context, day, _) => HomeDayCard(
+                      focusedDay: day,
+                      onDaySelected: _selectDay,
+                      now: _now,
+                    ),
                   ),
-                ),
-                Expanded(
-                  child: NotificationListener<ScrollEndNotification>(
-                    onNotification: (_) {
-                      _commitSelectedDate();
-                      return false;
-                    },
-                    child: PageView.builder(
-                      key: const Key('home-day-pager'),
-                      controller: _pageController,
-                      itemCount: _todayPage + 1,
-                      physics: const PageScrollPhysics(
-                        parent: BouncingScrollPhysics(),
-                      ),
-                      onPageChanged: (index) {
-                        final day = _dateForPage(index);
-                        if (_sameDay(day, _focusedDay.value)) return;
-                        _focusedDay.value = day;
+                  Expanded(
+                    child: NotificationListener<ScrollEndNotification>(
+                      onNotification: (_) {
+                        _commitSelectedDate();
+                        return false;
                       },
-                      // Each day is its own layer, so a slide composites
-                      // cached pictures instead of re-running every vine
-                      // and leaf painter on both pages, every frame.
-                      itemBuilder: (context, index) => RepaintBoundary(
-                        child: _HomeDayPage(
-                          key: ValueKey(_dateForPage(index)),
-                          date: _dateForPage(index),
-                          today: _anchor,
-                          onAddDose: _openAddDose,
-                          now: _now,
+                      child: PageView.builder(
+                        key: const Key('home-day-pager'),
+                        controller: _pageController,
+                        itemCount: _todayPage + 1,
+                        physics: const PageScrollPhysics(
+                          parent: BouncingScrollPhysics(),
+                        ),
+                        onPageChanged: (index) {
+                          final day = _dateForPage(index);
+                          if (_sameDay(day, _focusedDay.value)) return;
+                          HapticFeedback.selectionClick();
+                          _focusedDay.value = day;
+                        },
+                        // Each day is its own layer, so a slide composites
+                        // cached pictures instead of re-running every vine
+                        // and leaf painter on both pages, every frame.
+                        itemBuilder: (context, index) => RepaintBoundary(
+                          child: _HomeDayPage(
+                            key: ValueKey(_dateForPage(index)),
+                            date: _dateForPage(index),
+                            today: _anchor,
+                            onAddDose: _openAddDose,
+                            now: _now,
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        if (_fabOpen)
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _fabKey.currentState?.close(),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 1.5, sigmaY: 1.5),
-                child: ColoredBox(
-                  color: Colors.black.withValues(alpha: 0.35),
-                ),
+                ],
               ),
             ),
           ),
-        // Circular FAB, bottom-right above the nav bar. Right edge aligns
-        // with the calendar card; the bottom sits at 24 so the disc and its
-        // bloom clear the nav bar instead of crowding "Manage".
-        Positioned(
-          right: 16,
-          bottom: 24,
-          child: HomeFabMenu(
-            key: _fabKey,
-            onAddDose: _openAddDose,
-            onAddStrain: _openAddStrain,
-            onVisibilityChanged: (visible) {
-              if (_fabOpen != visible) setState(() => _fabOpen = visible);
-            },
+          if (_fabOpen)
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _fabKey.currentState?.close(),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 1.5, sigmaY: 1.5),
+                  child: ColoredBox(
+                    color: Colors.black.withValues(alpha: 0.35),
+                  ),
+                ),
+              ),
+            ),
+          // Circular FAB, bottom-right above the nav bar. Right edge aligns
+          // with the calendar card; the bottom sits at 24 so the disc clears
+          // the nav bar instead of crowding "Manage".
+          Positioned(
+            right: 16,
+            bottom: 24,
+            child: HomeFabMenu(
+              key: _fabKey,
+              onAddDose: _openAddDose,
+              onAddStrain: _openAddStrain,
+              onRepeatLast: repeat == null ? null : _repeatLastDose,
+              repeatCode: repeat?.strain.code,
+              repeatAmount:
+                  repeat == null ? null : '${_amountBody(repeat.amount)}g',
+              repeatStrainColor:
+                  repeat == null ? null : Color(repeat.strain.color),
+              onVisibilityChanged: (visible) {
+                if (_fabOpen != visible) setState(() => _fabOpen = visible);
+              },
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
-class _HomeDayPage extends StatelessWidget {
+class _HomeDayPage extends StatefulWidget {
   const _HomeDayPage({
     super.key,
     required this.date,
@@ -302,50 +346,80 @@ class _HomeDayPage extends StatelessWidget {
   final ValueListenable<DateTime> now;
 
   @override
+  State<_HomeDayPage> createState() => _HomeDayPageState();
+}
+
+class _HomeDayPageState extends State<_HomeDayPage>
+    with SingleTickerProviderStateMixin {
+  // One clock per day page. The rows step along it (see HomeDosageList), so
+  // the ledger settles top to bottom; it plays once when the page is first
+  // built and never again on a dose edit, which only rebuilds this State.
+  late final AnimationController _reveal = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    if (AppMotion.reduced(context)) {
+      _reveal.value = 1;
+    } else {
+      _reveal.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _reveal.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     context.select<KratomProvider, int>((provider) {
-      final doses = provider.getDosagesForDate(date);
+      final doses = provider.getDosagesForDate(widget.date);
       return Object.hashAll(doses);
     });
     context.select<KratomProvider, int>(
       (provider) => Object.hashAll(provider.strains),
     );
     final provider = context.read<KratomProvider>();
-    final dosages = provider.getDosagesForDate(date);
-    final isToday = DateUtils.isSameDay(date, today);
+    final dosages = provider.getDosagesForDate(widget.date);
+    final isToday = DateUtils.isSameDay(widget.date, widget.today);
 
     // Today with no doses still shows a young shoot + NOW; past empty days
     // keep the existing empty-state CTA.
     if (dosages.isEmpty && !isToday) {
-      return HomeEmptyState(onAddDose: onAddDose);
+      return HomeEmptyState(onAddDose: widget.onAddDose);
     }
 
     final strains = <String, Strain>{
       for (final strain in provider.strains) strain.id: strain,
     };
-    final duration =
-        AppMotion.reduced(context) ? Duration.zero : AppMotion.normal;
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
-      duration: duration,
-      curve: AppMotion.spring,
-      builder: (context, value, child) => Opacity(
-        opacity: value,
-        child: Transform.translate(
-          offset: Offset(0, 8 * (1 - value)),
-          child: child,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: HomeDosageList(
-          dosages: List<Dosage>.unmodifiable(dosages),
-          strainsById: strains,
-          isToday: isToday,
-          now: now,
-          header: const SizedBox.shrink(),
-        ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: HomeDosageList(
+        dosages: List<Dosage>.unmodifiable(dosages),
+        strainsById: strains,
+        isToday: isToday,
+        now: widget.now,
+        reveal: _reveal,
+        header: const SizedBox.shrink(),
       ),
     );
   }
 }
+
+/// Same number formatting as the dose rows in home_dosage_list.dart, minus
+/// the "g": up to two decimals, trailing zeros stripped (16.6 → "16.6",
+/// 2 → "2", 2.25 → "2.25").
+String _amountBody(double value) => value == value.roundToDouble()
+    ? value.toStringAsFixed(0)
+    : value
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');

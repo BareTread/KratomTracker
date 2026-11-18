@@ -6,7 +6,9 @@ import 'package:provider/provider.dart';
 import '../models/dosage.dart';
 import '../providers/kratom_provider.dart';
 import '../theme/app_theme.dart';
-import 'add_dosage_form.dart' show parseDoseAmount, validateDoseAmount;
+import 'add_dosage_form.dart' show parseDoseAmount;
+import 'dose_amount_control.dart'
+    show DoseAmountControl, formatDoseAmount, recentDoseAmounts;
 
 class EditDosageForm extends StatefulWidget {
   final Dosage dosage;
@@ -32,20 +34,13 @@ class _EditDosageFormState extends State<EditDosageForm> {
   void initState() {
     super.initState();
     _amountController = TextEditingController(
-      text: _formatAmount(widget.dosage.amount),
+      text: formatDoseAmount(widget.dosage.amount),
     );
     _notesController = TextEditingController(
       text: widget.dosage.notes ?? '',
     );
     _selectedStrainId = widget.dosage.strainId;
     _selectedDateTime = widget.dosage.timestamp.toLocal();
-  }
-
-  static String _formatAmount(double amount) {
-    if (amount == amount.roundToDouble()) {
-      return amount.toStringAsFixed(0);
-    }
-    return amount.toString();
   }
 
   @override
@@ -172,11 +167,7 @@ class _EditDosageFormState extends State<EditDosageForm> {
             children: [
               Text(
                 'Edit Dose',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: c.textPrimary,
-                ),
+                style: AppType.display(size: 32, color: c.textPrimary),
               ),
               const SizedBox(height: 24),
               InputDecorator(
@@ -214,12 +205,11 @@ class _EditDosageFormState extends State<EditDosageForm> {
                 ),
               ),
               const SizedBox(height: 16),
-              TextFormField(
+              DoseAmountControl(
                 controller: _amountController,
-                decoration: _decoration(context, 'Amount (g)'),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                validator: validateDoseAmount,
+                recentAmounts:
+                    recentDoseAmounts(provider.dosages, _selectedStrainId),
+                label: 'Amount (g)',
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -227,12 +217,11 @@ class _EditDosageFormState extends State<EditDosageForm> {
                 decoration: _decoration(context, 'Notes (optional)'),
                 maxLines: 3,
               ),
-              const SizedBox(height: 16),
               Row(
                 children: [
                   Expanded(
+                    flex: 3,
                     child: _DateTimeTile(
-                      icon: Icons.calendar_today,
                       label: 'Date',
                       value: DateFormat('MMM d, y').format(_selectedDateTime),
                       onTap: _selectDate,
@@ -240,8 +229,8 @@ class _EditDosageFormState extends State<EditDosageForm> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
+                    flex: 2,
                     child: _DateTimeTile(
-                      icon: Icons.access_time,
                       label: 'Time',
                       value: DateFormat('h:mm a').format(_selectedDateTime),
                       onTap: _selectTime,
@@ -250,20 +239,28 @@ class _EditDosageFormState extends State<EditDosageForm> {
                 ],
               ),
               const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
+              Align(
+                alignment: Alignment.centerRight,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: c.accent,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    minimumSize: const Size(48, 48),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                     elevation: 0,
                   ),
                   onPressed: _saving ? null : _save,
-                  child: Text(_saving ? 'Saving…' : 'Save Changes'),
+                  child: Text(
+                    _saving ? 'Saving…' : 'Save Changes',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -296,13 +293,11 @@ class _EditDosageFormState extends State<EditDosageForm> {
 }
 
 class _DateTimeTile extends StatelessWidget {
-  final IconData icon;
   final String label;
   final String value;
   final VoidCallback onTap;
 
   const _DateTimeTile({
-    required this.icon,
     required this.label,
     required this.value,
     required this.onTap,
@@ -318,6 +313,7 @@ class _DateTimeTile extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Container(
+          constraints: const BoxConstraints(minHeight: 48),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
@@ -325,29 +321,22 @@ class _DateTimeTile extends StatelessWidget {
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
                 label,
                 style: TextStyle(fontSize: 12, color: c.textTertiary),
               ),
               const SizedBox(height: 4),
-              Row(
-                children: [
-                  Icon(icon, size: 16, color: c.accent),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: c.textPrimary,
-                      ),
-                    ),
-                  ),
-                ],
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: c.textPrimary,
+                ),
               ),
             ],
           ),

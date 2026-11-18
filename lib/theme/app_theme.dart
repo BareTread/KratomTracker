@@ -29,30 +29,33 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.caution,
   });
 
+  // Warm ink rather than cold slate: the neutrals lean a few degrees toward
+  // green-brown so the one cool accent reads as chosen, and strain colours
+  // sit on a ground that does not fight them.
   static const dark = AppColors(
-    surfaceRaised: Color(0xFF171A1D),
-    surfaceSunken: Color(0xFF0D0F11),
-    hairline: Color(0xFF30363B),
-    textPrimary: Color(0xFFF5F7F8),
-    textSecondary: Color(0xFFB4BEC4),
-    textTertiary: Color(0xFF7B878E),
+    surfaceRaised: Color(0xFF161814),
+    surfaceSunken: Color(0xFF0A0B09),
+    hairline: Color(0xFF2B2E27),
+    textPrimary: Color(0xFFF1EEE4),
+    textSecondary: Color(0xFFB6B3A5),
+    textTertiary: Color(0xFF8B897C),
     accent: Color(0xFF00ACC1),
     accentMuted: Color(0xFF075D68),
-    positive: Color(0xFF4CAF70),
-    caution: Color(0xFFFFB74D),
+    positive: Color(0xFF5DBB7E),
+    caution: Color(0xFFF2B04C),
   );
 
   static const light = AppColors(
-    surfaceRaised: Color(0xFFFFFFFF),
-    surfaceSunken: Color(0xFFF0F4F5),
-    hairline: Color(0xFFD7E0E3),
-    textPrimary: Color(0xFF172125),
-    textSecondary: Color(0xFF526168),
-    textTertiary: Color(0xFF7B898F),
-    accent: Color(0xFF00ACC1),
+    surfaceRaised: Color(0xFFFBFAF5),
+    surfaceSunken: Color(0xFFECE8DB),
+    hairline: Color(0xFFDAD4C2),
+    textPrimary: Color(0xFF1C201B),
+    textSecondary: Color(0xFF55594F),
+    textTertiary: Color(0xFF686B5F),
+    accent: Color(0xFF0592A5),
     accentMuted: Color(0xFFB9E8EE),
     positive: Color(0xFF2E7D4F),
-    caution: Color(0xFFB56A00),
+    caution: Color(0xFFA85F00),
   );
 
   @override
@@ -131,6 +134,47 @@ Color legibleStrainColor(Color color, Brightness brightness) {
     ),
     foreground: foreground,
   );
+}
+
+/// Two voices. Hanken Grotesk carries everything that is read or tapped;
+/// Instrument Serif is reserved for the figures and titles a person looks at
+/// first (a dose amount, a headline number, a screen name). Keeping the serif
+/// rare is what makes it feel like a choice rather than a theme.
+class AppType {
+  const AppType._();
+
+  static const sans = 'Hanken';
+  static const serif = 'InstrumentSerif';
+
+  /// Serif figure/title. Instrument Serif is a single, fairly condensed
+  /// weight, so size does the work; no fontWeight (faux bold would smear it).
+  static TextStyle display({
+    required double size,
+    required Color color,
+    double height = 1.0,
+    double letterSpacing = -0.2,
+    FontStyle fontStyle = FontStyle.normal,
+  }) =>
+      TextStyle(
+        fontFamily: serif,
+        fontSize: size,
+        height: height,
+        letterSpacing: letterSpacing,
+        color: color,
+        fontStyle: fontStyle,
+        fontWeight: FontWeight.w400,
+        fontFeatures: const [FontFeature.liningFigures()],
+      );
+
+  /// Small, tracked caps for section labels. Reads as a printed label.
+  static TextStyle eyebrow(Color color) => TextStyle(
+        fontFamily: sans,
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 1.3,
+        height: 1.2,
+        color: color,
+      );
 }
 
 class AppMotion {

@@ -4,18 +4,31 @@ import 'package:flutter/services.dart';
 import '../../theme/app_theme.dart';
 
 /// Circular cyan FAB for the home screen. A tap fires Add Dose; a long-press
-/// expands two labelled actions (Add Dose / Add Strain) above it.
+/// expands labelled actions above it: Add Strain, Add Dose, and — when the
+/// log has at least one dose — a repeat pill for the most recent dose.
 class HomeFabMenu extends StatefulWidget {
   const HomeFabMenu({
     super.key,
     required this.onAddDose,
     required this.onAddStrain,
     required this.onVisibilityChanged,
+    this.repeatCode,
+    this.repeatAmount,
+    this.repeatStrainColor,
+    this.onRepeatLast,
   });
 
   final VoidCallback onAddDose;
   final VoidCallback onAddStrain;
   final ValueChanged<bool> onVisibilityChanged;
+
+  /// Repeat-last-dose pill, shown only when all three are non-null.
+  /// [repeatCode] is the strain's short code, [repeatAmount] its formatted
+  /// amount (e.g. "16.6g"), [repeatStrainColor] the strain's identity colour.
+  final String? repeatCode;
+  final String? repeatAmount;
+  final Color? repeatStrainColor;
+  final VoidCallback? onRepeatLast;
 
   @override
   State<HomeFabMenu> createState() => HomeFabMenuState();
@@ -82,9 +95,8 @@ class HomeFabMenuState extends State<HomeFabMenu>
         if (_open) ...[
           _MenuPill(
             key: const Key('home-fab-add-strain'),
-            label: 'Add Strain',
+            spans: const [TextSpan(text: 'Add Strain')],
             icon: Icons.local_florist_outlined,
-            fill: false,
             animation: _controller,
             onPressed: () => _run(widget.onAddStrain),
             reduced: reduced,
@@ -92,13 +104,38 @@ class HomeFabMenuState extends State<HomeFabMenu>
           const SizedBox(height: 10),
           _MenuPill(
             key: const Key('home-fab-add-dose'),
-            label: 'Add Dose',
+            spans: const [TextSpan(text: 'Add Dose')],
             icon: Icons.add,
-            fill: true,
             animation: _controller,
             onPressed: () => _run(widget.onAddDose),
             reduced: reduced,
           ),
+          if (widget.repeatCode != null &&
+              widget.repeatAmount != null &&
+              widget.onRepeatLast != null) ...[
+            const SizedBox(height: 10),
+            _MenuPill(
+              key: const Key('home-fab-repeat-last'),
+              spans: [
+                TextSpan(
+                  text: widget.repeatCode!,
+                  style: TextStyle(
+                    color: legibleStrainColor(
+                      widget.repeatStrainColor ?? context.c.textPrimary,
+                      Theme.of(context).brightness,
+                    ),
+                  ),
+                ),
+                TextSpan(text: ' · ${widget.repeatAmount} again'),
+              ],
+              semanticsLabel:
+                  'Log ${widget.repeatCode} ${widget.repeatAmount!.replaceAll(RegExp(r'g$'), ' grams')} again now',
+              icon: Icons.replay,
+              animation: _controller,
+              onPressed: () => _run(widget.onRepeatLast!),
+              reduced: reduced,
+            ),
+          ],
           const SizedBox(height: 12),
         ],
         _CircularFab(
@@ -114,7 +151,7 @@ class HomeFabMenuState extends State<HomeFabMenu>
 }
 
 /// Plain circular cyan FAB — roughly 56px with a single `+` glyph.
-class _CircularFab extends StatelessWidget {
+class _CircularFab extends StatefulWidget {
   const _CircularFab({
     super.key,
     required this.open,
@@ -128,57 +165,63 @@ class _CircularFab extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
 
+  @override
+  State<_CircularFab> createState() => _CircularFabState();
+}
+
+class _CircularFabState extends State<_CircularFab> {
   static const double _size = 56;
+  bool _pressed = false;
+
+  bool get open => widget.open;
+  bool get reduced => widget.reduced;
+  VoidCallback get onTap => widget.onTap;
+  VoidCallback? get onLongPress => widget.onLongPress;
 
   @override
   Widget build(BuildContext context) {
-    final accent = context.c.accent;
-    final muted = context.c.accentMuted;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        customBorder: const CircleBorder(),
-        child: Ink(
-          width: _size,
-          height: _size,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color.lerp(accent, muted, 0.1)!,
-                Color.lerp(accent, muted, 0.45)!,
-              ],
-            ),
-            // Two layers, not one glow: a tight neutral contact shadow does
-            // the lifting, and a wider, dimmer cyan bloom sits under it. A
-            // lone cyan glow made the disc look like it was emitting light
-            // rather than resting above the page.
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.5),
-                blurRadius: 10,
-                offset: const Offset(0, 3),
+    return Semantics(
+      button: true,
+      label: open ? 'Close menu' : 'Log a dose',
+      hint: open ? null : 'Long press for more actions',
+      excludeSemantics: true,
+      onTap: onTap,
+      onLongPress: onLongPress,
+      // Flat disc, no shadow stack or gradient: the earlier neutral shadow +
+      // cyan bloom left a dark crescent under the circle in dark theme, and
+      // elevation isn't needed — the accent fill already reads as the one
+      // action on the page. Presses still sink the disc a few percent.
+      child: AnimatedScale(
+        scale: _pressed ? 0.92 : 1,
+        duration: reduced ? Duration.zero : AppMotion.fast,
+        curve: AppMotion.emphasized,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              HapticFeedback.lightImpact();
+              onTap();
+            },
+            onLongPress: onLongPress,
+            onHighlightChanged: (down) => setState(() => _pressed = down),
+            customBorder: const CircleBorder(),
+            child: Ink(
+              width: _size,
+              height: _size,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: context.c.accent,
               ),
-              BoxShadow(
-                color: accent.withValues(alpha: 0.2),
-                blurRadius: 22,
-                spreadRadius: -2,
-                offset: const Offset(0, 7),
-              ),
-            ],
-          ),
-          child: Center(
-            child: AnimatedRotation(
-              turns: open ? 0.125 : 0,
-              duration: reduced ? Duration.zero : AppMotion.fast,
-              child: Icon(
-                open ? Icons.close : Icons.add,
-                size: 24,
-                color: context.c.textPrimary,
+              child: Center(
+                child: AnimatedRotation(
+                  turns: open ? 0.125 : 0,
+                  duration: reduced ? Duration.zero : AppMotion.fast,
+                  child: Icon(
+                    open ? Icons.close : Icons.add,
+                    size: 24,
+                    color: Colors.white,
+                  ),
+                ),
               ),
             ),
           ),
@@ -192,25 +235,28 @@ class _CircularFab extends StatelessWidget {
 class _MenuPill extends StatelessWidget {
   const _MenuPill({
     super.key,
-    required this.label,
+    required this.spans,
     required this.icon,
-    required this.fill,
     required this.animation,
     required this.onPressed,
     required this.reduced,
+    this.semanticsLabel,
   });
 
-  final String label;
+  /// Rich label: single span for plain pills; the repeat pill adds a second
+  /// span so the strain code can carry its identity colour while the rest of
+  /// the label stays neutral.
+  final List<TextSpan> spans;
   final IconData icon;
-  final bool fill;
   final Animation<double> animation;
   final VoidCallback onPressed;
   final bool reduced;
+  final String? semanticsLabel;
 
   @override
   Widget build(BuildContext context) {
     final pill = Material(
-      color: fill ? context.c.accent : context.c.surfaceRaised,
+      color: context.c.surfaceRaised,
       borderRadius: BorderRadius.circular(18),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -219,27 +265,27 @@ class _MenuPill extends StatelessWidget {
         child: Container(
           constraints: const BoxConstraints(minHeight: 52),
           padding: const EdgeInsets.symmetric(horizontal: 18),
-          decoration: fill
-              ? null
-              : BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: context.c.hairline),
-                ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: context.c.hairline),
+          ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 icon,
                 size: 20,
-                color: fill ? context.c.textPrimary : context.c.textSecondary,
+                color: context.c.textSecondary,
               ),
               const SizedBox(width: 10),
-              Text(
-                label,
-                style: TextStyle(
-                  color: context.c.textPrimary,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
+              Text.rich(
+                TextSpan(
+                  style: TextStyle(
+                    color: context.c.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  children: spans,
                 ),
               ),
             ],
@@ -248,10 +294,23 @@ class _MenuPill extends StatelessWidget {
       ),
     );
 
+    // Custom announcement (the repeat pill's "Log … grams again now")
+    // replaces the inner text/icon semantics; the wrapper carries the button
+    // role and the action so activation still works.
+    final child = semanticsLabel == null
+        ? pill
+        : Semantics(
+            label: semanticsLabel,
+            button: true,
+            excludeSemantics: true,
+            onTap: onPressed,
+            child: pill,
+          );
+
     if (reduced) {
       return SizeTransition(
         sizeFactor: AlwaysStoppedAnimation(animation.value),
-        child: pill,
+        child: child,
       );
     }
     return SizeTransition(
@@ -267,7 +326,7 @@ class _MenuPill extends StatelessWidget {
           ).animate(
             CurvedAnimation(parent: animation, curve: AppMotion.spring),
           ),
-          child: pill,
+          child: child,
         ),
       ),
     );

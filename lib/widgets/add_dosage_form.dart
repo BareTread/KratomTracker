@@ -1,14 +1,19 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../providers/kratom_provider.dart';
-import '../theme/app_theme.dart';
 import '../domain/date_utils.dart';
 import '../domain/strain_usage.dart';
-import '../widgets/add_strain_form.dart';
-import 'strain_usage_tile.dart';
+import '../providers/kratom_provider.dart';
+import '../theme/app_theme.dart';
+import 'add_strain_form.dart';
+import 'dose_amount_control.dart';
+import 'strain_mark.dart';
+
+export 'dose_amount_control.dart' show parseDoseAmount, validateDoseAmount;
 
 class AddDosageForm extends StatefulWidget {
   final String? preselectedStrainId;
@@ -23,94 +28,549 @@ class AddDosageForm extends StatefulWidget {
 }
 
 class _AddDosageFormState extends State<AddDosageForm> {
-  bool _strainSelected = false;
-  late String? _selectedStrainId;
-  bool _forward = true;
-
-  /// Wall-clock moment the Add Dose flow opened. Frozen for the whole sheet
-  /// lifetime so a delayed save still records the intent time, not save time.
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _amountController;
+  final _notesController = TextEditingController();
   late final DateTime _openedAt;
+  late DateTime _selectedDateTime;
+  String? _selectedStrainId;
+  bool _timeAdjusted = false;
+  bool _notesOpen = false;
+  bool _saving = false;
 
   @override
   void initState() {
     super.initState();
     _openedAt = DateTime.now();
-    _selectedStrainId = widget.preselectedStrainId;
-    if (_selectedStrainId != null) {
-      _strainSelected = true;
+    final provider = context.read<KratomProvider>();
+    _selectedDateTime = _seedDateTime(provider.selectedDate, _openedAt);
+    _selectedStrainId = _preselect(
+      provider.strainUsage,
+      widget.preselectedStrainId,
+    );
+    final initial = _selectedStrainId == null
+        ? ''
+        : _prefillText(provider, _selectedStrainId!);
+    _amountController = TextEditingController(text: initial);
+    _notesOpen = _notesController.text.trim().isNotEmpty;
+    _amountController.addListener(_onAmountEdited);
+  }
+
+  @override
+  void dispose() {
+    _amountController.removeListener(_onAmountEdited);
+    _amountController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  void _onAmountEdited() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  /// Seed from the calendar's selected day, keeping the frozen open-time
+  /// time-of-day. If the selected day is today, use openedAt exactly.
+  static DateTime _seedDateTime(DateTime selectedDate, DateTime openedAt) {
+    final selectedDay = startOfDay(selectedDate);
+    final openDay = startOfDay(openedAt);
+    if (!selectedDay.isBefore(openDay)) return openedAt;
+    return DateTime(
+      selectedDay.year,
+      selectedDay.month,
+      selectedDay.day,
+      openedAt.hour,
+      openedAt.minute,
+      openedAt.second,
+      openedAt.millisecond,
+    );
+  }
+
+  /// A given id wins. Otherwise the top in-stock suggestion is preselected,
+  /// so the usual log is FAB -> Save. Calendar-rest ties are the common case
+  /// in a 3-6 strain rotation, so a stricter "clear lead only" rule left the
+  /// sheet empty most of the time; the Save label names the strain and the
+  /// Undo snackbar is the backstop. Out-of-stock strains are never chosen.
+  static String? _preselect(List<StrainUsage> usage, String? requestedId) {
+    if (requestedId != null) {
+      for (final item in usage) {
+        if (item.strain.id == requestedId) return requestedId;
+      }
+      return null;
+    }
+    for (final item in usage) {
+      if (item.strain.inStock) return item.strain.id;
+    }
+    return null;
+  }
+
+  static String _prefillText(KratomProvider provider, String strainId) {
+    final recent = recentDoseAmounts(provider.dosages, strainId);
+    if (recent.isNotEmpty) return formatDoseAmount(recent.first);
+    for (final usage in provider.strainUsage) {
+      if (usage.strain.id == strainId && usage.avgDoseSize > 0) {
+        return formatDoseAmount(usage.avgDoseSize);
+      }
+    }
+    return '';
+  }
+
+  bool get _showsNow =>
+      !_timeAdjusted &&
+      _selectedDateTime == _openedAt &&
+      startOfDay(_selectedDateTime) == startOfDay(DateTime.now());
+
+  String _chipLabel() {
+    if (_showsNow) return 'Now';
+    final now = DateTime.now();
+    final time = DateFormat('h:mm a').format(_selectedDateTime);
+    if (startOfDay(_selectedDateTime) == startOfDay(now)) {
+      return 'Today, $time';
+    }
+    final day = _selectedDateTime.year == now.year
+        ? DateFormat('MMM d').format(_selectedDateTime)
+        : DateFormat('MMM d, y').format(_selectedDateTime);
+    return '$day, $time';
+  }
+
+  Future<void> _pickStamp() async {
+    final now = DateTime.now();
+    final first = DateTime(2020);
+    var initial = _selectedDateTime;
+    if (initial.isAfter(now)) initial = now;
+    if (initial.isBefore(first)) initial = first;
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: first,
+      lastDate: now,
+    );
+    if (pickedDate == null || !mounted) return;
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_selectedDateTime),
+    );
+    if (pickedTime == null || !mounted) return;
+    setState(() {
+      _timeAdjusted = true;
+      _selectedDateTime = DateTime(
+        pickedDate.year,
+        pickedDate.month,
+        pickedDate.day,
+        pickedTime.hour,
+        pickedTime.minute,
+      );
+    });
+  }
+
+  void _snapToNow() {
+    final now = DateTime.now();
+    setState(() {
+      _selectedDateTime = DateTime(
+        _selectedDateTime.year,
+        _selectedDateTime.month,
+        _selectedDateTime.day,
+        now.hour,
+        now.minute,
+        now.second,
+      );
+    });
+  }
+
+  void _selectStrain(String id) {
+    if (_selectedStrainId == id) return;
+    _selectedStrainId = id;
+    final next = _prefillText(context.read<KratomProvider>(), id);
+    if (_amountController.text == next) {
+      setState(() {});
+      return;
+    }
+    _amountController.text = next;
+  }
+
+  String _saveLabel(String? code) {
+    if (_saving) return 'Saving…';
+    final raw = _amountController.text;
+    final amount = parseDoseAmount(raw);
+    if (code == null || amount == null || validateDoseAmount(raw) != null) {
+      return 'Log dose';
+    }
+    return 'Log $code ${formatDoseAmount(amount)}g';
+  }
+
+  Future<void> _submit() async {
+    if (_saving || _selectedStrainId == null) return;
+    if (!_formKey.currentState!.validate()) return;
+
+    final amount = parseDoseAmount(_amountController.text);
+    if (amount == null) return;
+
+    if (_selectedDateTime.isAfter(DateTime.now())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Dose time is in the future'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final notesRaw = _notesController.text.trim();
+    final provider = context.read<KratomProvider>();
+    final code = provider.getStrain(_selectedStrainId!)?.code ?? '';
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
+    setState(() => _saving = true);
+    try {
+      final created = await provider.addDosage(
+        _selectedStrainId!,
+        amount,
+        _selectedDateTime,
+        notes: notesRaw.isEmpty ? null : notesRaw,
+      );
+      unawaited(HapticFeedback.lightImpact());
+      if (!mounted) return;
+      navigator.pop();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Logged $code · ${formatDoseAmount(amount)}g'),
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () async {
+              try {
+                await provider.deleteDosage(created.id);
+              } on ArgumentError {
+                // Already gone.
+              }
+            },
+          ),
+          duration: const Duration(seconds: 5),
+          elevation: 0,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 88, 24),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not save dose')),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<KratomProvider>();
-    final strains = provider.strains;
-
-    if (strains.isEmpty) {
+    if (provider.strains.isEmpty) {
       return SizedBox(
         height: MediaQuery.sizeOf(context).height * 0.45,
         child: _buildEmptyStrainsState(),
       );
     }
 
-    final reduced = AppMotion.reduced(context);
-    final duration = reduced ? Duration.zero : AppMotion.normal;
+    final c = context.c;
+    final media = MediaQuery.of(context);
+    final inset = media.viewInsets.bottom;
+    final rawMax = media.size.height * 0.9 - inset;
+    final maxHeight = rawMax < 0 ? 0.0 : rawMax;
+    final usage = provider.strainUsage;
+    final selected = _usageFor(usage, _selectedStrainId);
+    final inStock = usage.where((u) => u.strain.inStock).toList(growable: false);
+    final outOfStock =
+        usage.where((u) => !u.strain.inStock).toList(growable: false);
 
-    // No outer height. Each step sizes itself: the picker claims 90% through
-    // its DraggableScrollableSheet, the details step takes only the height its
-    // fields need. Both are bottom-anchored, so the sheet grows and shrinks
-    // from the top and the visible content never jumps between steps.
-    return AnimatedSwitcher(
-      duration: duration,
-      switchInCurve: AppMotion.emphasized,
-      switchOutCurve: AppMotion.emphasized,
-      layoutBuilder: (currentChild, previousChildren) {
-        return Stack(
-          alignment: Alignment.bottomCenter,
-          children: <Widget>[
-            ...previousChildren,
-            if (currentChild != null) currentChild,
+    return Padding(
+      padding: EdgeInsets.only(bottom: inset),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        child: Material(
+          color: c.surfaceRaised,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          clipBehavior: Clip.antiAlias,
+          child: ListView(
+            primary: false,
+            shrinkWrap: true,
+            padding: EdgeInsets.fromLTRB(20, 18, 20, 24 + media.padding.bottom),
+            children: [
+              Form(
+                key: _formKey,
+                child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _header(c),
+                  const SizedBox(height: 16),
+                  _strainGrid(inStock, outOfStock),
+                  const SizedBox(height: 12),
+                  _selectedLine(c, provider, selected),
+                  const SizedBox(height: 8),
+                  DoseAmountControl(
+                    controller: _amountController,
+                    recentAmounts: selected == null
+                        ? const []
+                        : recentDoseAmounts(
+                            provider.dosages,
+                            selected.strain.id,
+                          ),
+                  ),
+                  const SizedBox(height: 8),
+                  _notes(c),
+                  const SizedBox(height: 16),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: c.accent,
+                        foregroundColor: Colors.white,
+                        disabledBackgroundColor: c.accent.withValues(alpha: 0.38),
+                        disabledForegroundColor:
+                            Colors.white.withValues(alpha: 0.7),
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        minimumSize: const Size(48, 48),
+                        elevation: 0,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: selected == null || _saving ? null : _submit,
+                      child: Text(
+                        _saveLabel(selected?.strain.code),
+                        style: const TextStyle(
+                          fontFamily: AppType.sans,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _header(AppColors c) {
+    final now = _showsNow;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          'Log dose',
+          style: AppType.display(size: 30, color: c.textPrimary),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Flexible(
+                child: _TimeChip(
+                  label: _chipLabel(),
+                  isNow: now,
+                  onTap: _pickStamp,
+                ),
+              ),
+              if (!now)
+                TextButton(
+                  key: const Key('add-dose-now-pill'),
+                  onPressed: _snapToNow,
+                  style: TextButton.styleFrom(
+                    foregroundColor: c.accent,
+                    minimumSize: const Size(48, 48),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text(
+                    'Now',
+                    style: TextStyle(fontFamily: AppType.sans, fontSize: 13),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _strainGrid(List<StrainUsage> inStock, List<StrainUsage> outOfStock) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Floor so three tiles plus two 8dp gaps cannot spill a row on
+        // a binary rounding error.
+        final tileWidth =
+            ((constraints.maxWidth - 16) / 3).floorToDouble();
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final item in inStock)
+              _StrainTile(
+                usage: item,
+                width: tileWidth,
+                selected: item.strain.id == _selectedStrainId,
+                onTap: () => _selectStrain(item.strain.id),
+              ),
+            if (outOfStock.isNotEmpty)
+              SizedBox(
+                width: constraints.maxWidth,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 4),
+                  child: _StockDivider(),
+                ),
+              ),
+            for (final item in outOfStock)
+              _StrainTile(
+                usage: item,
+                width: tileWidth,
+                selected: item.strain.id == _selectedStrainId,
+                onTap: () => _selectStrain(item.strain.id),
+              ),
           ],
         );
       },
-      transitionBuilder: (child, animation) {
-        final offset = _forward
-            ? Tween<Offset>(
-                begin: const Offset(0.06, 0),
-                end: Offset.zero,
-              ).animate(animation)
-            : Tween<Offset>(
-                begin: const Offset(-0.06, 0),
-                end: Offset.zero,
-              ).animate(animation);
-        return FadeTransition(
-          opacity: animation,
-          child: SlideTransition(position: offset, child: child),
-        );
-      },
-      child: _strainSelected
-          ? _DosageDetailsForm(
-              key: const ValueKey('details'),
-              strainId: _selectedStrainId!,
-              openedAt: _openedAt,
-              onBack: () {
-                setState(() {
-                  _forward = false;
-                  _strainSelected = false;
-                });
-              },
-            )
-          : _StrainSelectionView(
-              key: const ValueKey('select'),
-              onStrainSelected: (strainId) {
-                HapticFeedback.selectionClick();
-                setState(() {
-                  _forward = true;
-                  _selectedStrainId = strainId;
-                  _strainSelected = true;
-                });
-              },
+    );
+  }
+
+  Widget _selectedLine(
+    AppColors c,
+    KratomProvider provider,
+    StrainUsage? usage,
+  ) {
+    if (usage == null) {
+      return SizedBox(
+        height: 48,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            'Pick a strain',
+            style: TextStyle(
+              fontFamily: AppType.sans,
+              fontSize: 13,
+              color: c.textTertiary,
             ),
+          ),
+        ),
+      );
+    }
+
+    final strain = usage.strain;
+    final brightness = Theme.of(context).brightness;
+    final leaf = legibleStrainColor(Color(strain.color), brightness);
+    final name = strain.name.trim();
+    final showName =
+        name.isNotEmpty && name.toLowerCase() != strain.code.trim().toLowerCase();
+    final load = usage.grams30d <= 0
+        ? 'none this month'
+        : '${_formatGrams(usage.grams30d)}g in 30d';
+    final rest = showName ? ' · $name · $load' : ' · $load';
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 48),
+      child: Row(
+        children: [
+          StrainMark(
+            shape: resolveLeafShape(strain.icon, strain.code),
+            color: leaf,
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            // Text.rich keeps the code out of the w600 Text finder that
+            // reads tile order.
+            child: Text.rich(
+              TextSpan(
+                style: TextStyle(
+                  fontFamily: AppType.sans,
+                  fontSize: 13,
+                  color: c.textSecondary,
+                ),
+                children: [
+                  TextSpan(
+                    text: strain.code,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: leaf,
+                    ),
+                  ),
+                  TextSpan(text: rest),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (!strain.inStock)
+            TextButton(
+              onPressed: () {
+                unawaited(
+                  provider.setStrainInStock(strain.id, inStock: true),
+                );
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: c.accent,
+                minimumSize: const Size(48, 48),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                'Back in stock',
+                style: TextStyle(fontFamily: AppType.sans, fontSize: 13),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _notes(AppColors c) {
+    if (!_notesOpen) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton(
+          onPressed: () => setState(() => _notesOpen = true),
+          style: TextButton.styleFrom(
+            foregroundColor: c.textSecondary,
+            minimumSize: const Size(48, 48),
+            padding: EdgeInsets.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            alignment: Alignment.centerLeft,
+          ),
+          child: const Text(
+            'Add note',
+            style: TextStyle(fontFamily: AppType.sans, fontSize: 14),
+          ),
+        ),
+      );
+    }
+    return TextFormField(
+      controller: _notesController,
+      maxLines: 3,
+      style: TextStyle(fontFamily: AppType.sans, fontSize: 14, color: c.textPrimary),
+      decoration: InputDecoration(
+        labelText: 'Notes (optional)',
+        alignLabelWithHint: true,
+        labelStyle: TextStyle(fontFamily: AppType.sans, color: c.textSecondary),
+        filled: true,
+        fillColor: c.surfaceSunken,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: c.hairline),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: c.hairline),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: c.accent, width: 2),
+        ),
+      ),
     );
   }
 
@@ -182,184 +642,85 @@ class _AddDosageFormState extends State<AddDosageForm> {
   }
 }
 
-// Step 1: Strain Selection — order is provider.strainUsage (frozen).
-// Stock partition is applied after the frozen ranking; relative order inside
-// each group is preserved.
-class _StrainSelectionView extends StatelessWidget {
-  final ValueChanged<String> onStrainSelected;
-
-  const _StrainSelectionView({
-    super.key,
-    required this.onStrainSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // The list is handed the sheet's own ScrollController, so a downward drag
-    // started anywhere — including on a strain row — pulls the sheet down once
-    // the list is at the top, and an upward drag scrolls it as usual. Reaching
-    // minChildSize makes the enclosing BottomSheet close itself
-    // (shouldCloseOnMinExtent), so no dismissal wiring is needed here.
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.9,
-      minChildSize: 0.6,
-      maxChildSize: 0.9,
-      snap: true,
-      builder: (context, scrollController) {
-        final c = context.c;
-        return Consumer<KratomProvider>(
-          builder: (context, provider, child) {
-            final usage = provider.strainUsage;
-
-            return Container(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
-                    child: Text(
-                      'Select Strain',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: c.textPrimary,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: _buildList(c, provider, usage, scrollController),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
+StrainUsage? _usageFor(List<StrainUsage> usage, String? id) {
+  if (id == null) return null;
+  for (final item in usage) {
+    if (item.strain.id == id) return item;
   }
-
-  Widget _buildList(
-    AppColors c,
-    KratomProvider provider,
-    List<StrainUsage> usage,
-    ScrollController scrollController,
-  ) {
-    // Stock is a partition applied AFTER the frozen ranking: in-stock strains
-    // keep their relative order, then out-of-stock ones keep theirs.
-    final inStockItems =
-        usage.where((u) => u.strain.inStock).toList(growable: false);
-    final outOfStockItems =
-        usage.where((u) => !u.strain.inStock).toList(growable: false);
-    final hasOutOfStock = outOfStockItems.isNotEmpty;
-
-    if (!hasOutOfStock) {
-      // Day-one state: every strain in stock — no divider, no header, no
-      // visual change from the pre-stock picker.
-      return ListView.builder(
-        controller: scrollController,
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        itemCount: inStockItems.length,
-        itemBuilder: (context, index) {
-          final item = inStockItems[index];
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: _StaggeredEntrance(
-              index: index,
-              child: StrainUsageTile(
-                usage: item,
-                onTap: () => onStrainSelected(item.strain.id),
-              ),
-            ),
-          );
-        },
-      );
-    }
-
-    final totalCount = inStockItems.length + 1 + outOfStockItems.length;
-    return ListView.builder(
-      controller: scrollController,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      itemCount: totalCount,
-      itemBuilder: (context, index) {
-        if (index < inStockItems.length) {
-          final item = inStockItems[index];
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: _StaggeredEntrance(
-              index: index,
-              child: StrainUsageTile(
-                usage: item,
-                onTap: () => onStrainSelected(item.strain.id),
-              ),
-            ),
-          );
-        }
-        if (index == inStockItems.length) {
-          return const Padding(
-            padding: EdgeInsets.only(top: 4, bottom: 8),
-            child: _StockDivider(),
-          );
-        }
-        final outIndex = index - inStockItems.length - 1;
-        final item = outOfStockItems[outIndex];
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: _StaggeredEntrance(
-            index: index,
-            child: StrainUsageTile(
-              usage: item,
-              inStock: false,
-              onTap: () => onStrainSelected(item.strain.id),
-              onToggleStock: () => provider.setStrainInStock(
-                item.strain.id,
-                inStock: true,
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
+  return null;
 }
 
-class _StaggeredEntrance extends StatelessWidget {
-  final int index;
-  final Widget child;
+/// Tile rest. Rank < 3 and at least a day reads as rest; never-used is
+/// `never` (the 365-day sentinel is not rest).
+String _restLine(StrainUsage usage) {
+  if (usage.lastUsed == null) return 'never';
+  final days = usage.daysSinceLastUse.floor();
+  if (usage.rank < 3 && usage.daysSinceLastUse >= 1) {
+    return days == 1 ? 'rested 1d' : 'rested ${days}d';
+  }
+  if (days <= 0) return 'today';
+  if (days == 1) return 'yesterday';
+  if (days < 30) return '${days}d ago';
+  final months = (days / 30).floor();
+  if (months < 12) return '${months}mo ago';
+  final years = (days / 365).floor();
+  return years <= 1 ? '1y ago' : '${years}y ago';
+}
 
-  const _StaggeredEntrance({
-    required this.index,
-    required this.child,
+String _formatGrams(double grams) {
+  if (grams == grams.roundToDouble()) return grams.toStringAsFixed(0);
+  final one = grams.toStringAsFixed(1);
+  return one.endsWith('.0') ? one.substring(0, one.length - 2) : one;
+}
+
+class _TimeChip extends StatelessWidget {
+  const _TimeChip({
+    required this.label,
+    required this.isNow,
+    required this.onTap,
   });
+
+  final String label;
+  final bool isNow;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    if (AppMotion.reduced(context)) return child;
-
-    final staggerMs = (index * 20).clamp(0, 200);
-    final totalMs = AppMotion.normal.inMilliseconds + staggerMs;
-    final start = staggerMs / totalMs;
-
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
-      duration: Duration(milliseconds: totalMs),
-      curve: Interval(start, 1, curve: AppMotion.emphasized),
-      builder: (context, value, child) {
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(10 * (1 - value), 0),
-            child: child,
+    final c = context.c;
+    return Material(
+      key: const Key('add-dose-time-chip'),
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: isNow ? null : Border.all(color: c.hairline),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Center(
+                widthFactor: 1,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: AppType.sans,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: isNow ? c.accent : c.textPrimary,
+                  ),
+                ),
+              ),
+            ),
           ),
-        );
-      },
-      child: child,
+        ),
+      ),
     );
   }
 }
@@ -372,13 +733,12 @@ class _StockDivider extends StatelessWidget {
     final c = context.c;
     return Row(
       children: [
-        Expanded(
-          child: Container(height: 1, color: c.hairline),
-        ),
+        Expanded(child: Container(height: 1, color: c.hairline)),
         const SizedBox(width: 10),
         Text(
           'Out of stock',
           style: TextStyle(
+            fontFamily: AppType.sans,
             fontSize: 11,
             fontWeight: FontWeight.w600,
             letterSpacing: 0.3,
@@ -386,418 +746,100 @@ class _StockDivider extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-        Expanded(
-          child: Container(height: 1, color: c.hairline),
-        ),
+        Expanded(child: Container(height: 1, color: c.hairline)),
       ],
     );
   }
 }
 
-class _DosageDetailsForm extends StatefulWidget {
-  final String strainId;
-  final DateTime openedAt;
-  final VoidCallback onBack;
-
-  const _DosageDetailsForm({
-    super.key,
-    required this.strainId,
-    required this.openedAt,
-    required this.onBack,
+class _StrainTile extends StatelessWidget {
+  const _StrainTile({
+    required this.usage,
+    required this.width,
+    required this.selected,
+    required this.onTap,
   });
 
-  @override
-  State<_DosageDetailsForm> createState() => _DosageDetailsFormState();
-}
-
-class _DosageDetailsFormState extends State<_DosageDetailsForm> {
-  final _formKey = GlobalKey<FormState>();
-  final _amountController = TextEditingController();
-  final _notesController = TextEditingController();
-  late DateTime _selectedDateTime;
-  bool _saving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    final provider = Provider.of<KratomProvider>(context, listen: false);
-    _selectedDateTime = _seedDateTime(provider.selectedDate, widget.openedAt);
-    _prefillAmount(provider);
-  }
-
-  /// Seed from the calendar's selected day, keeping the frozen open-time
-  /// time-of-day. If the selected day is today, use openedAt exactly.
-  static DateTime _seedDateTime(DateTime selectedDate, DateTime openedAt) {
-    final selectedDay = startOfDay(selectedDate);
-    final openDay = startOfDay(openedAt);
-    if (!selectedDay.isBefore(openDay)) return openedAt;
-    return DateTime(
-      selectedDay.year,
-      selectedDay.month,
-      selectedDay.day,
-      openedAt.hour,
-      openedAt.minute,
-      openedAt.second,
-      openedAt.millisecond,
-    );
-  }
-
-  /// Prefill amount with the strain's usual dose (30-day average), falling
-  /// back to the most recent dose for that strain if the average is zero.
-  void _prefillAmount(KratomProvider provider) {
-    StrainUsage? usage;
-    for (final u in provider.strainUsage) {
-      if (u.strain.id == widget.strainId) {
-        usage = u;
-        break;
-      }
-    }
-
-    double? usual;
-    if (usage != null && usage.avgDoseSize > 0) {
-      usual = usage.avgDoseSize;
-    } else {
-      // Most recent dose for this strain, if any.
-      final doses = provider.dosages
-          .where((d) => d.strainId == widget.strainId)
-          .toList(growable: false);
-      if (doses.isNotEmpty) {
-        doses.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-        usual = doses.first.amount;
-      }
-    }
-
-    if (usual != null && usual > 0) {
-      _amountController.text = _formatAmount(usual);
-    }
-  }
-
-  static String _formatAmount(double amount) {
-    if (amount == amount.roundToDouble()) {
-      return amount.toStringAsFixed(0);
-    }
-    final one = amount.toStringAsFixed(1);
-    return one.endsWith('.0') ? one.substring(0, one.length - 2) : one;
-  }
-
-  Future<void> _selectDate(BuildContext context) async {
-    final pickedDate = await showDatePicker(
-      context: context,
-      initialDate: _selectedDateTime,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-    );
-
-    if (pickedDate != null) {
-      setState(() {
-        _selectedDateTime = DateTime(
-          pickedDate.year,
-          pickedDate.month,
-          pickedDate.day,
-          _selectedDateTime.hour,
-          _selectedDateTime.minute,
-        );
-      });
-    }
-  }
-
-  Future<void> _selectTime(BuildContext context) async {
-    final pickedTime = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(_selectedDateTime),
-    );
-
-    if (pickedTime != null) {
-      setState(() {
-        _selectedDateTime = DateTime(
-          _selectedDateTime.year,
-          _selectedDateTime.month,
-          _selectedDateTime.day,
-          pickedTime.hour,
-          pickedTime.minute,
-        );
-      });
-    }
-  }
-
-  void _snapToNow() {
-    final now = DateTime.now();
-    setState(() {
-      _selectedDateTime = DateTime(
-        _selectedDateTime.year,
-        _selectedDateTime.month,
-        _selectedDateTime.day,
-        now.hour,
-        now.minute,
-        now.second,
-      );
-    });
-  }
-
-  Future<void> _submit() async {
-    if (_saving) return;
-    if (!_formKey.currentState!.validate()) return;
-
-    final amount = parseDoseAmount(_amountController.text);
-    if (amount == null) return;
-
-    // The date picker clamps to today but the time wheel does not, so a dose
-    // hours in the future is one tap away — and the vine would render it
-    // above NOW as if just taken.
-    if (_selectedDateTime.isAfter(DateTime.now())) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Dose time is in the future'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-
-    final notesRaw = _notesController.text.trim();
-    final notes = notesRaw.isEmpty ? null : notesRaw;
-
-    final provider = context.read<KratomProvider>();
-    final navigator = Navigator.of(context);
-
-    setState(() => _saving = true);
-    try {
-      await provider.addDosage(
-        widget.strainId,
-        amount,
-        _selectedDateTime,
-        notes: notes,
-      );
-      await HapticFeedback.lightImpact();
-
-      if (!mounted) return;
-      navigator.pop();
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not save dose')),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.c;
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: SingleChildScrollView(
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            24,
-            16,
-            24,
-            MediaQuery.of(context).viewInsets.bottom + 24,
-          ),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back),
-                      onPressed: widget.onBack,
-                    ),
-                    Text(
-                      'Add Dose',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: c.textPrimary,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                TextFormField(
-                  controller: _amountController,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration:
-                      _inputDecoration(context, label: 'Amount', suffix: 'g'),
-                  validator: validateDoseAmount,
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildDateTimeButton(
-                        icon: Icons.calendar_today,
-                        label:
-                            DateFormat('MMM d, y').format(_selectedDateTime),
-                        onPressed: () => _selectDate(context),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildDateTimeButton(
-                        icon: Icons.access_time,
-                        label:
-                            DateFormat('h:mm a').format(_selectedDateTime),
-                        onPressed: () => _selectTime(context),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    _NowPill(onTap: _snapToNow),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _notesController,
-                  maxLines: 3,
-                  decoration: _inputDecoration(
-                    context,
-                    label: 'Notes (optional)',
-                    alignHint: true,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: c.accent,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    minimumSize: const Size.fromHeight(44),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 0,
-                  ),
-                  onPressed: _saving ? null : _submit,
-                  child: Text(
-                    _saving ? 'Saving…' : 'Add Dose',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDateTimeButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onPressed,
-  }) {
-    final c = context.c;
-    return Material(
-      color: c.surfaceSunken,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 12,
-            vertical: 12,
-          ),
-          decoration: BoxDecoration(
-            border: Border.all(color: c.hairline),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, size: 18, color: c.textSecondary),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(fontSize: 14, color: c.textPrimary),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  InputDecoration _inputDecoration(
-    BuildContext context, {
-    required String label,
-    String? suffix,
-    bool alignHint = false,
-  }) {
-    final c = context.c;
-    return InputDecoration(
-      labelText: label,
-      suffixText: suffix,
-      alignLabelWithHint: alignHint,
-      filled: true,
-      fillColor: c.surfaceSunken,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: c.hairline),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: c.hairline),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: c.accent, width: 2),
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    _amountController.dispose();
-    _notesController.dispose();
-    super.dispose();
-  }
-}
-
-/// Small cyan "Now" pill mirroring the home calendar's "Today" control.
-class _NowPill extends StatelessWidget {
+  final StrainUsage usage;
+  final double width;
+  final bool selected;
   final VoidCallback onTap;
 
-  const _NowPill({required this.onTap});
-
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: 'Set time to now',
-      child: Material(
-        key: const Key('add-dose-now-pill'),
-        color: context.c.accent.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(14),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 44, minWidth: 52),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Center(
-                child: Text(
-                  'Now',
-                  style: TextStyle(
-                    color: context.c.accent,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
+    final c = context.c;
+    final strain = usage.strain;
+    final inStock = strain.inStock;
+    final brightness = Theme.of(context).brightness;
+    final leaf = legibleStrainColor(Color(strain.color), brightness);
+    final rest = _restLine(usage);
+    final borderColor = selected
+        ? c.textPrimary
+        : c.hairline.withValues(alpha: inStock ? 1 : 0.55);
+
+    return SizedBox(
+      key: Key('dose-strain-${strain.id}'),
+      width: width,
+      height: 76,
+      child: Semantics(
+        button: true,
+        selected: selected,
+        label: '${strain.code}, $rest, ${inStock ? 'in stock' : 'out of stock'}',
+        child: Material(
+          color: selected ? c.surfaceSunken : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: borderColor,
+                  width: selected ? 1.5 : 1,
                 ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  StrainMark(
+                    shape: resolveLeafShape(strain.icon, strain.code),
+                    color: leaf,
+                    size: 22,
+                  ),
+                  const SizedBox(height: 2),
+                  Opacity(
+                    opacity: inStock ? 1 : 0.55,
+                    child: Column(
+                      children: [
+                        Text(
+                          strain.code,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: AppType.sans,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: leaf,
+                          ),
+                        ),
+                        Text(
+                          rest,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: AppType.sans,
+                            fontSize: 11,
+                            color: c.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -805,33 +847,4 @@ class _NowPill extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Shared amount parsing: trim, accept `,` or `.` as decimal separator.
-double? parseDoseAmount(String? raw) {
-  if (raw == null) return null;
-  final cleaned = raw.trim().replaceAll(',', '.');
-  if (cleaned.isEmpty) return null;
-  return double.tryParse(cleaned);
-}
-
-/// Shared amount validation used by add + edit forms.
-String? validateDoseAmount(String? value) {
-  if (value == null || value.trim().isEmpty) {
-    return 'Please enter an amount';
-  }
-  final amount = parseDoseAmount(value);
-  if (amount == null) {
-    return 'Please enter a valid number';
-  }
-  if (!amount.isFinite) {
-    return 'Please enter a valid number';
-  }
-  if (amount <= 0) {
-    return 'Amount must be greater than zero';
-  }
-  if (amount > 100) {
-    return 'Amount seems too high (max 100g)';
-  }
-  return null;
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -35,7 +37,12 @@ Future<void> showDosageOptions(BuildContext context, Dosage dosage) {
             subtitle: const Text(
               'Add the same strain and amount at the current time',
             ),
-            onTap: () => _logAgain(context, dosage),
+            onTap: () => logDoseNow(
+              sheetContext,
+              strainId: dosage.strainId,
+              amount: dosage.amount,
+              sheetNavigator: Navigator.of(sheetContext),
+            ),
           ),
           ListTile(
             leading: const Icon(Icons.edit_outlined),
@@ -85,6 +92,8 @@ Future<void> _deleteWithUndo(
       content: const Text('Dose deleted'),
       behavior: SnackBarBehavior.floating,
       duration: const Duration(seconds: 5),
+      margin: _fabClearMargin,
+      elevation: 0,
       action: SnackBarAction(
         label: 'Undo',
         onPressed: () async {
@@ -111,16 +120,29 @@ Future<void> _deleteWithUndo(
   );
 }
 
-Future<void> _logAgain(BuildContext context, Dosage dosage) async {
+/// One-tap re-log shared by "Log again now" and the FAB's repeat pill.
+/// [context] must stay mounted through the await: the sheet's own context for
+/// "Log again now" (the row that opened the sheet can unmount mid-write when
+/// the day page re-keys at midnight), the home screen's for the repeat pill.
+/// [sheetNavigator] pops the options sheet after a successful write; null for
+/// callers with nothing to dismiss. Capturing these BEFORE the await is the
+/// guard: a write that already succeeded must still close the sheet and
+/// confirm, and a second tap must not log a duplicate.
+Future<void> logDoseNow(
+  BuildContext context, {
+  required String strainId,
+  required double amount,
+  NavigatorState? sheetNavigator,
+}) async {
   if (_isLoggingAgain) return;
   _isLoggingAgain = true;
   try {
     final provider = context.read<KratomProvider>();
-    final strain = provider.getStrain(dosage.strainId);
+    final messenger = ScaffoldMessenger.of(context);
+    final strain = provider.getStrain(strainId);
     if (strain == null) {
-      if (!context.mounted) return;
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
+      sheetNavigator?.pop();
+      messenger.showSnackBar(
         const SnackBar(
           content: Text('Could not log — this strain no longer exists'),
           behavior: SnackBarBehavior.floating,
@@ -128,16 +150,19 @@ Future<void> _logAgain(BuildContext context, Dosage dosage) async {
       );
       return;
     }
+    final Dosage created;
     try {
-      await provider.addDosage(
-        dosage.strainId,
-        dosage.amount,
+      created = await provider.addDosage(
+        strainId,
+        amount,
         DateTime.now(),
       );
-      await HapticFeedback.lightImpact();
+      // Fire-and-forget like every other haptic in the app: awaiting it
+      // parks the write-confirm path on a platform channel that never
+      // answers under flutter_test.
+      unawaited(HapticFeedback.lightImpact());
     } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(
           content: Text('Could not log dose: $e'),
           behavior: SnackBarBehavior.floating,
@@ -145,15 +170,45 @@ Future<void> _logAgain(BuildContext context, Dosage dosage) async {
       );
       return;
     }
-    if (!context.mounted) return;
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
+    sheetNavigator?.pop();
+    messenger.showSnackBar(
       SnackBar(
-        content: Text('Logged ${dosage.amount}g ${strain.code}'),
+        content: Text('Logged ${strain.code} · ${_formatAmount(amount)}'),
         behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 5),
+        margin: _fabClearMargin,
+        elevation: 0,
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () async {
+            try {
+              await provider.deleteDosage(created.id);
+            } on ArgumentError {
+              // The dose is already gone — nothing to undo.
+            }
+          },
+        ),
       ),
     );
   } finally {
     _isLoggingAgain = false;
   }
 }
+
+/// Matches the dose-row formatting in home_dosage_list.dart: up to two
+/// decimals, trailing zeros stripped (16.6 → "16.6g", 2 → "2g").
+String _formatAmount(double value) {
+  final body = value == value.roundToDouble()
+      ? value.toStringAsFixed(0)
+      : value
+          .toStringAsFixed(2)
+          .replaceFirst(RegExp(r'0+$'), '')
+          .replaceFirst(RegExp(r'\.$'), '');
+  return '${body}g';
+}
+
+/// The home FAB is a hand-positioned disc, not a Scaffold FAB, so Scaffold
+/// never insets snackbars for it: a default floating bar's action button
+/// lands dead under the disc. Right-margin clears the 56 px FAB plus its
+/// 16 px screen edge and a small gap.
+const _fabClearMargin = EdgeInsets.fromLTRB(16, 0, 88, 24);
