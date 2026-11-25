@@ -5,15 +5,16 @@ with light and dark themes. All data stays on the device — no account, no netw
 analytics.
 
 - **Package**: `org.kratomtracker.plus`
-- **Current release**: 2.18.1+29 (`pubspec.yaml`, mirrored in
+- **Current release**: 2.19.0+30 (`pubspec.yaml`, mirrored in
   `lib/constants/app_version.dart` and enforced by `test/app_version_test.dart`)
 - **Flutter**: 3.44.x stable, Dart SDK `^3.5.4`
 - **Min Android**: API 23 (6.0)
-- **Previous release**: [v2.16.3](https://github.com/BareTread/KratomTracker/releases/tag/v2.16.3)
+- **Previous release**: [v2.18.1](https://github.com/BareTread/KratomTracker/releases/tag/v2.18.1)
 
 ## What it does
 
-- **Doses** — log from one sheet with a preselected suggestion, or repeat the last dose.
+- **Doses** — log from one sheet: a strain ledger showing when each was last taken and
+  its 30-day grams, over pinned amount, date and time controls; or repeat the last dose.
   Timestamps are editable; one-tap logs and deletes offer Undo.
 - **The day view** — the home screen is a horizontal pager of days. Each day draws a
   botanical "vine": a painted stem with one leaf mark per dose, and a live dashed tail
@@ -21,6 +22,19 @@ analytics.
 - **Strains** — around thirty, each with its own colour and leaf shape. Stock tracking.
 - **Stats & reports** — range-aware totals, trajectory and rotation insights, a 30-day
   herbarium, per-strain breakdowns, and CSV/JSON export and import.
+
+## 2.19.0
+
+- The log sheet is rebuilt for fewer taps. Only the strain list scrolls; amount, date,
+  time and Log stay pinned below it.
+- Strains are a vertical ledger again, each row showing when it was last taken and its
+  grams over 30 days. Strains taken this month come first, most rested on top, then
+  "Not taken in 30 days". Out-of-stock strains sit behind an Out tab.
+- Date and time are separate controls, plus Now, −30m and −1h. A time that has not come
+  yet today goes on yesterday, and the sheet and Undo bar say so. A past Home day keeps
+  its date and asks for the time.
+- The + button no longer guesses a strain; a strain's own "Log a dose" still preselects
+  it. The amount fills from that strain's last dose; the recent-amount chips are gone.
 
 ## 2.18.1
 
@@ -111,8 +125,8 @@ Decided with the user; do not drift back:
   gap labels start at 1m. The word "now" appears only at the NOW tip.
 - The week strip shows micro-sprigs instead of presence dots. Tap the FAB for the log
   sheet; long-press for Add Strain, Add Dose and repeat last dose. Back closes the menu.
-  The suggested in-stock strain and its last amount are preselected, and Save names both;
-  one-tap logs and deletes offer Undo for 5 seconds.
+  Picking a strain fills its last amount, and Log names both; one-tap logs and deletes
+  offer Undo for 4 seconds.
 
 In the Stats 30-day herbarium, each stem runs midnight to midnight. Each leaf is a dose
 at its time, with length in grams on a shared scale and colour by strain; a bud marks a

@@ -101,6 +101,76 @@ Map<String, Object> _dataset({required bool dark}) {
   };
 }
 
+/// The owner's real shape: 31 strains in stock (ten dormant for a month or
+/// more, the rest in rotation) and 19 out of stock, about 16.5 g a dose.
+/// Only the add-dose sheet is shot from it.
+Map<String, Object> _manyDataset({required bool dark}) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  const inStock = {
+    'yy': 92, 'PR': 61, 'RP': 47, 'GM': 41, 'WMD': 39, 'RMDG': 37, 'WH': 35,
+    'RBN': 34, 'RMV': 33, 'WMDP': 31, 'RBoK': 18, 'GMD': 18, 'AR': 17,
+    'RBI': 15, 'RBaK': 14, 'RI': 10, 'RJK': 9, 'GTT': 9, 'YB': 7, 'RMDP': 7,
+    'GI': 5, 'RMD': 4, 'WI': 3, 'GB': 3, 'MIX': 3, 'RT': 2, 'RB': 1, 'WB': 1,
+    'GMDP': 1, 'GLMD': 0, 'GBI': 0,
+  };
+  const outOfStock = {
+    'rtt': 339, 'GEG': 293, 'GKG': 289, 'GMV': 270, 'GK': 250, 'GWH': 240,
+    'WT': 240, 'GH': 150, 'GBG': 120, 'WE': 120, 'RTG': 90, 'GBK': 90,
+    'SR': 60, 'SGG': 60, 'RK': 45, 'WK': 40, 'GMS': 70, 'RKB': 55, 'WS': 33,
+  };
+  const icons = ['plant', 'flower', 'leaf', 'natural', 'sprout', 'grass'];
+  int colorFor(String code) => switch (code[0].toUpperCase()) {
+        'R' => 0xFFC62828,
+        'G' => 0xFF43A047,
+        'W' => 0xFF90A4AE,
+        'Y' => 0xFFFFD54F,
+        _ => 0xFFFFB300,
+      };
+  final strains = <Map<String, Object>>[];
+  final doses = <Map<String, Object?>>[];
+  var n = 0;
+  var i = 0;
+  void addStrain(String code, int lastDays, {required bool stocked}) {
+    final id = 'm${i++}';
+    strains.add({
+      'id': id,
+      'name': code == 'yy' ? 'yellow yarrow' : _names[i % _names.length],
+      'code': code,
+      'color': colorFor(code),
+      'icon': icons[i % icons.length],
+      if (!stocked) 'inStock': false,
+    });
+    // Rotation strains come round every few days; a heavier hand on some.
+    final every = 3 + i % 4;
+    for (var d = lastDays; d < lastDays + 70; d += every) {
+      final t = today.subtract(Duration(days: d)).add(
+            Duration(hours: d == 0 ? 8 : 9 + (i + d) % 10, minutes: (i * 7) % 60),
+          );
+      doses.add({
+        'id': 'x${n++}',
+        'strainId': id,
+        'amount': 16.3 + ((i + d) % 4) * 0.08,
+        'timestamp': t.toIso8601String(),
+      });
+    }
+  }
+
+  inStock.forEach((code, days) => addStrain(code, days, stocked: true));
+  outOfStock.forEach((code, days) => addStrain(code, days, stocked: false));
+  return {
+    'darkMode': dark,
+    'strains': jsonEncode(strains),
+    'dosages': jsonEncode(doses),
+    'user_name': 'Alin',
+  };
+}
+
+const _names = [
+  'Red Bali', 'Green Malay', 'White Borneo', 'Gold Thai', 'Red Maeng Da',
+  'Green Vietnam', 'White Kali', 'Red Indo', 'Green Sumatra', 'Mixed',
+];
+
 Future<GlobalKey> _boot(
   WidgetTester tester,
   Map<String, Object> values,
@@ -295,6 +365,24 @@ void main() {
       await snap('empty_strains');
       await tester.tap(find.text('Stats'));
       await snap('empty_stats');
+    });
+
+    // The add-dose sheet against a real-sized rotation.
+    testWidgets('shots ${dark ? 'dark' : 'light'} many', (tester) async {
+      final key = await _boot(tester, _manyDataset(dark: dark));
+      final snap = _snapper(tester, key, dark);
+      await tester.tap(find.byKey(const Key('home-fab')));
+      await snap('adddose_many');
+      await _tapAny(tester, [find.text('GTT')]);
+      await tester.tap(find.byKey(const Key('add-dose-ago-60')));
+      await snap('adddose_many_picked');
+      final ledger = find.byType(Scrollable).hitTestable().first;
+      await tester.drag(ledger, const Offset(0, -520));
+      await snap('adddose_many_resting');
+      await tester.tap(find.byKey(const Key('add-dose-out-of-stock')));
+      await _settle(tester);
+      await _tapAny(tester, [find.text('RK')]);
+      await snap('adddose_many_out');
     });
   }
 }
