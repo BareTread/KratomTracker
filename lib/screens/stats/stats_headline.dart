@@ -9,15 +9,22 @@ import 'stats_common.dart';
 String driftHeadline(DriftReading drift, StatsRange range) {
   final level = formatAmount(drift.level.gramsPerDay);
   final percent = drift.changePercent;
+  // The fit is capped at [driftFitWindowDays]; on "All" with a longer
+  // history the trend only covers that stretch, so name it, not "whole
+  // history".
+  final phrase = range == StatsRange.all &&
+          drift.windowDays >= driftFitWindowDays
+      ? 'over the last 6 months'
+      : range.phrase;
   return switch (drift.direction) {
     DriftDirection.unknown => 'Not enough history yet',
     DriftDirection.steady => 'Holding steady around ${level}g/day',
     DriftDirection.up => percent == null
-        ? 'Drifting up ${range.phrase}'
-        : 'Up ${percent.round()}% ${range.phrase}',
+        ? 'Drifting up $phrase'
+        : 'Up ${percent.round()}% $phrase',
     DriftDirection.down => percent == null
-        ? 'Drifting down ${range.phrase}'
-        : 'Down ${percent.abs().round()}% ${range.phrase}',
+        ? 'Drifting down $phrase'
+        : 'Down ${percent.abs().round()}% $phrase',
   };
 }
 

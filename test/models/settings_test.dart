@@ -11,6 +11,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// them — including malformed values — and must load cleanly while the live
 /// fields never re-emit the dead keys.
 void main() {
+  test('a non-finite or negative stored daily limit reads as 0', () {
+    // jsonEncode throws on NaN/Infinity, so letting one load would make
+    // every later save fail.
+    for (final raw in ['NaN', 'Infinity', '-Infinity', -3]) {
+      expect(UserSettings.fromJson({'dailyLimit': raw}).dailyLimit, 0,
+          reason: '$raw',);
+    }
+  });
+
   test('old stored settings with dead fields load without error', () {
     final settings = UserSettings.fromJson({
       'enableNotifications': true,

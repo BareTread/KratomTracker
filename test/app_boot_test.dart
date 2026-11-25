@@ -40,6 +40,11 @@ void main() {
     // Empty today: young vine shoot, not the past-day empty-state CTA.
     expect(find.text('NO DOSES YET'), findsOneWidget);
     expect(find.text('No doses recorded'), findsNothing);
+    // The load problem is a banner that waits for acknowledgement.
+    expect(find.byType(MaterialBanner), findsOneWidget);
+    await tester.tap(find.text('Dismiss'));
+    await tester.pumpAndSettle();
+    expect(find.byType(MaterialBanner), findsNothing);
   });
 
   testWidgets('prefs load failure shows the existing error surface',

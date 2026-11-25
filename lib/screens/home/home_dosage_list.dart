@@ -906,34 +906,40 @@ class _NowRow extends StatelessWidget {
                   child: _Entrance(
                     reveal: reveal,
                     step: nodeIndex,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          empty ? 'NO DOSES YET' : 'NOW',
-                          style: TextStyle(
-                            color: context.c.textSecondary,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1.4,
-                          ),
-                        ),
-                        // Mirrors the dose row's sub-line, so the empty
-                        // state sits on the same grid as a real one.
-                        if (empty) ...[
-                          const SizedBox(height: 5),
+                    // The band is a fixed height; at a very large system font
+                    // the two lines shrink to fit rather than clip.
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Text(
-                            'tap + to log the first',
+                            empty ? 'NO DOSES YET' : 'NOW',
                             style: TextStyle(
-                              color: context.c.textTertiary,
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w500,
-                              letterSpacing: 0.3,
+                              color: context.c.textSecondary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.4,
                             ),
                           ),
+                          // Mirrors the dose row's sub-line, so the empty
+                          // state sits on the same grid as a real one.
+                          if (empty) ...[
+                            const SizedBox(height: 5),
+                            Text(
+                              'tap + to log the first',
+                              style: TextStyle(
+                                color: context.c.textTertiary,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w500,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
                 ),

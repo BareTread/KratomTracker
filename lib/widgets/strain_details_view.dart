@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../domain/analytics_service.dart';
+import '../domain/date_utils.dart';
 import '../models/strain.dart';
 import '../providers/kratom_provider.dart';
 import '../theme/app_theme.dart';
@@ -96,13 +97,13 @@ class StrainDetailsView extends StatelessWidget {
                       label: 'First used',
                       value: insight.firstUsed == null
                           ? '—'
-                          : _dateFormat.format(insight.firstUsed!),
+                          : _dateFormat.format(insight.firstUsed!.toLocal()),
                     ),
                     _FigureRow(
                       label: 'Last used',
                       value: insight.lastUsed == null
                           ? '—'
-                          : '${_dateFormat.format(insight.lastUsed!)}'
+                          : '${_dateFormat.format(insight.lastUsed!.toLocal())}'
                               '${_relative(insight.lastUsed!)}',
                     ),
                     const SizedBox(height: 24),
@@ -152,6 +153,7 @@ class StrainDetailsView extends StatelessWidget {
                               context,
                               builder: (_) => AddDosageForm(
                                 preselectedStrainId: strain.id,
+                                day: DateTime.now(),
                               ),
                             );
                           },
@@ -170,10 +172,9 @@ class StrainDetailsView extends StatelessWidget {
   }
 
   static String _relative(DateTime lastUsed) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final day = DateTime(lastUsed.year, lastUsed.month, lastUsed.day);
-    final days = today.difference(day).inDays;
+    // Calendar days in local time: a raw difference of local midnights is
+    // 23h across a DST change and would floor "yesterday" to "today".
+    final days = daysBetween(lastUsed, DateTime.now());
     return switch (days) {
       0 => ' (today)',
       1 => ' (yesterday)',
@@ -276,14 +277,18 @@ class _FigureRow extends StatelessWidget {
               color: c.textSecondary,
             ),
           ),
-          Text(
-            value,
-            style: TextStyle(
-              fontFamily: AppType.sans,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: c.textPrimary,
-              fontFeatures: const [FontFeature.tabularFigures()],
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: TextStyle(
+                fontFamily: AppType.sans,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: c.textPrimary,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
             ),
           ),
         ],

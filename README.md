@@ -5,7 +5,7 @@ with light and dark themes. All data stays on the device — no account, no netw
 analytics.
 
 - **Package**: `org.kratomtracker.plus`
-- **Current release**: 2.18.0+28 (`pubspec.yaml`, mirrored in
+- **Current release**: 2.18.1+29 (`pubspec.yaml`, mirrored in
   `lib/constants/app_version.dart` and enforced by `test/app_version_test.dart`)
 - **Flutter**: 3.44.x stable, Dart SDK `^3.5.4`
 - **Min Android**: API 23 (6.0)
@@ -21,6 +21,22 @@ analytics.
 - **Strains** — around thirty, each with its own colour and leaf shape. Stock tracking.
 - **Stats & reports** — range-aware totals, trajectory and rotation insights, a 30-day
   herbarium, per-strain breakdowns, and CSV/JSON export and import.
+
+## 2.18.1
+
+- Undo confirmations (log, log again, delete) dismiss themselves after 4 seconds; a new
+  one replaces the last instead of queueing. Delete from the dose sheet always offers Undo.
+- Restore rejects a backup whose every record is unreadable instead of wiping the log. A
+  corrupt stored daily limit (NaN) no longer breaks saving and backup.
+- A notes-only dose edit keeps the stored amount (2.347g no longer becomes 2.35g).
+- Calendar taps select the right day west of UTC; a strain's "Log a dose" logs today;
+  double-tapping "Add strain" creates one strain.
+- Backup and CSV share messages no longer claim a file was saved. The load warning is a
+  banner with Dismiss and Open.
+- Stats: the All-range drift headline names its 6-month window; median labels and
+  Report amounts use the same rounding as Home. Strain details show local dates.
+- Layout holds at system font sizes up to 2x. MaterialApp no longer rebuilds on every
+  dose and day swipe.
 
 ## 2.18.0
 

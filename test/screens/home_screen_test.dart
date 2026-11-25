@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kratom_tracker_plus/domain/date_utils.dart';
 import 'package:kratom_tracker_plus/providers/kratom_provider.dart';
 import 'package:kratom_tracker_plus/providers/theme_provider.dart';
 import 'package:kratom_tracker_plus/screens/home/home_calendar_section.dart';
@@ -115,6 +116,36 @@ void main() {
       }),
       findsNothing,
     );
+  });
+
+  testWidgets('tapping a week-strip day reports a local calendar date',
+      (tester) async {
+    // TableCalendar hands back UTC midnights; passed on as-is, startOfDay's
+    // toLocal() moves them to the previous day anywhere west of UTC.
+    DateTime? picked;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeProvider.lightTheme,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true),
+          child: child!,
+        ),
+        home: Scaffold(
+          body: HomeCalendarSection(
+            focusedDay: DateTime(2025, 2, 15),
+            onDaySelected: (day) => picked = day,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.bySemanticsLabel('Thursday, February 13, 2025'));
+    await tester.pump();
+
+    expect(picked, isNotNull);
+    expect(picked!.isUtc, isFalse);
+    expect(startOfDay(picked!), DateTime(2025, 2, 13));
   });
 
   testWidgets('month grid aligns day 1 with its weekday column',

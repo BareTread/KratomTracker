@@ -32,8 +32,11 @@ class UserSettings {
   factory UserSettings.fromJson(Map<String, dynamic> json) {
     // Legacy keys (enableNotifications, reminder times, tolerance tracking)
     // are ignored on read — including malformed values — and never re-emitted.
+    // A stored "NaN"/"Infinity" would load fine and then make every later
+    // save throw in jsonEncode, so anything not finite and >= 0 reads as 0.
+    final limit = asDouble(json['dailyLimit']);
     return UserSettings(
-      dailyLimit: asDouble(json['dailyLimit']),
+      dailyLimit: limit.isFinite && limit >= 0 ? limit : 0,
       measurementUnit: asString(json['measurementUnit'], fallback: 'g'),
       performanceMode: json['performanceMode'] is bool
           ? json['performanceMode'] as bool

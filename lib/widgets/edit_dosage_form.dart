@@ -29,13 +29,19 @@ class _EditDosageFormState extends State<EditDosageForm> {
   late String _selectedStrainId;
   late DateTime _selectedDateTime;
   bool _saving = false;
+  // Set on the first edit of the amount field. Until then the field shows a
+  // two-decimal rounding of the stored amount, so saving must keep the stored
+  // value; after any edit (even one that retypes the same text) the field wins.
+  bool _amountEdited = false;
 
   @override
   void initState() {
     super.initState();
-    _amountController = TextEditingController(
-      text: formatDoseAmount(widget.dosage.amount),
-    );
+    final initialAmount = formatDoseAmount(widget.dosage.amount);
+    _amountController = TextEditingController(text: initialAmount);
+    _amountController.addListener(() {
+      if (_amountController.text != initialAmount) _amountEdited = true;
+    });
     _notesController = TextEditingController(
       text: widget.dosage.notes ?? '',
     );
@@ -92,7 +98,11 @@ class _EditDosageFormState extends State<EditDosageForm> {
     if (_saving) return;
     if (!_formKey.currentState!.validate()) return;
 
-    final amount = parseDoseAmount(_amountController.text);
+    // An untouched field keeps the stored value (2.347 stays 2.347 on a
+    // notes-only edit).
+    final amount = _amountEdited
+        ? parseDoseAmount(_amountController.text)
+        : widget.dosage.amount;
     if (amount == null) return;
 
     // The date picker clamps to today but the time wheel does not; reject a

@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/vine_painter.dart';
 import 'stats_bundle.dart';
+import 'stats_common.dart';
 
 /// Daily grams as a faint texture with the trailing 28-day median drawn over
 /// it as a vine. The days are the ground, the line is the figure — no legend
@@ -201,7 +202,7 @@ class _TrajectoryPainter extends CustomPainter {
     if (trend.isNotEmpty && trend.last > 0) {
       _text(
         canvas,
-        'median ${_trim(trend.last)}g',
+        'median ${trend.last < 0.05 ? '<0.1' : formatAmount(trend.last)}g',
         Offset(size.width, y(ceiling) - 14),
         true,
         color: medianColor,

@@ -43,6 +43,34 @@ void main() {
     expect(provider.dosages.single.id, 'dose-1');
   });
 
+  testWidgets('the Logged · Undo bar times out on its own', (tester) async {
+    // Flutter keeps an action snackbar up until tapped unless persist is
+    // false; the confirmation must get out of the way by itself.
+    final provider = await _provider(
+      dosages: [
+        _dose(
+          'dose-1',
+          DateTime.now().subtract(const Duration(minutes: 90)),
+          2,
+        ),
+      ],
+    );
+
+    await _pumpList(tester, provider, doseIds: ['dose-1']);
+
+    await tester.longPress(find.text('2g'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Log again now'));
+    await tester.pumpAndSettle();
+    expect(find.text('Logged TEST · 2g'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Logged TEST · 2g'), findsNothing);
+    expect(provider.dosages, hasLength(2), reason: 'timeout keeps the dose');
+  });
+
   testWidgets('delete Undo brings back the same dose', (tester) async {
     final timestamp = DateTime.now().subtract(const Duration(hours: 3));
     final provider = await _provider(

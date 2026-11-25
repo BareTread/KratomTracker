@@ -178,6 +178,37 @@ void main() {
     }
   });
 
+  test('rejects a backup whose every record is unreadable', () {
+    // Shaped like a backup, but every row failed to parse: restoring it
+    // would replace a live log with nothing.
+    final result = parseBackup(jsonEncode({
+      'strains': [<String, dynamic>{}],
+      'dosages': [<String, dynamic>{}],
+    }),);
+    expect(result, isA<BackupError>());
+  });
+
+  test('rejects readable strains over a dose list that lost every row', () {
+    // Replace would keep the strain and erase every live dose.
+    final result = parseBackup(jsonEncode({
+      'strains': [
+        {'id': 's1', 'name': 'Red', 'code': 'R', 'color': 0xFFC62828},
+      ],
+      'dosages': [<String, dynamic>{}, <String, dynamic>{}],
+    }),);
+    expect(result, isA<BackupError>());
+  });
+
+  test('still accepts strains with an explicitly empty dose list', () {
+    final result = parseBackup(jsonEncode({
+      'strains': [
+        {'id': 's1', 'name': 'Red', 'code': 'R', 'color': 0xFFC62828},
+      ],
+      'dosages': <Object>[],
+    }),);
+    expect(result, isA<BackupOk>());
+  });
+
   test('a malformed strain row keeps the rest of the backup', () {
     // color = 1e999 decodes to double.infinity (a valid JSON number, not
     // encodable from Dart); Strain.fromJson's asInt throws on it. One bad

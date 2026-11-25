@@ -5,6 +5,9 @@
 //   -> <SHOTS_DIR>/<theme>_<surface>.png
 //
 // Also: privacy, terms (pushed from Manage).
+//
+// --dart-define=TEXT_SCALE=1.3 boots at that system font scale and, instead of
+// failing on the first layout overflow, prints every one at the end.
 // Surfaces are reached by stable keys first (`strains-add`,
 // `strain-details-edit`, `stats-history`) and fall back to visible text, so a
 // redesign that keeps the keys keeps the harness working.
@@ -21,6 +24,8 @@ import 'package:kratom_tracker_plus/main.dart' as app;
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _outDir = String.fromEnvironment('SHOTS_DIR', defaultValue: 'build/shots');
+final _textScale =
+    double.parse(const String.fromEnvironment('TEXT_SCALE', defaultValue: '1'));
 
 Future<void> _loadRoboto() async {
   const dir = '/home/alin/dev-sdks/flutter/bin/cache/artifacts/material_fonts';
@@ -107,6 +112,27 @@ Future<GlobalKey> _boot(
   tester.platformDispatcher.accessibilityFeaturesTestValue =
       const FakeAccessibilityFeatures(disableAnimations: true);
   addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+  if (_textScale != 1) {
+    tester.platformDispatcher.textScaleFactorTestValue = _textScale;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final overflows = <String>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = (details) {
+      final text = details.exceptionAsString();
+      if (!text.contains('overflowed')) return previous?.call(details);
+      final full = details.toString().split('\n');
+      final i = full.indexWhere((l) => l.contains('relevant error-causing'));
+      final where =
+          i < 0 ? '' : full.skip(i + 1).take(2).map((l) => l.trim()).join(' ');
+      overflows.add('${text.split('\n').first} | $where');
+    };
+    addTearDown(() {
+      FlutterError.onError = previous;
+      // ignore: avoid_print
+      print('OVERFLOWS@$_textScale (${overflows.length}):\n'
+          '${overflows.toSet().join('\n')}');
+    });
+  }
   tester.view.physicalSize = const Size(780, 1688);
   tester.view.devicePixelRatio = 2;
   addTearDown(tester.view.resetPhysicalSize);

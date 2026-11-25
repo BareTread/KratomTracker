@@ -44,6 +44,9 @@ class _StrainFormFieldsState extends State<StrainFormFields> {
   late LeafShape _shape;
   late bool _inStock;
   bool _stockEdited = false;
+  // Set before the first await: a second tap on Add strain while the write
+  // is in flight would otherwise create a duplicate strain under a new ID.
+  bool _saving = false;
 
   @override
   void initState() {
@@ -80,9 +83,11 @@ class _StrainFormFieldsState extends State<StrainFormFields> {
   }
 
   Future<void> _save() async {
+    if (_saving) return;
     if (!_formKey.currentState!.validate()) return;
     final provider = context.read<KratomProvider>();
     final messenger = ScaffoldMessenger.of(context);
+    _saving = true;
     try {
       final strain = widget.strain;
       if (strain == null) {
@@ -92,6 +97,7 @@ class _StrainFormFieldsState extends State<StrainFormFields> {
       }
       if (mounted) Navigator.pop(context);
     } catch (e) {
+      _saving = false;
       messenger.showSnackBar(SnackBar(content: Text('Could not save strain: $e'), behavior: SnackBarBehavior.floating));
     }
   }
@@ -146,10 +152,10 @@ class _StrainFormFieldsState extends State<StrainFormFields> {
                       child: Semantics(button: true, selected: _color == shade.color, label: '${shade.name}, ${shade.intensity}', child: InkWell(
                         onTap: () => setState(() => _color = shade.color),
                         borderRadius: BorderRadius.circular(12),
-                        child: Container(height: 64, padding: const EdgeInsets.symmetric(horizontal: 8), decoration: BoxDecoration(color: c.surfaceSunken, borderRadius: BorderRadius.circular(12), border: Border.all(color: _color == shade.color ? c.textPrimary : c.hairline, width: _color == shade.color ? 2 : 1)), child: Row(children: [
+                        child: Container(constraints: const BoxConstraints(minHeight: 64), padding: const EdgeInsets.symmetric(horizontal: 8), decoration: BoxDecoration(color: c.surfaceSunken, borderRadius: BorderRadius.circular(12), border: Border.all(color: _color == shade.color ? c.textPrimary : c.hairline, width: _color == shade.color ? 2 : 1)), child: Row(children: [
                           Container(width: 20, height: 20, decoration: BoxDecoration(color: shade.color, shape: BoxShape.circle, border: Border.all(color: c.hairline))),
                           const SizedBox(width: 6),
-                          Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [Text(shade.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontFamily: AppType.sans, color: c.textPrimary, fontSize: 13)), Text(shade.intensity, style: TextStyle(fontFamily: AppType.sans, color: c.textSecondary, fontSize: 11))])),
+                          Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [Text(shade.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontFamily: AppType.sans, color: c.textPrimary, fontSize: 13)), Text(shade.intensity, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontFamily: AppType.sans, color: c.textSecondary, fontSize: 11))])),
                         ],),),
                       ),),
                     ),),],),

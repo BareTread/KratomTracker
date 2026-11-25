@@ -86,9 +86,7 @@ class HomeCalendarSection extends StatelessWidget {
                   onPressed: () {
                     final prev = addDays(focusedDay, -7);
                     _select(
-                      prev.isBefore(DateTime.utc(2020))
-                          ? DateTime.utc(2020)
-                          : prev,
+                      prev.isBefore(DateTime(2020)) ? DateTime(2020) : prev,
                     );
                   },
                   icon: Icon(
@@ -111,12 +109,16 @@ class HomeCalendarSection extends StatelessWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            DateFormat.yMMMM().format(focusedDay),
-                            style: TextStyle(
-                              color: context.c.textPrimary,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
+                          Flexible(
+                            child: Text(
+                              DateFormat.yMMMM().format(focusedDay),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: context.c.textPrimary,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ),
                           Icon(
@@ -151,98 +153,112 @@ class HomeCalendarSection extends StatelessWidget {
             ],
           ),
         ),
-        TableCalendar<void>(
-          firstDay: DateTime.utc(2020),
-          lastDay: today,
-          focusedDay: focusedDay.isAfter(today) ? today : focusedDay,
-          currentDay: today,
-          calendarFormat: CalendarFormat.week,
-          availableCalendarFormats: const {CalendarFormat.week: 'Week'},
-          startingDayOfWeek: StartingDayOfWeek.monday,
-          // 32 date disc + 2 + a 28px micro-sprig, with 2px to spare.
-          rowHeight: 64,
-          daysOfWeekHeight: 20,
-          headerVisible: false,
-          calendarStyle: CalendarStyle(
-            defaultTextStyle: TextStyle(color: context.c.textPrimary),
-            weekendTextStyle: TextStyle(color: context.c.textPrimary),
-            outsideTextStyle: TextStyle(color: context.c.textTertiary),
-            disabledTextStyle: TextStyle(color: context.c.textTertiary),
-            todayDecoration: BoxDecoration(
-              color: context.c.accentMuted,
-              shape: BoxShape.circle,
+        // Fixed 32px day discs and a 20px weekday row: past 1.5x the
+        // numbers wrap ("2" over "5") and the labels clip.
+        MediaQuery.withClampedTextScaling(
+          maxScaleFactor: 1.5,
+          child: TableCalendar<void>(
+            firstDay: DateTime.utc(2020),
+            lastDay: today,
+            // Clamped both ways: the pager itself reaches back past 2020.
+            focusedDay: focusedDay.isAfter(today)
+                ? today
+                : focusedDay.isBefore(DateTime(2020))
+                    ? DateTime(2020)
+                    : focusedDay,
+            currentDay: today,
+            calendarFormat: CalendarFormat.week,
+            availableCalendarFormats: const {CalendarFormat.week: 'Week'},
+            startingDayOfWeek: StartingDayOfWeek.monday,
+            // 32 date disc + 2 + a 28px micro-sprig, with 2px to spare.
+            rowHeight: 64,
+            daysOfWeekHeight: 20,
+            headerVisible: false,
+            calendarStyle: CalendarStyle(
+              defaultTextStyle: TextStyle(color: context.c.textPrimary),
+              weekendTextStyle: TextStyle(color: context.c.textPrimary),
+              outsideTextStyle: TextStyle(color: context.c.textTertiary),
+              disabledTextStyle: TextStyle(color: context.c.textTertiary),
+              todayDecoration: BoxDecoration(
+                color: context.c.accentMuted,
+                shape: BoxShape.circle,
+              ),
+              selectedDecoration: BoxDecoration(
+                color: context.c.textPrimary,
+                shape: BoxShape.circle,
+              ),
+              selectedTextStyle: TextStyle(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                fontFamily: AppType.sans,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
             ),
-            selectedDecoration: BoxDecoration(
-              color: context.c.textPrimary,
-              shape: BoxShape.circle,
+            daysOfWeekStyle: DaysOfWeekStyle(
+              weekdayStyle: TextStyle(
+                color: context.c.textTertiary,
+                fontSize: 12,
+              ),
+              weekendStyle: TextStyle(
+                color: context.c.textTertiary,
+                fontSize: 12,
+              ),
             ),
-            selectedTextStyle: TextStyle(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              fontFamily: AppType.sans,
-              fontFeatures: const [FontFeature.tabularFigures()],
+            calendarBuilders: CalendarBuilders<void>(
+              defaultBuilder: (context, day, focused) => _semanticDay(
+                context,
+                day,
+                weekTotals: weekTotals,
+                sprigs: sprigs,
+                monday: monday,
+                today: today,
+              ),
+              todayBuilder: (context, day, focused) => _semanticDay(
+                context,
+                day,
+                weekTotals: weekTotals,
+                sprigs: sprigs,
+                monday: monday,
+                today: today,
+              ),
+              selectedBuilder: (context, day, focused) => _semanticDay(
+                context,
+                day,
+                weekTotals: weekTotals,
+                sprigs: sprigs,
+                monday: monday,
+                today: today,
+                enabled: true,
+              ),
+              outsideBuilder: (context, day, focused) => _semanticDay(
+                context,
+                day,
+                weekTotals: weekTotals,
+                sprigs: sprigs,
+                monday: monday,
+                today: today,
+                enabled: false,
+              ),
+              disabledBuilder: (context, day, focused) => _semanticDay(
+                context,
+                day,
+                weekTotals: weekTotals,
+                sprigs: sprigs,
+                monday: monday,
+                today: today,
+                enabled: false,
+              ),
             ),
+            onDaySelected: (day, _) {
+              // TableCalendar passes UTC midnights; startOfDay would convert
+              // them with toLocal() and land on the previous day west of UTC.
+              final local = DateTime(day.year, day.month, day.day);
+              if (!_sameDay(local, focusedDay) &&
+                  compareCalendarDays(local, today) <= 0) {
+                _select(local);
+              }
+            },
+            selectedDayPredicate: (day) => _sameDay(focusedDay, day),
           ),
-          daysOfWeekStyle: DaysOfWeekStyle(
-            weekdayStyle: TextStyle(
-              color: context.c.textTertiary,
-              fontSize: 12,
-            ),
-            weekendStyle: TextStyle(
-              color: context.c.textTertiary,
-              fontSize: 12,
-            ),
-          ),
-          calendarBuilders: CalendarBuilders<void>(
-            defaultBuilder: (context, day, focused) => _semanticDay(
-              context,
-              day,
-              weekTotals: weekTotals,
-              sprigs: sprigs,
-              monday: monday,
-              today: today,
-            ),
-            todayBuilder: (context, day, focused) => _semanticDay(
-              context,
-              day,
-              weekTotals: weekTotals,
-              sprigs: sprigs,
-              monday: monday,
-              today: today,
-            ),
-            selectedBuilder: (context, day, focused) => _semanticDay(
-              context,
-              day,
-              weekTotals: weekTotals,
-              sprigs: sprigs,
-              monday: monday,
-              today: today,
-              enabled: true,
-            ),
-            outsideBuilder: (context, day, focused) => _semanticDay(
-              context,
-              day,
-              weekTotals: weekTotals,
-              sprigs: sprigs,
-              monday: monday,
-              today: today,
-              enabled: false,
-            ),
-            disabledBuilder: (context, day, focused) => _semanticDay(
-              context,
-              day,
-              weekTotals: weekTotals,
-              sprigs: sprigs,
-              monday: monday,
-              today: today,
-              enabled: false,
-            ),
-          ),
-          onDaySelected: (day, _) {
-            if (!_sameDay(day, focusedDay) && compareCalendarDays(day, today) <= 0) {
-              _select(day);
-            }
-          },
-          selectedDayPredicate: (day) => _sameDay(focusedDay, day),
         ),
         const SizedBox(height: 6),
       ],
@@ -383,9 +399,14 @@ class HomeCalendarSection extends StatelessWidget {
                   Row(
                     children: [
                       IconButton(
-                        onPressed: () => setDialogState(() {
-                          month = DateTime(month.year, month.month - 1);
-                        }),
+                        // The week strip starts at 2020; a month before it
+                        // would hand TableCalendar a day before its firstDay.
+                        onPressed: DateTime(month.year, month.month - 1)
+                                .isBefore(DateTime(2020))
+                            ? null
+                            : () => setDialogState(() {
+                                  month = DateTime(month.year, month.month - 1);
+                                }),
                         icon: const Icon(Icons.chevron_left),
                       ),
                       Expanded(

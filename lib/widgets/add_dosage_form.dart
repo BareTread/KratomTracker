@@ -12,15 +12,23 @@ import '../theme/app_theme.dart';
 import 'add_strain_form.dart';
 import 'dose_amount_control.dart';
 import 'strain_mark.dart';
+import 'undo_snack_bar.dart';
 
 export 'dose_amount_control.dart' show parseDoseAmount, validateDoseAmount;
 
 class AddDosageForm extends StatefulWidget {
   final String? preselectedStrainId;
 
+  /// The day to log on. Null means the day Home is showing
+  /// (`provider.selectedDate`); entry points with no day of their own, like
+  /// a strain's "Log a dose", pass today so they don't inherit whatever day
+  /// Home was last scrolled to.
+  final DateTime? day;
+
   const AddDosageForm({
     super.key,
     this.preselectedStrainId,
+    this.day,
   });
 
   @override
@@ -31,7 +39,7 @@ class _AddDosageFormState extends State<AddDosageForm> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _amountController;
   final _notesController = TextEditingController();
-  late final DateTime _openedAt;
+  late DateTime _openedAt;
   late DateTime _selectedDateTime;
   String? _selectedStrainId;
   bool _timeAdjusted = false;
@@ -43,7 +51,10 @@ class _AddDosageFormState extends State<AddDosageForm> {
     super.initState();
     _openedAt = DateTime.now();
     final provider = context.read<KratomProvider>();
-    _selectedDateTime = _seedDateTime(provider.selectedDate, _openedAt);
+    _selectedDateTime = _seedDateTime(
+      widget.day ?? provider.selectedDate,
+      _openedAt,
+    );
     _selectedStrainId = _preselect(
       provider.strainUsage,
       widget.preselectedStrainId,
@@ -165,6 +176,16 @@ class _AddDosageFormState extends State<AddDosageForm> {
 
   void _snapToNow() {
     final now = DateTime.now();
+    if (startOfDay(_selectedDateTime) == startOfDay(now)) {
+      // On today, "Now" means now: back to the plain Now chip, pill gone.
+      setState(() {
+        _openedAt = now;
+        _selectedDateTime = now;
+        _timeAdjusted = false;
+      });
+      return;
+    }
+    // On a past day, keep the day and take the current clock time.
     setState(() {
       _selectedDateTime = DateTime(
         _selectedDateTime.year,
@@ -232,24 +253,16 @@ class _AddDosageFormState extends State<AddDosageForm> {
       unawaited(HapticFeedback.lightImpact());
       if (!mounted) return;
       navigator.pop();
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text('Logged $code · ${formatDoseAmount(amount)}g'),
-          action: SnackBarAction(
-            label: 'Undo',
-            onPressed: () async {
-              try {
-                await provider.deleteDosage(created.id);
-              } on ArgumentError {
-                // Already gone.
-              }
-            },
-          ),
-          duration: const Duration(seconds: 5),
-          elevation: 0,
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.fromLTRB(16, 0, 88, 24),
-        ),
+      showUndoSnackBar(
+        messenger,
+        message: 'Logged $code · ${formatDoseAmount(amount)}g',
+        onUndo: () async {
+          try {
+            await provider.deleteDosage(created.id);
+          } on ArgumentError {
+            // Already gone.
+          }
+        },
       );
     } catch (_) {
       if (!mounted) return;
@@ -777,10 +790,13 @@ class _StrainTile extends StatelessWidget {
         ? c.textPrimary
         : c.hairline.withValues(alpha: inStock ? 1 : 0.55);
 
-    return SizedBox(
+    // 76 tall at the default font; a larger system font grows every tile in
+    // the Wrap by the same amount, since each holds the same three lines.
+    return ConstrainedBox(
       key: Key('dose-strain-${strain.id}'),
-      width: width,
-      height: 76,
+      constraints: BoxConstraints.tightFor(width: width).copyWith(
+        minHeight: 76,
+      ),
       child: Semantics(
         button: true,
         selected: selected,

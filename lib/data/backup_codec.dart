@@ -141,12 +141,32 @@ BackupParseResult parseBackup(String jsonText) {
           root['settings'] is Map ||
           root['userName'] is String ||
           root['user_name'] is String);
+  // But a file that HAD records and lost every one of them in parsing is
+  // damaged, not empty: restoring it would replace a live log with nothing.
+  final sourceDosageCount =
+      switch (decoded is List ? decoded : root?['dosages']) {
+    final List list => list.length,
+    _ => 0,
+  };
+  final sourceRecordCount = (root?['strains'] is List
+          ? (root!['strains'] as List).length
+          : 0) +
+      sourceDosageCount;
   if (strains.isEmpty &&
       dosages.isEmpty &&
       orphanedDosages.isEmpty &&
-      !hasBackupShape) {
+      (!hasBackupShape || sourceRecordCount > 0)) {
     return BackupError(
       'Backup contained no recoverable strains or dosages',
+      warnings,
+    );
+  }
+  // The same holds for the dose list alone: readable strains over a dose
+  // list that lost every row would make Replace erase the whole log.
+  if (sourceDosageCount > 0 && dosages.isEmpty && orphanedDosages.isEmpty) {
+    return BackupError(
+      'None of the backup\'s $sourceDosageCount '
+      '${_plural(sourceDosageCount, 'dose', 'doses')} could be read',
       warnings,
     );
   }

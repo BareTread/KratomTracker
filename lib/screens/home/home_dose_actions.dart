@@ -8,6 +8,7 @@ import '../../models/dosage.dart';
 import '../../providers/kratom_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/edit_dosage_form.dart';
+import '../../widgets/undo_snack_bar.dart';
 
 bool _isLoggingAgain = false;
 
@@ -84,39 +85,42 @@ Future<void> _deleteWithUndo(
   // Capture the messenger while the row context is definitely alive: the
   // undo callback can fire after the page beneath has been swiped away.
   final messenger = ScaffoldMessenger.of(context);
-  await provider.deleteDosage(dosage.id);
-  if (!sheetContext.mounted) return;
-  Navigator.pop(sheetContext);
-  messenger.showSnackBar(
-    SnackBar(
-      content: const Text('Dose deleted'),
-      behavior: SnackBarBehavior.floating,
-      duration: const Duration(seconds: 5),
-      margin: _fabClearMargin,
-      elevation: 0,
-      action: SnackBarAction(
-        label: 'Undo',
-        onPressed: () async {
-          try {
-            await provider.addDosage(
-              dosage.strainId,
-              dosage.amount,
-              dosage.timestamp,
-              notes: dosage.notes,
-            );
-          } on ArgumentError {
-            // The strain was deleted too while the bar was up; a dose
-            // cannot come back without it.
-            messenger.showSnackBar(
-              const SnackBar(
-                content: Text('Could not undo — strain no longer exists'),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          }
-        },
-      ),
-    ),
+  final sheetRoute = ModalRoute.of(sheetContext);
+  try {
+    await provider.deleteDosage(dosage.id);
+  } on ArgumentError {
+    // A second tap while the first delete was writing: already gone, and
+    // the first tap owns the Undo.
+    return;
+  }
+  // Close the sheet only if it is still the top route (not swiped away, and
+  // not already replaced by, say, the Edit sheet), but offer Undo either
+  // way: a sheet dismissed mid-write must not turn the delete permanent.
+  if (sheetContext.mounted && (sheetRoute?.isCurrent ?? false)) {
+    Navigator.pop(sheetContext);
+  }
+  showUndoSnackBar(
+    messenger,
+    message: 'Dose deleted',
+    onUndo: () async {
+      try {
+        await provider.addDosage(
+          dosage.strainId,
+          dosage.amount,
+          dosage.timestamp,
+          notes: dosage.notes,
+        );
+      } on ArgumentError {
+        // The strain was deleted too while the bar was up; a dose
+        // cannot come back without it.
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Could not undo — strain no longer exists'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    },
   );
 }
 
@@ -139,6 +143,9 @@ Future<void> logDoseNow(
   try {
     final provider = context.read<KratomProvider>();
     final messenger = ScaffoldMessenger.of(context);
+    // The options sheet's own route: after the write, pop only if it is still
+    // on top, not an Edit sheet opened meanwhile, and not after a swipe-away.
+    final sheetRoute = sheetNavigator == null ? null : ModalRoute.of(context);
     final strain = provider.getStrain(strainId);
     if (strain == null) {
       sheetNavigator?.pop();
@@ -170,25 +177,17 @@ Future<void> logDoseNow(
       );
       return;
     }
-    sheetNavigator?.pop();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text('Logged ${strain.code} · ${_formatAmount(amount)}'),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 5),
-        margin: _fabClearMargin,
-        elevation: 0,
-        action: SnackBarAction(
-          label: 'Undo',
-          onPressed: () async {
-            try {
-              await provider.deleteDosage(created.id);
-            } on ArgumentError {
-              // The dose is already gone — nothing to undo.
-            }
-          },
-        ),
-      ),
+    if (sheetRoute?.isCurrent ?? false) sheetNavigator?.pop();
+    showUndoSnackBar(
+      messenger,
+      message: 'Logged ${strain.code} · ${_formatAmount(amount)}',
+      onUndo: () async {
+        try {
+          await provider.deleteDosage(created.id);
+        } on ArgumentError {
+          // The dose is already gone — nothing to undo.
+        }
+      },
     );
   } finally {
     _isLoggingAgain = false;
@@ -211,4 +210,3 @@ String _formatAmount(double value) {
 /// never insets snackbars for it: a default floating bar's action button
 /// lands dead under the disc. Right-margin clears the 56 px FAB plus its
 /// 16 px screen edge and a small gap.
-const _fabClearMargin = EdgeInsets.fromLTRB(16, 0, 88, 24);

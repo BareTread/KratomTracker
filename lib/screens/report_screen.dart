@@ -9,6 +9,7 @@ import '../widgets/sheet_header.dart';
 import '../widgets/strain_mark.dart';
 import '../providers/kratom_provider.dart';
 import '../theme/app_theme.dart';
+import '../widgets/dose_amount_control.dart' show formatDoseAmount;
 import '../widgets/edit_dosage_form.dart';
 
 class ReportScreen extends StatelessWidget {
@@ -235,7 +236,7 @@ class ReportScreen extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    '${dosage.amount.toStringAsFixed(1)}g',
+                    '${formatDoseAmount(dosage.amount)}g',
                     textAlign: TextAlign.right,
                     style: TextStyle(
                       fontFamily: AppType.sans,
@@ -291,7 +292,7 @@ class ReportScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SheetHeader(
-                title: '${dosage.amount.toStringAsFixed(1)}g',
+                title: '${formatDoseAmount(dosage.amount)}g',
                 subtitle: '$identity · ${DateFormat('EEE d MMM, h:mm a').format(localTimestamp)}',
               ),
               Padding(
@@ -392,7 +393,7 @@ class ReportScreen extends StatelessWidget {
       builder: (context) => AlertDialog(
         title: const Text('Delete dose?'),
         content: Text(
-          'Delete ${dosage.amount.toStringAsFixed(1)}g of ${provider.getStrain(dosage.strainId)?.name ?? 'Unknown strain'} at ${DateFormat('h:mm a').format(dosage.timestamp.toLocal())}? This action cannot be undone.',
+          'Delete ${formatDoseAmount(dosage.amount)}g of ${provider.getStrain(dosage.strainId)?.name ?? 'Unknown strain'} at ${DateFormat('h:mm a').format(dosage.timestamp.toLocal())}? This action cannot be undone.',
         ),
         actions: [
           TextButton(
@@ -406,21 +407,31 @@ class ReportScreen extends StatelessWidget {
             ),
             onPressed: () async {
               final messenger = ScaffoldMessenger.of(context);
+              final dialogRoute = ModalRoute.of(context);
               try {
                 await provider.deleteDosage(dosage.id);
-                if (!context.mounted) return;
-                Navigator.pop(context);
-                messenger.showSnackBar(
-                  SnackBar(
-                    content: const Text('Dose deleted'),
-                    backgroundColor: c.caution,
-                  ),
-                );
+              } on ArgumentError {
+                // A second tap while the first delete was writing: the dose
+                // is already gone and the first tap reports it.
+                return;
               } catch (e) {
                 messenger.showSnackBar(
                   SnackBar(content: Text('Failed to delete dose: $e')),
                 );
+                return;
               }
+              // Pop only the dialog: if Cancel already closed it, a second
+              // pop would close Report itself. The dose is gone either way,
+              // so say so.
+              if (context.mounted && (dialogRoute?.isCurrent ?? false)) {
+                Navigator.pop(context);
+              }
+              messenger.showSnackBar(
+                SnackBar(
+                  content: const Text('Dose deleted'),
+                  backgroundColor: c.caution,
+                ),
+              );
             },
           ),
         ],
@@ -431,12 +442,11 @@ class ReportScreen extends StatelessWidget {
   Future<void> _exportCsv(BuildContext context, KratomProvider provider) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
+      // No toast afterwards: the share sheet was the confirmation, and
+      // "ready to share" after a cancelled sheet would be untrue.
       await shareDosagesCsv(
         dosages: provider.dosages,
         strains: provider.strains,
-      );
-      messenger.showSnackBar(
-        const SnackBar(content: Text('CSV export ready to share')),
       );
     } catch (e) {
       messenger.showSnackBar(

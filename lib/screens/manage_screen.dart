@@ -42,30 +42,63 @@ class _ManageScreenState extends State<ManageScreen> {
     }
   }
 
+  // A second tap while the share sheet is opening would start a second share,
+  // and Android then answers the first one with `unavailable`.
+  bool _backingUp = false;
+
   Future<void> _createBackup(
     BuildContext context,
     KratomProvider provider,
   ) async {
-    await _showAsyncDialog(
-      context,
-      () async {
-        final backupJson = await provider.exportJson();
+    if (_backingUp) return;
+    _backingUp = true;
+    try {
+      final backupJson = await provider.exportJson();
 
-        final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
-        final filename = 'herbal_tracker_plus_backup_$timestamp.json';
+      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+      final filename = 'herbal_tracker_plus_backup_$timestamp.json';
 
-        await Share.shareXFiles(
-          [
-            XFile.fromData(
-              utf8.encode(backupJson) as dynamic,
-              name: filename,
-              mimeType: 'application/json',
-            ),
-          ],
-          subject: 'Herbal Tracker+ Backup',
-        );
-      },
-      'Backup created successfully',
+      final result = await Share.shareXFiles(
+        [
+          XFile.fromData(
+            utf8.encode(backupJson) as dynamic,
+            name: filename,
+            mimeType: 'application/json',
+          ),
+        ],
+        subject: 'Herbal Tracker+ Backup',
+      );
+      if (!context.mounted) return;
+      // The share sheet only reports where the file went, never whether the
+      // other app kept it, so no outcome may claim a saved copy.
+      switch (result.status) {
+        case ShareResultStatus.success:
+          _showSuccessDialog(
+            context,
+            'Backup passed to the app you chose. Check that it saved there.',
+          );
+        case ShareResultStatus.dismissed:
+          _showBackupNote(context, 'Backup not saved — share was cancelled');
+        case ShareResultStatus.unavailable:
+          _showBackupNote(
+            context,
+            "Couldn't confirm the backup was saved — check where you sent it",
+          );
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+      _showErrorDialog(context, e.toString());
+    } finally {
+      _backingUp = false;
+    }
+  }
+
+  void _showBackupNote(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+      ),
     );
   }
 

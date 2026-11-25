@@ -132,16 +132,17 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer2<ThemeProvider, KratomProvider>(
-      builder: (context, themeProvider, kratomProvider, child) {
+    // Select only isReady: listening to the whole KratomProvider rebuilt
+    // MaterialApp on every dose, edit and Home page swipe.
+    final isReady = context.select<KratomProvider, bool>((p) => p.isReady);
+    return Consumer<ThemeProvider>(
+      builder: (context, themeProvider, child) {
         return MaterialApp(
           title: 'Herbal Tracker+',
           theme: ThemeProvider.lightTheme,
           darkTheme: ThemeProvider.darkTheme,
           themeMode: themeProvider.themeMode,
-          home: kratomProvider.isReady
-              ? const MainScreen()
-              : const _LoadingScreen(),
+          home: isReady ? const MainScreen() : const _LoadingScreen(),
         );
       },
     );
@@ -178,16 +179,33 @@ class _MainScreenState extends State<MainScreen> {
       if (!mounted) return;
       final warnings = context.read<KratomProvider>().loadWarnings;
       if (warnings.isEmpty) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          duration: const Duration(seconds: 10),
-          content: const Text(
+      // A banner, not a snackbar: it stays until acknowledged, and it sits
+      // outside the snackbar queue, so logging a dose neither dismisses it
+      // nor waits behind it.
+      final messenger = ScaffoldMessenger.of(context);
+      final c = context.c;
+      messenger.showMaterialBanner(
+        MaterialBanner(
+          backgroundColor: c.surfaceRaised,
+          dividerColor: c.hairline,
+          leading: Icon(Icons.warning_amber_rounded, color: c.caution),
+          content: Text(
             'Some saved data could not be loaded. Details in Manage.',
+            style: TextStyle(fontFamily: AppType.sans, color: c.textPrimary),
           ),
-          action: SnackBarAction(
-            label: 'Open',
-            onPressed: () => _onItemTapped(3),
-          ),
+          actions: [
+            TextButton(
+              onPressed: messenger.hideCurrentMaterialBanner,
+              child: const Text('Dismiss'),
+            ),
+            TextButton(
+              onPressed: () {
+                messenger.hideCurrentMaterialBanner();
+                _onItemTapped(3);
+              },
+              child: const Text('Open'),
+            ),
+          ],
         ),
       );
     });
@@ -274,31 +292,35 @@ class _TabItem extends StatelessWidget {
       child: InkResponse(
         onTap: onTap,
         radius: 32,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 22, color: ink),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              style: TextStyle(
-                fontFamily: AppType.sans,
-                fontSize: 11.5,
-                letterSpacing: 0.2,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                color: ink,
+        // The bar is a fixed 62px; past 1.5x a label pushes the dot out.
+        child: MediaQuery.withClampedTextScaling(
+          maxScaleFactor: 1.5,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 22, color: ink),
+              const SizedBox(height: 3),
+              Text(
+                label,
+                style: TextStyle(
+                  fontFamily: AppType.sans,
+                  fontSize: 11.5,
+                  letterSpacing: 0.2,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  color: ink,
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Container(
-              width: 4,
-              height: 4,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: selected ? c.accent : Colors.transparent,
+              const SizedBox(height: 4),
+              Container(
+                width: 4,
+                height: 4,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: selected ? c.accent : Colors.transparent,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

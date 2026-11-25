@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:kratom_tracker_plus/providers/kratom_provider.dart';
 import 'package:kratom_tracker_plus/providers/theme_provider.dart';
 import 'package:kratom_tracker_plus/widgets/add_dosage_form.dart';
+import 'package:kratom_tracker_plus/widgets/undo_snack_bar.dart';
 import 'package:kratom_tracker_plus/widgets/dose_amount_control.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -388,7 +389,8 @@ void main() {
       expect(find.text('Logged ALPHA · 2.5g'), findsOneWidget);
       final bar = tester.widget<SnackBar>(find.byType(SnackBar));
       expect(bar.elevation, 0);
-      expect(bar.duration, const Duration(seconds: 5));
+      expect(bar.duration, undoSnackBarDuration);
+      expect(bar.persist, isFalse, reason: 'must time out, not wait for a tap');
       expect(bar.behavior, SnackBarBehavior.floating);
       expect(bar.margin, const EdgeInsets.fromLTRB(16, 0, 88, 24));
 
