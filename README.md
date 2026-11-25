@@ -9,7 +9,7 @@ analytics.
   `lib/constants/app_version.dart` and enforced by `test/app_version_test.dart`)
 - **Flutter**: 3.44.x stable, Dart SDK `^3.5.4`
 - **Min Android**: API 23 (6.0)
-- **Previous release**: [v2.17.4](https://github.com/BareTread/KratomTracker/releases/tag/v2.17.4)
+- **Previous release**: [v2.16.3](https://github.com/BareTread/KratomTracker/releases/tag/v2.16.3)
 
 ## What it does
 
